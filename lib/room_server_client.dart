@@ -287,13 +287,13 @@ class RoomClient extends ChangeEmitter {
 
     protocol.addHandler("room_ready", _handleRoomReady);
 
-    sync = SyncClient(client: this);
-    storage = StorageClient(client: this);
-    developer = DeveloperClient(client: this);
-    messaging = MessagingClient(client: this);
-    agents = AgentsClient(client: this);
-    livekit = LivekitClient(client: this);
-    queues = QueuesClient(client: this);
+    sync = SyncClient(room: this);
+    storage = StorageClient(room: this);
+    developer = DeveloperClient(room: this);
+    messaging = MessagingClient(room: this);
+    agents = AgentsClient(room: this);
+    livekit = LivekitClient(room: this);
+    queues = QueuesClient(room: this);
   }
 
   late final LivekitClient livekit;
@@ -366,7 +366,31 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    _ready.complete(json.decode(utf8.decode(bytes))["room_name"]);
+    
+    final init = json.decode(utf8.decode(bytes));
+
+    _roomName = init["room_name"];
+    _roomUrl = init["room_url"];
+    _sessionId = init["session_id"];
+  
+    _ready.complete(init["room_name"]);
+
+
+  }
+
+  String? _roomName;
+  String? get roomName {
+    return _roomName;
+  }
+
+  String? _roomUrl;
+  String? get roomUrl {
+    return _roomUrl;
+  }
+
+  String? _sessionId;
+  String? get sessionId {
+    return _sessionId;
   }
 
   LocalParticipant? _localParticipant;
@@ -403,17 +427,17 @@ class RoomClient extends ChangeEmitter {
 }
 
 class SyncClient extends ChangeEmitter {
-  SyncClient({required this.client}) {
-    client.protocol.addHandler("room.sync", _handleSync);
+  SyncClient({required this.room}) {
+    room.protocol.addHandler("room.sync", _handleSync);
   }
 
   void start() {
-    client.protocol.start();
+    room.protocol.start();
 
     () async {
       await for (final message in _changesToSync.stream) {
         print("sending changes to backend ${message.base64}");
-        client.sendRequest("room.sync", {"path": message.path},
+        room.sendRequest("room.sync", {"path": message.path},
             data: utf8.encode(message.base64));
       }
     }();
@@ -459,13 +483,13 @@ class SyncClient extends ChangeEmitter {
 
   Future<void> createMeshDocumentWithMeshSchema(String path, MeshSchema schema,
       [Map<String, dynamic>? json]) async {
-    await client.sendRequest(
+    await room.sendRequest(
         "room.create", {"path": path, "schema": schema.toJson(), "json": json});
   }
 
   Future<void> createMeshDocumentWithFormat(String path, String format,
       [Map<String, dynamic>? json]) async {
-    await client.sendRequest(
+    await room.sendRequest(
         "room.create", {"path": path, "format": format, "json": json});
   }
 
@@ -481,7 +505,7 @@ class SyncClient extends ChangeEmitter {
     final c = Completer();
     _connectingDocuments[path] = c.future;
     try {
-      final result = (await client.sendRequest(
+      final result = (await room.sendRequest(
           "room.connect", {"path": path, "create": create})) as JsonResponse;
 
       MeshSchema schema = MeshSchema.fromJson(result.json["schema"]);
@@ -504,7 +528,7 @@ class SyncClient extends ChangeEmitter {
   }
 
   Future<void> close(String path) async {
-    await client.sendRequest("room.disconnect", {"path": path});
+    await room.sendRequest("room.disconnect", {"path": path});
 
     if (!_connectedDocuments.containsKey(path)) {
       throw RoomServerException("Not connected to " + path);
@@ -515,10 +539,10 @@ class SyncClient extends ChangeEmitter {
   }
 
   Future<void> sync(String path, Uint8List data) async {
-    await client.sendRequest("room.sync", {"path": path}, data: data);
+    await room.sendRequest("room.sync", {"path": path}, data: data);
   }
 
-  RoomClient client;
+  RoomClient room;
 }
 
 class MeshDocument extends RuntimeDocument {
@@ -643,13 +667,13 @@ class LivekitConnectionInfo {
 }
 
 class LivekitClient {
-  LivekitClient({required this.client}) {}
+  LivekitClient({required this.room}) {}
 
-  RoomClient client;
+  RoomClient room;
 
   Future<LivekitConnectionInfo> getConnectionInfo() async {
     final response =
-        (await client.sendRequest("livekit.connect", {}) as JsonResponse).json;
+        (await room.sendRequest("livekit.connect", {}) as JsonResponse).json;
 
     return LivekitConnectionInfo(
         token: response["token"], url: response["url"]);
@@ -657,15 +681,15 @@ class LivekitClient {
 }
 
 class AgentsClient extends ChangeEmitter {
-  AgentsClient({required this.client}) {}
+  AgentsClient({required this.room}) {}
 
-  RoomClient client;
+  RoomClient room;
 
   Future<void> call(
       {required String name,
       required String url,
       required Map<String, dynamic> arguments}) async {
-    await client.sendRequest("agent.call", {
+    await room.sendRequest("agent.call", {
       "name": name,
       "url": url,
       "arguments": arguments,
@@ -679,7 +703,7 @@ class AgentsClient extends ChangeEmitter {
     try {
       final usedToolkits = {for (final t in toolkits) ...t.toJson()};
 
-      final result = (await client.sendRequest("agent.ask", {
+      final result = (await room.sendRequest("agent.ask", {
         "arguments": arguments,
         "agent": agentName,
         "toolkits": usedToolkits
@@ -693,7 +717,7 @@ class AgentsClient extends ChangeEmitter {
 
   Future<List<ToolkitDescription>> listToolkits() async {
     final result =
-        (await client.sendRequest("agent.list_toolkits", {})) as JsonResponse;
+        (await room.sendRequest("agent.list_toolkits", {})) as JsonResponse;
 
     final toolkits = <ToolkitDescription>[];
     final tools = result.json["tools"];
@@ -709,7 +733,7 @@ class AgentsClient extends ChangeEmitter {
 
   Future<List<AgentDescription>> listAgents() async {
     final result =
-        (await client.sendRequest("agent.list_agents", {}) as JsonResponse);
+        (await room.sendRequest("agent.list_agents", {}) as JsonResponse);
 
     final agents = <AgentDescription>[];
 
@@ -724,33 +748,33 @@ class AgentsClient extends ChangeEmitter {
       {required String toolkit,
       required String tool,
       required Map<String, dynamic> arguments}) async {
-    return await client.sendRequest("agent.invoke_tool",
+    return await room.sendRequest("agent.invoke_tool",
         {"toolkit": toolkit, "tool": tool, "arguments": arguments});
   }
 }
 
 class StorageClient extends ChangeEmitter {
-  StorageClient({required this.client}) {
-    client.protocol.addHandler("storage.file_deleted", _handleFileDeleted);
-    client.protocol.addHandler("storage.file_updated", _handleFileUpdated);
+  StorageClient({required this.room}) {
+    room.protocol.addHandler("storage.file_deleted", _handleFileDeleted);
+    room.protocol.addHandler("storage.file_updated", _handleFileUpdated);
   }
 
-  RoomClient client;
+  RoomClient room;
 
   Future<void> _handleFileUpdated(
       Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
-    client._eventsController.add(FileUpdatedEvent(path: data["path"]));
+    room._eventsController.add(FileUpdatedEvent(path: data["path"]));
   }
 
   Future<void> _handleFileDeleted(
       Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
-    client._eventsController.add(FileDeletedEvent(path: data["path"]));
+    room._eventsController.add(FileDeletedEvent(path: data["path"]));
   }
 
   Future<List<StorageEntry>> list(String path) async {
-    final response = (await client.sendRequest("storage.list", {"path": path}))
+    final response = (await room.sendRequest("storage.list", {"path": path}))
         as JsonResponse;
     return (response.json["files"] as List).map((f) {
       return StorageEntry(name: f["name"], isFolder: f["is_folder"]);
@@ -759,12 +783,12 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<void> delete(String path) async {
-    (await client.sendRequest("storage.delete", {"path": path})
+    (await room.sendRequest("storage.delete", {"path": path})
         as JsonResponse);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response = (await client
+    final response = (await room
             .sendRequest("storage.open", {"path": path, "overwrite": overwrite})
         as JsonResponse);
 
@@ -772,22 +796,22 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<bool> exists(String path) async {
-    final result = await client.sendRequest("storage.exists", {"path": path});
+    final result = await room.sendRequest("storage.exists", {"path": path});
 
     return (result as JsonResponse).json["exists"];
   }
 
   Future<void> write(FileHandle handle, Uint8List bytes) async {
-    await client.sendRequest("storage.write", {"handle": handle.id},
+    await room.sendRequest("storage.write", {"handle": handle.id},
         data: bytes);
   }
 
   Future<void> close(FileHandle handle) async {
-    await client.sendRequest("storage.close", {"handle": handle.id});
+    await room.sendRequest("storage.close", {"handle": handle.id});
   }
 
   Future<FileResponse> download(String path) async {
-    final response = (await client
+    final response = (await room
         .sendRequest("storage.download", {"path": path}) as FileResponse);
 
     return response;
@@ -795,7 +819,7 @@ class StorageClient extends ChangeEmitter {
 
   Future<String> downloadUrl(String path) async {
     final response =
-        (await client.sendRequest("storage.download_url", {"path": path})
+        (await room.sendRequest("storage.download_url", {"path": path})
                 as JsonResponse)
             .json;
 
@@ -804,31 +828,31 @@ class StorageClient extends ChangeEmitter {
 }
 
 class DeveloperClient extends ChangeEmitter {
-  DeveloperClient({required this.client}) {
-    client.protocol.addHandler("developer.log", _handleDeveloperLog);
+  DeveloperClient({required this.room}) {
+    room.protocol.addHandler("developer.log", _handleDeveloperLog);
   }
 
-  RoomClient client;
+  RoomClient room;
   Future<void> _handleDeveloperLog(
       Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final rawJson = jsonDecode(utf8.decode(bytes));
     final type = rawJson["type"];
     final data = rawJson["data"];
 
-    client._eventsController.add(RoomLogEvent(type: type, data: data));
+    room._eventsController.add(RoomLogEvent(type: type, data: data));
   }
 
   Future<void> log(String type, Map<String, dynamic> data) async {
-    client.protocol
+    room.protocol
         .send("developer.log", packMessage({"type": type, "data": data}, null));
   }
 
   Future<void> enable() async {
-    client.protocol.send("developer.watch", packMessage({}, null));
+    room.protocol.send("developer.watch", packMessage({}, null));
   }
 
   Future<void> disable() async {
-    client.protocol.send("developer.unwatch", packMessage({}, null));
+    room.protocol.send("developer.unwatch", packMessage({}, null));
   }
 }
 
@@ -891,39 +915,39 @@ class Queue {
 }
 
 class QueuesClient {
-  QueuesClient({required this.client});
+  QueuesClient({required this.room});
 
-  RoomClient client;
+  RoomClient room;
 
   Future<List<Queue>> list() async {
     final response =
-        (await client.sendRequest("queues.list", {})) as JsonResponse;
+        (await room.sendRequest("queues.list", {})) as JsonResponse;
     return (response.json["queues"] as List).map((i) {
       return Queue(name: i["name"], size: i["size"]);
     }).toList();
   }
 
   Future<void> open(String name) async {
-    (await client.sendRequest("queues.open", {"name": name}));
+    (await room.sendRequest("queues.open", {"name": name}));
   }
 
   Future<void> drain(String name) async {
-    (await client.sendRequest("queues.drain", {"name": name}));
+    (await room.sendRequest("queues.drain", {"name": name}));
   }
 
   Future<void> close(String name) async {
-    (await client.sendRequest("queues.close", {"name": name}));
+    (await room.sendRequest("queues.close", {"name": name}));
   }
 
   Future<void> send(String name, Map<String, dynamic> message,
       {bool create = true}) async {
-    (await client.sendRequest(
+    (await room.sendRequest(
         "queues.send", {"name": name, "create": create, "message": message}));
   }
 
   Future<Map<String, dynamic>?> receive(String name,
       {bool create = true, bool wait = true}) async {
-    final response = (await client.sendRequest(
+    final response = (await room.sendRequest(
         "queues.receive", {"name": name, "create": create, "wait": wait}));
     if (response is EmptyResponse) {
       return null;
@@ -934,8 +958,8 @@ class QueuesClient {
 }
 
 class MessagingClient extends ChangeEmitter {
-  MessagingClient({required this.client}) {
-    client.protocol.addHandler("messaging.send", _handleMessageSend);
+  MessagingClient({required this.room}) {
+    room.protocol.addHandler("messaging.send", _handleMessageSend);
   }
 
   Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
@@ -961,7 +985,7 @@ class MessagingClient extends ChangeEmitter {
       required String type,
       required Map<String, dynamic> message,
       Uint8List? attachment}) async {
-    await client.sendRequest(
+    await room.sendRequest(
         "messaging.send",
         {
           "to_participant_id": to.id,
@@ -975,19 +999,19 @@ class MessagingClient extends ChangeEmitter {
 
   Future<void> enable(
       {void Function(MessageStreamReader reader)? onStreamAccept}) async {
-    await client.sendRequest("messaging.enable", {});
+    await room.sendRequest("messaging.enable", {});
     _onStreamAcceptCallback = onStreamAccept;
   }
 
   Future<void> disable() async {
-    await client.sendRequest("messaging.disable", {});
+    await room.sendRequest("messaging.disable", {});
   }
 
   Future<void> broadcastMessage(
       {required String type,
       required Map<String, dynamic> message,
       Uint8List? attachment}) async {
-    await client.sendRequest(
+    await room.sendRequest(
         "messaging.broadcast",
         {
           "type": type,
@@ -996,7 +1020,7 @@ class MessagingClient extends ChangeEmitter {
         data: attachment);
   }
 
-  final RoomClient client;
+  final RoomClient room;
 
   final _participants = Map<String, RemoteParticipant>();
   Iterable<RemoteParticipant> get remoteParticipants {
@@ -1036,13 +1060,13 @@ class MessagingClient extends ChangeEmitter {
       _onStreamClose(message);
     }
 
-    client._eventsController.add(RoomMessageEvent(message: message));
+    room._eventsController.add(RoomMessageEvent(message: message));
   }
 
   void _onParticipantEnabled(RoomMessage message) {
     final data = message.message;
     final participant =
-        RemoteParticipant(client: client, id: data["id"], role: data["role"]);
+        RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
     for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
       participant._attributes[k] = data["attributes"][k];
@@ -1068,7 +1092,7 @@ class MessagingClient extends ChangeEmitter {
   void _onMessagingEnabled(RoomMessage message) {
     for (var data in message.message["participants"]) {
       final participant =
-          RemoteParticipant(client: client, id: data["id"], role: data["role"]);
+          RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
       for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
         participant._attributes[k] = data["attributes"][k];
@@ -1351,3 +1375,5 @@ Response unpackResponse(Uint8List data) {
   // Delegate to the correct `unpack` function
   return _responseTypes[typeKey]!(header, payload);
 }
+
+
