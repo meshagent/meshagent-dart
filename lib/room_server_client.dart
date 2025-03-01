@@ -372,11 +372,10 @@ class RoomClient extends ChangeEmitter {
     _roomName = init["room_name"];
     _roomUrl = init["room_url"];
     _sessionId = init["session_id"];
-  
     _ready.complete(init["room_name"]);
-
-
   }
+
+
 
   String? _roomName;
   String? get roomName {
