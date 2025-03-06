@@ -602,6 +602,7 @@ class ToolkitDescription {
                 description: tool["description"],
                 inputSchema: tool["input_schema"],
                 thumbnailUrl: tool["thumbnail_url"],
+                pricing: tool["pricing"],
                 defs: tool["defs"]);
           }),
         if (json["tools"] is Map)
@@ -610,6 +611,7 @@ class ToolkitDescription {
             return ToolDescription(
                 title: tool["title"],
                 name: toolName,
+                pricing: tool["pricing"],
                 description: tool["description"],
                 inputSchema: tool["input_schema"],
                 thumbnailUrl: tool["thumbnail_url"],
@@ -627,8 +629,10 @@ class ToolDescription {
       required this.description,
       required this.inputSchema,
       required this.defs,
+      required this.pricing,
       this.thumbnailUrl});
 
+  final String? pricing;
   final String title;
   final String name;
   final String description;
