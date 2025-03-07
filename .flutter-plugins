@@ -1,12 +1,12 @@
 # This is a generated file; do not edit or check into version control.
-connectivity_plus=/home/josef/.pub-cache/hosted/pub.dev/connectivity_plus-6.1.3/
-device_info_plus=/home/josef/.pub-cache/hosted/pub.dev/device_info_plus-11.3.0/
-flutter_js=/home/josef/.pub-cache/hosted/pub.dev/flutter_js-0.8.1/
-flutter_webrtc=/home/josef/.pub-cache/hosted/pub.dev/flutter_webrtc-0.12.8/
-integration_test=/home/josef/local/flutter/packages/integration_test/
-livekit_client=/home/josef/.pub-cache/hosted/pub.dev/livekit_client-2.3.6/
-path_provider=/home/josef/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
-path_provider_android=/home/josef/.pub-cache/hosted/pub.dev/path_provider_android-2.2.15/
-path_provider_foundation=/home/josef/.pub-cache/hosted/pub.dev/path_provider_foundation-2.4.1/
-path_provider_linux=/home/josef/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
-path_provider_windows=/home/josef/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
+connectivity_plus=/Users/jesseezell/.pub-cache/hosted/pub.dev/connectivity_plus-6.1.3/
+device_info_plus=/Users/jesseezell/.pub-cache/hosted/pub.dev/device_info_plus-11.3.0/
+flutter_js=/Users/jesseezell/.pub-cache/hosted/pub.dev/flutter_js-0.8.1/
+flutter_webrtc=/Users/jesseezell/.pub-cache/hosted/pub.dev/flutter_webrtc-0.12.11/
+integration_test=/usr/local/lib/flutter/packages/integration_test/
+livekit_client=/Users/jesseezell/.pub-cache/hosted/pub.dev/livekit_client-2.4.0/
+path_provider=/Users/jesseezell/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
+path_provider_android=/Users/jesseezell/.pub-cache/hosted/pub.dev/path_provider_android-2.2.15/
+path_provider_foundation=/Users/jesseezell/.pub-cache/hosted/pub.dev/path_provider_foundation-2.4.1/
+path_provider_linux=/Users/jesseezell/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
+path_provider_windows=/Users/jesseezell/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
