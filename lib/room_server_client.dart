@@ -42,8 +42,7 @@ abstract class Participant {
 }
 
 class RemoteParticipant extends Participant {
-  RemoteParticipant(
-      {required super.client, required super.id, required this.role});
+  RemoteParticipant({required super.client, required super.id, required this.role});
 
   final String role;
 }
@@ -53,9 +52,7 @@ class LocalParticipant extends Participant {
 
   void setAttribute(String name, dynamic value) async {
     _attributes[name] = value;
-    client.protocol
-        .send("set_attributes", utf8.encode(jsonEncode({name: value})))
-        .catchError((err) {
+    client.protocol.send("set_attributes", utf8.encode(jsonEncode({name: value}))).catchError((err) {
       Logger.root.log(Level.WARNING, "Unable to send attribute changes", err);
     });
   }
@@ -63,16 +60,14 @@ class LocalParticipant extends Participant {
 
 Uint8List splitMessagePayload(Uint8List packet) {
   final data = packet.buffer.asByteData();
-  final headerSize =
-      data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
+  final headerSize = data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
   final payload = Uint8List.sublistView(data, 8 + headerSize, packet.length);
   return payload;
 }
 
 String splitMessageHeader(Uint8List packet) {
   final data = packet.buffer.asByteData();
-  final headerSize =
-      data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
+  final headerSize = data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
 
   final subList = Uint8List.sublistView(data, 8, 8 + headerSize);
   return utf8.decode(subList);
@@ -84,9 +79,11 @@ Uint8List packMessage(Map<String, dynamic> header, [Uint8List? data]) {
   final size = jsonMessage.length;
 
   final packet = BytesBuilder();
-  packet.add(Uint8List(8)
-    ..buffer.asByteData().setUint32(0, size >> 32, Endian.big)
-    ..buffer.asByteData().setUint32(4, size & 0xffffffff, Endian.big));
+  packet.add(
+    Uint8List(8)
+      ..buffer.asByteData().setUint32(0, size >> 32, Endian.big)
+      ..buffer.asByteData().setUint32(4, size & 0xffffffff, Endian.big),
+  );
   packet.add(jsonMessage);
   if (data != null) {
     packet.add(data);
@@ -112,38 +109,35 @@ class _QueuedSync {
 }
 
 abstract class Requirement {
-  
   Requirement({required this.name});
 
   final String name;
 
-  Map<String,dynamic> toJson();
+  Map<String, dynamic> toJson();
 
   static Requirement fromJson(Map<String, dynamic> json) {
-    if(json["toolkit"] != null) {
+    if (json["toolkit"] != null) {
       return RequiredToolkit.fromJson(json);
-    } else if(json["schema"] != null) {
+    } else if (json["schema"] != null) {
       return RequiredSchema.fromJson(json);
     }
     throw Exception("Unexpected requirement");
   }
 }
 
-
-class RequiredSchema extends Requirement{
+class RequiredSchema extends Requirement {
   // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredSchema({required super.name});
 
   @override
-  Map<String,dynamic> toJson() {
-     return {"toolkit": name };
+  Map<String, dynamic> toJson() {
+    return {"toolkit": name};
   }
 
-  static RequiredSchema fromJson(Map<String,dynamic> json) {
+  static RequiredSchema fromJson(Map<String, dynamic> json) {
     return RequiredSchema(name: "toolkit");
   }
 }
-
 
 class RequiredToolkit extends Requirement {
   // Required toolkits, set tools to null to require all the tools in the toolkit
@@ -151,17 +145,13 @@ class RequiredToolkit extends Requirement {
 
   final List<String>? tools;
 
-
   @override
-  Map<String,dynamic> toJson() {
-     return {"toolkit": name, "tools": tools};
+  Map<String, dynamic> toJson() {
+    return {"toolkit": name, "tools": tools};
   }
 
   static RequiredToolkit fromJson(Map<String, dynamic> from) {
-    return RequiredToolkit(
-        name: from["toolkit"],
-        tools: (from["tools"] as List?)?.whereType<String>().toList()
-      );
+    return RequiredToolkit(name: from["toolkit"], tools: (from["tools"] as List?)?.whereType<String>().toList());
   }
 }
 
@@ -187,11 +177,10 @@ class AgentDescription {
   final bool supportsTools;
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
-    final requires = a["requires"] == null
-        ? <Requirement>[]
-        : [
-            ...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))
-          ];
+    final requires =
+        a["requires"] == null
+            ? <Requirement>[]
+            : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
 
     return AgentDescription(
       description: a["description"] ?? "",
@@ -201,7 +190,7 @@ class AgentDescription {
       outputSchema: a["output_schema"],
       requires: requires,
       supportsTools: a["supports_tools"] == true,
-      labels: a["labels"]?.whereType<String>().toList() ?? []
+      labels: a["labels"]?.whereType<String>().toList() ?? [],
     );
   }
 }
@@ -214,12 +203,7 @@ abstract class RoomEvent {
 }
 
 class RoomMessage {
-  RoomMessage(
-      {required this.fromParticipantId,
-      required this.type,
-      required this.message,
-      this.local = false,
-      this.attachment});
+  RoomMessage({required this.fromParticipantId, required this.type, required this.message, this.local = false, this.attachment});
 
   final bool local;
   final String fromParticipantId;
@@ -326,10 +310,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   // send a request, optionally with a binary trailer
-  Future<Response> sendRequest(
-      String type,
-      Map<String, dynamic> request,
-      {Uint8List? data}) async {
+  Future<Response> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
     final requestId = protocol.getNextMessageId();
 
     final pr = _PendingRequest();
@@ -345,8 +326,7 @@ class RoomClient extends ChangeEmitter {
     return response;
   }
 
-  Future<void> _handleResponse(
-      Protocol protocol, int messageId, String type, Uint8List data) async {
+  Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
     final response = unpackResponse(data);
     print("GOT RESPONSE: ${response}");
     final requestId = messageId;
@@ -366,7 +346,6 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    
     final init = json.decode(utf8.decode(bytes));
 
     _roomName = init["room_name"];
@@ -374,8 +353,6 @@ class RoomClient extends ChangeEmitter {
     _sessionId = init["session_id"];
     _ready.complete(init["room_name"]);
   }
-
-
 
   String? _roomName;
   String? get roomName {
@@ -436,8 +413,7 @@ class SyncClient extends ChangeEmitter {
     () async {
       await for (final message in _changesToSync.stream) {
         print("sending changes to backend ${message.base64}");
-        room.sendRequest("room.sync", {"path": message.path},
-            data: utf8.encode(message.base64));
+        room.sendRequest("room.sync", {"path": message.path}, data: utf8.encode(message.base64));
       }
     }();
   }
@@ -468,33 +444,26 @@ class SyncClient extends ChangeEmitter {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
       print("GOT SYNC $base64");
-      DocumentRuntime.instance
-          .applyBackendChanges(documentId: doc.id, base64: base64);
+      DocumentRuntime.instance.applyBackendChanges(documentId: doc.id, base64: base64);
 
       if (!doc._synchronized.isCompleted) {
         doc._synchronized.complete(true);
       }
     } else {
-      throw RoomServerException(
-          "received change for a document that is not connected:" + path);
+      throw RoomServerException("received change for a document that is not connected:" + path);
     }
   }
 
-  Future<void> createMeshDocumentWithMeshSchema(String path, MeshSchema schema,
-      [Map<String, dynamic>? json]) async {
-    await room.sendRequest(
-        "room.create", {"path": path, "schema": schema.toJson(), "json": json});
+  Future<void> createMeshDocumentWithMeshSchema(String path, MeshSchema schema, [Map<String, dynamic>? json]) async {
+    await room.sendRequest("room.create", {"path": path, "schema": schema.toJson(), "json": json});
   }
 
-  Future<void> createMeshDocumentWithFormat(String path, String format,
-      [Map<String, dynamic>? json]) async {
-    await room.sendRequest(
-        "room.create", {"path": path, "format": format, "json": json});
+  Future<void> createMeshDocumentWithFormat(String path, String format, [Map<String, dynamic>? json]) async {
+    await room.sendRequest("room.create", {"path": path, "format": format, "json": json});
   }
 
   Future<MeshDocument> open(String path, {bool create = true}) async {
-    if (_connectingDocuments.containsKey(path) ||
-        _connectedDocuments.containsKey(path)) {
+    if (_connectingDocuments.containsKey(path) || _connectedDocuments.containsKey(path)) {
       throw RoomServerException("Already connected to" + path);
     }
 
@@ -504,15 +473,15 @@ class SyncClient extends ChangeEmitter {
     final c = Completer();
     _connectingDocuments[path] = c.future;
     try {
-      final result = (await room.sendRequest(
-          "room.connect", {"path": path, "create": create})) as JsonResponse;
+      final result = (await room.sendRequest("room.connect", {"path": path, "create": create})) as JsonResponse;
 
       MeshSchema schema = MeshSchema.fromJson(result.json["schema"]);
       print(jsonEncode(schema.toJson()));
 
       final doc = MeshDocument(
-          schema: schema,
-          sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)));
+        schema: schema,
+        sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)),
+      );
       _connectedDocuments[path] = doc;
       notifyListeners();
 
@@ -546,9 +515,7 @@ class SyncClient extends ChangeEmitter {
 
 class MeshDocument extends RuntimeDocument {
   MeshDocument({super.sendChangesToBackend, required super.schema})
-      : super(
-            id: const Uuid().v4(),
-            sendChanges: DocumentRuntime.instance.sendChanges) {
+    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance.sendChanges) {
     DocumentRuntime.instance.registerDocument(this);
   }
 
@@ -563,22 +530,14 @@ class MeshDocument extends RuntimeDocument {
 }
 
 class ToolkitDescription {
-  ToolkitDescription(
-      {required this.title,
-      required this.name,
-      required this.description,
-      required this.tools,
-      this.thumbnailUrl});
+  ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.thumbnailUrl});
 
   final String title;
   final String name;
   final String description;
   final String? thumbnailUrl;
 
-  late final Map<String, ToolDescription> _byName =
-      Map<String, ToolDescription>.fromEntries(tools.map(
-    (e) => MapEntry(e.name, e),
-  ));
+  late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
 
   final List<ToolDescription> tools;
 
@@ -586,8 +545,7 @@ class ToolkitDescription {
     return _byName[name];
   }
 
-  static ToolkitDescription fromJson(Map<String, dynamic> json,
-      {String? name}) {
+  static ToolkitDescription fromJson(Map<String, dynamic> json, {String? name}) {
     return ToolkitDescription(
       title: json["title"],
       name: name ?? json["name"],
@@ -597,40 +555,43 @@ class ToolkitDescription {
         if (json["tools"] is List)
           ...(json["tools"] as List).map((tool) {
             return ToolDescription(
-                title: tool["title"],
-                name: tool["name"],
-                description: tool["description"],
-                inputSchema: tool["input_schema"],
-                thumbnailUrl: tool["thumbnail_url"],
-                pricing: tool["pricing"],
-                defs: tool["defs"]);
+              title: tool["title"],
+              name: tool["name"],
+              description: tool["description"],
+              inputSchema: tool["input_schema"],
+              thumbnailUrl: tool["thumbnail_url"],
+              pricing: tool["pricing"],
+              defs: tool["defs"],
+            );
           }),
         if (json["tools"] is Map)
           ...(json["tools"] as Map).keys.map((toolName) {
             final tool = json["tools"][toolName];
             return ToolDescription(
-                title: tool["title"],
-                name: toolName,
-                pricing: tool["pricing"],
-                description: tool["description"],
-                inputSchema: tool["input_schema"],
-                thumbnailUrl: tool["thumbnail_url"],
-                defs: tool["defs"]);
-          })
+              title: tool["title"],
+              name: toolName,
+              pricing: tool["pricing"],
+              description: tool["description"],
+              inputSchema: tool["input_schema"],
+              thumbnailUrl: tool["thumbnail_url"],
+              defs: tool["defs"],
+            );
+          }),
       ],
     );
   }
 }
 
 class ToolDescription {
-  ToolDescription(
-      {required this.title,
-      required this.name,
-      required this.description,
-      required this.inputSchema,
-      required this.defs,
-      required this.pricing,
-      this.thumbnailUrl});
+  ToolDescription({
+    required this.title,
+    required this.name,
+    required this.description,
+    required this.inputSchema,
+    required this.defs,
+    required this.pricing,
+    this.thumbnailUrl,
+  });
 
   final String? pricing;
   final String title;
@@ -655,8 +616,8 @@ class ToolkitConfiguration {
     } else {
       return {
         name: {
-          "use": {for (final tool in use!) tool: {}}
-        }
+          "use": {for (final tool in use!) tool: {}},
+        },
       };
     }
   }
@@ -675,11 +636,9 @@ class LivekitClient {
   RoomClient room;
 
   Future<LivekitConnectionInfo> getConnectionInfo() async {
-    final response =
-        (await room.sendRequest("livekit.connect", {}) as JsonResponse).json;
+    final response = (await room.sendRequest("livekit.connect", {}) as JsonResponse).json;
 
-    return LivekitConnectionInfo(
-        token: response["token"], url: response["url"]);
+    return LivekitConnectionInfo(token: response["token"], url: response["url"]);
   }
 }
 
@@ -688,29 +647,20 @@ class AgentsClient extends ChangeEmitter {
 
   RoomClient room;
 
-  Future<void> call(
-      {required String name,
-      required String url,
-      required Map<String, dynamic> arguments}) async {
-    await room.sendRequest("agent.call", {
-      "name": name,
-      "url": url,
-      "arguments": arguments,
-    });
+  Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
+    await room.sendRequest("agent.call", {"name": name, "url": url, "arguments": arguments});
   }
 
-  Future<Map<String, dynamic>> ask(
-      {required String agentName,
-      List<ToolkitConfiguration> toolkits = const [],
-      required Map<String, dynamic> arguments}) async {
+  Future<Map<String, dynamic>> ask({
+    required String agentName,
+    List<ToolkitConfiguration> toolkits = const [],
+    required Map<String, dynamic> arguments,
+  }) async {
     try {
       final usedToolkits = {for (final t in toolkits) ...t.toJson()};
 
-      final result = (await room.sendRequest("agent.ask", {
-        "arguments": arguments,
-        "agent": agentName,
-        "toolkits": usedToolkits
-      })) as JsonResponse;
+      final result =
+          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "toolkits": usedToolkits})) as JsonResponse;
 
       return result.json["answer"];
     } catch (err) {
@@ -719,8 +669,7 @@ class AgentsClient extends ChangeEmitter {
   }
 
   Future<List<ToolkitDescription>> listToolkits() async {
-    final result =
-        (await room.sendRequest("agent.list_toolkits", {})) as JsonResponse;
+    final result = (await room.sendRequest("agent.list_toolkits", {})) as JsonResponse;
 
     final toolkits = <ToolkitDescription>[];
     final tools = result.json["tools"];
@@ -735,8 +684,7 @@ class AgentsClient extends ChangeEmitter {
   }
 
   Future<List<AgentDescription>> listAgents() async {
-    final result =
-        (await room.sendRequest("agent.list_agents", {}) as JsonResponse);
+    final result = (await room.sendRequest("agent.list_agents", {}) as JsonResponse);
 
     final agents = <AgentDescription>[];
 
@@ -747,12 +695,8 @@ class AgentsClient extends ChangeEmitter {
     return agents;
   }
 
-  Future<Response> invokeTool(
-      {required String toolkit,
-      required String tool,
-      required Map<String, dynamic> arguments}) async {
-    return await room.sendRequest("agent.invoke_tool",
-        {"toolkit": toolkit, "tool": tool, "arguments": arguments});
+  Future<Response> invokeTool({required String toolkit, required String tool, required Map<String, dynamic> arguments}) async {
+    return await room.sendRequest("agent.invoke_tool", {"toolkit": toolkit, "tool": tool, "arguments": arguments});
   }
 }
 
@@ -764,36 +708,30 @@ class StorageClient extends ChangeEmitter {
 
   RoomClient room;
 
-  Future<void> _handleFileUpdated(
-      Protocol protocol, int messageId, String type, Uint8List bytes) async {
+  Future<void> _handleFileUpdated(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
     room._eventsController.add(FileUpdatedEvent(path: data["path"]));
   }
 
-  Future<void> _handleFileDeleted(
-      Protocol protocol, int messageId, String type, Uint8List bytes) async {
+  Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
     room._eventsController.add(FileDeletedEvent(path: data["path"]));
   }
 
   Future<List<StorageEntry>> list(String path) async {
-    final response = (await room.sendRequest("storage.list", {"path": path}))
-        as JsonResponse;
+    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
     return (response.json["files"] as List).map((f) {
-      return StorageEntry(name: f["name"], isFolder: f["is_folder"]);
-    }).toList()
+        return StorageEntry(name: f["name"], isFolder: f["is_folder"]);
+      }).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
   Future<void> delete(String path) async {
-    (await room.sendRequest("storage.delete", {"path": path})
-        as JsonResponse);
+    (await room.sendRequest("storage.delete", {"path": path}) as JsonResponse);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response = (await room
-            .sendRequest("storage.open", {"path": path, "overwrite": overwrite})
-        as JsonResponse);
+    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonResponse);
 
     return FileHandle(id: response.json["handle"]);
   }
@@ -805,8 +743,7 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<void> write(FileHandle handle, Uint8List bytes) async {
-    await room.sendRequest("storage.write", {"handle": handle.id},
-        data: bytes);
+    await room.sendRequest("storage.write", {"handle": handle.id}, data: bytes);
   }
 
   Future<void> close(FileHandle handle) async {
@@ -814,17 +751,13 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<FileResponse> download(String path) async {
-    final response = (await room
-        .sendRequest("storage.download", {"path": path}) as FileResponse);
+    final response = (await room.sendRequest("storage.download", {"path": path}) as FileResponse);
 
     return response;
   }
 
   Future<String> downloadUrl(String path) async {
-    final response =
-        (await room.sendRequest("storage.download_url", {"path": path})
-                as JsonResponse)
-            .json;
+    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonResponse).json;
 
     return response["url"];
   }
@@ -836,8 +769,7 @@ class DeveloperClient extends ChangeEmitter {
   }
 
   RoomClient room;
-  Future<void> _handleDeveloperLog(
-      Protocol protocol, int messageId, String type, Uint8List bytes) async {
+  Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final rawJson = jsonDecode(utf8.decode(bytes));
     final type = rawJson["type"];
     final data = rawJson["data"];
@@ -846,8 +778,7 @@ class DeveloperClient extends ChangeEmitter {
   }
 
   Future<void> log(String type, Map<String, dynamic> data) async {
-    room.protocol
-        .send("developer.log", packMessage({"type": type, "data": data}, null));
+    room.protocol.send("developer.log", packMessage({"type": type, "data": data}, null));
   }
 
   Future<void> enable() async {
@@ -860,13 +791,10 @@ class DeveloperClient extends ChangeEmitter {
 }
 
 class MessageStreamWriter {
-  const MessageStreamWriter._(
-      {required String streamId,
-      required Participant to,
-      required MessagingClient client})
-      : _streamId = streamId,
-        _to = to,
-        _client = client;
+  const MessageStreamWriter._({required String streamId, required Participant to, required MessagingClient client})
+    : _streamId = streamId,
+      _to = to,
+      _client = client;
 
   final String _streamId;
   final Participant _to;
@@ -874,28 +802,28 @@ class MessageStreamWriter {
 
   void write(MessageStreamChunk chunk) async {
     await _client.sendMessage(
-        to: _to,
-        type: "stream.chunk",
-        message: {"stream_id": _streamId, "header": chunk.header},
-        attachment: chunk.data);
+      to: _to,
+      type: "stream.chunk",
+      message: {"stream_id": _streamId, "header": chunk.header},
+      attachment: chunk.data,
+    );
   }
 
   void close() async {
-    await _client.sendMessage(
-        to: _to, type: "stream.close", message: {"stream_id": _streamId});
+    await _client.sendMessage(to: _to, type: "stream.close", message: {"stream_id": _streamId});
   }
 }
 
 class MessageStreamReader {
-  const MessageStreamReader._(
-      {required String streamId,
-      required Participant to,
-      required MessagingClient client,
-      required StreamController controller})
-      : _streamId = streamId,
-        _to = to,
-        _client = client,
-        _controller = controller;
+  const MessageStreamReader._({
+    required String streamId,
+    required Participant to,
+    required MessagingClient client,
+    required StreamController controller,
+  }) : _streamId = streamId,
+       _to = to,
+       _client = client,
+       _controller = controller;
 
   final String _streamId;
   final Participant _to;
@@ -923,8 +851,7 @@ class QueuesClient {
   RoomClient room;
 
   Future<List<Queue>> list() async {
-    final response =
-        (await room.sendRequest("queues.list", {})) as JsonResponse;
+    final response = (await room.sendRequest("queues.list", {})) as JsonResponse;
     return (response.json["queues"] as List).map((i) {
       return Queue(name: i["name"], size: i["size"]);
     }).toList();
@@ -942,16 +869,12 @@ class QueuesClient {
     (await room.sendRequest("queues.close", {"name": name}));
   }
 
-  Future<void> send(String name, Map<String, dynamic> message,
-      {bool create = true}) async {
-    (await room.sendRequest(
-        "queues.send", {"name": name, "create": create, "message": message}));
+  Future<void> send(String name, Map<String, dynamic> message, {bool create = true}) async {
+    (await room.sendRequest("queues.send", {"name": name, "create": create, "message": message}));
   }
 
-  Future<Map<String, dynamic>?> receive(String name,
-      {bool create = true, bool wait = true}) async {
-    final response = (await room.sendRequest(
-        "queues.receive", {"name": name, "create": create, "wait": wait}));
+  Future<Map<String, dynamic>?> receive(String name, {bool create = true, bool wait = true}) async {
+    final response = (await room.sendRequest("queues.receive", {"name": name, "create": create, "wait": wait}));
     if (response is EmptyResponse) {
       return null;
     } else {
@@ -968,40 +891,29 @@ class MessagingClient extends ChangeEmitter {
   Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
   Map<String, MessageStreamReader> _streamReaders = {};
 
-  Future<MessageStreamWriter> createStream(
-      {required Participant to, required Map<String, dynamic> header}) async {
+  Future<MessageStreamWriter> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
 
     final completer = Completer<MessageStreamWriter>();
     _streamWriters[streamId] = completer;
 
-    await sendMessage(
-        to: to,
-        type: "stream.open",
-        message: {"stream_id": streamId, "header": header});
+    await sendMessage(to: to, type: "stream.open", message: {"stream_id": streamId, "header": header});
 
     return await completer.future;
   }
 
-  Future<void> sendMessage(
-      {required Participant to,
-      required String type,
-      required Map<String, dynamic> message,
-      Uint8List? attachment}) async {
-    await room.sendRequest(
-        "messaging.send",
-        {
-          "to_participant_id": to.id,
-          "type": type,
-          "message": message,
-        },
-        data: attachment);
+  Future<void> sendMessage({
+    required Participant to,
+    required String type,
+    required Map<String, dynamic> message,
+    Uint8List? attachment,
+  }) async {
+    await room.sendRequest("messaging.send", {"to_participant_id": to.id, "type": type, "message": message}, data: attachment);
   }
 
   void Function(MessageStreamReader reader)? _onStreamAcceptCallback;
 
-  Future<void> enable(
-      {void Function(MessageStreamReader reader)? onStreamAccept}) async {
+  Future<void> enable({void Function(MessageStreamReader reader)? onStreamAccept}) async {
     await room.sendRequest("messaging.enable", {});
     _onStreamAcceptCallback = onStreamAccept;
   }
@@ -1010,17 +922,8 @@ class MessagingClient extends ChangeEmitter {
     await room.sendRequest("messaging.disable", {});
   }
 
-  Future<void> broadcastMessage(
-      {required String type,
-      required Map<String, dynamic> message,
-      Uint8List? attachment}) async {
-    await room.sendRequest(
-        "messaging.broadcast",
-        {
-          "type": type,
-          "message": message,
-        },
-        data: attachment);
+  Future<void> broadcastMessage({required String type, required Map<String, dynamic> message, Uint8List? attachment}) async {
+    await room.sendRequest("messaging.broadcast", {"type": type, "message": message}, data: attachment);
   }
 
   final RoomClient room;
@@ -1030,18 +933,18 @@ class MessagingClient extends ChangeEmitter {
     return _participants.values;
   }
 
-  Future<void> _handleMessageSend(
-      Protocol protocol, int messageId, String type, Uint8List bytes) async {
+  Future<void> _handleMessageSend(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final headerStr = splitMessageHeader(bytes);
     final payload = splitMessagePayload(bytes);
 
     final header = jsonDecode(headerStr);
 
     final message = RoomMessage(
-        fromParticipantId: header["from_participant_id"],
-        type: header["type"],
-        message: header["message"],
-        attachment: payload);
+      fromParticipantId: header["from_participant_id"],
+      type: header["type"],
+      message: header["message"],
+      attachment: payload,
+    );
 
     if (message.type == "messaging.enabled") {
       _onMessagingEnabled(message);
@@ -1068,8 +971,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onParticipantEnabled(RoomMessage message) {
     final data = message.message;
-    final participant =
-        RemoteParticipant(client: room, id: data["id"], role: data["role"]);
+    final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
     for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
       participant._attributes[k] = data["attributes"][k];
@@ -1094,8 +996,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onMessagingEnabled(RoomMessage message) {
     for (var data in message.message["participants"]) {
-      final participant =
-          RemoteParticipant(client: room, id: data["id"], role: data["role"]);
+      final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
       for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
         participant._attributes[k] = data["attributes"][k];
@@ -1106,25 +1007,18 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onStreamOpen(RoomMessage message) {
-    final from = remoteParticipants
-        .where((x) => x.id == message.fromParticipantId)
-        .first;
+    final from = remoteParticipants.where((x) => x.id == message.fromParticipantId).first;
     final streamId = message.message["stream_id"];
     final controller = StreamController<MessageStreamChunk>();
-    final reader = MessageStreamReader._(
-        streamId: streamId, to: from, client: this, controller: controller);
+    final reader = MessageStreamReader._(streamId: streamId, to: from, client: this, controller: controller);
     try {
       if (_onStreamAcceptCallback == null) {
         throw Exception("streams are not allowed by this client");
       }
       _onStreamAcceptCallback!(reader);
-      sendMessage(
-          to: from, type: "stream.accept", message: {"stream_id": streamId});
+      sendMessage(to: from, type: "stream.accept", message: {"stream_id": streamId});
     } catch (e) {
-      sendMessage(
-          to: from,
-          type: "stream.reject",
-          message: {"stream_id": streamId, "error": e.toString()});
+      sendMessage(to: from, type: "stream.reject", message: {"stream_id": streamId, "error": e.toString()});
     }
 
     _streamReaders[streamId] = reader;
@@ -1134,24 +1028,19 @@ class MessagingClient extends ChangeEmitter {
   void _onStreamAccept(RoomMessage message) {
     final streamId = message.message["stream_id"];
     // TODO: add hook for accept / reject from client
-    _streamWriters[streamId]!.complete(MessageStreamWriter._(
-        streamId: streamId,
-        to: remoteParticipants
-            .where((x) => x.id == message.fromParticipantId)
-            .first,
-        client: this));
+    _streamWriters[streamId]!.complete(
+      MessageStreamWriter._(streamId: streamId, to: remoteParticipants.where((x) => x.id == message.fromParticipantId).first, client: this),
+    );
   }
 
   void _onStreamReject(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamWriters[streamId]!.completeError(
-        new Exception("The stream was rejected by the remote client"));
+    _streamWriters[streamId]!.completeError(new Exception("The stream was rejected by the remote client"));
   }
 
   void _onStreamChunk(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamReaders[streamId]!._controller.add(
-        MessageStreamChunk(header: message.message, data: message.attachment));
+    _streamReaders[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
   }
 
   void _onStreamClose(RoomMessage message) {
@@ -1187,9 +1076,7 @@ abstract class Response {
 }
 
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
-final Map<String,
-        Response Function(Map<String, dynamic> header, Uint8List payload)>
-    _responseTypes = {
+final Map<String, Response Function(Map<String, dynamic> header, Uint8List payload)> _responseTypes = {
   'link': LinkResponse.unpack,
   'file': FileResponse.unpack,
   'text': TextResponse.unpack,
@@ -1205,25 +1092,15 @@ class LinkResponse extends Response {
   final String url;
   final String name;
 
-  LinkResponse({
-    required this.url,
-    required this.name,
-  });
+  LinkResponse({required this.url, required this.name});
 
   static LinkResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return LinkResponse(
-      url: header['url'] as String,
-      name: header['name'] as String,
-    );
+    return LinkResponse(url: header['url'] as String, name: header['name'] as String);
   }
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'link',
-      'name': name,
-      'url': url,
-    });
+    return packMessage({'type': 'link', 'name': name, 'url': url});
   }
 
   @override
@@ -1240,27 +1117,15 @@ class FileResponse extends Response {
   final String name;
   final String mimeType;
 
-  FileResponse({
-    required this.data,
-    required this.name,
-    required this.mimeType,
-  });
+  FileResponse({required this.data, required this.name, required this.mimeType});
 
   static FileResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return FileResponse(
-      data: payload,
-      name: header['name'] as String,
-      mimeType: header['mime_type'] as String,
-    );
+    return FileResponse(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
   }
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'file',
-      'name': name,
-      'mime_type': mimeType,
-    }, data);
+    return packMessage({'type': 'file', 'name': name, 'mime_type': mimeType}, data);
   }
 
   @override
@@ -1283,10 +1148,7 @@ class TextResponse extends Response {
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'text',
-      'text': text,
-    });
+    return packMessage({'type': 'text', 'text': text});
   }
 
   @override
@@ -1309,10 +1171,7 @@ class ErrorResponse extends Response {
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'error',
-      'text': text,
-    });
+    return packMessage({'type': 'error', 'text': text});
   }
 
   @override
@@ -1335,10 +1194,7 @@ class JsonResponse extends Response {
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'json',
-      'json': json,
-    });
+    return packMessage({'type': 'json', 'json': json});
   }
 }
 
@@ -1354,9 +1210,7 @@ class EmptyResponse extends Response {
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'empty',
-    });
+    return packMessage({'type': 'empty'});
   }
 
   @override
@@ -1378,5 +1232,3 @@ Response unpackResponse(Uint8List data) {
   // Delegate to the correct `unpack` function
   return _responseTypes[typeKey]!(header, payload);
 }
-
-

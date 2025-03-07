@@ -24,8 +24,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   }
 
   @override
-  void applyBackendChanges(
-      {required String documentId, required String base64}) {
+  void applyBackendChanges({required String documentId, required String base64}) {
     throw new Exception("Not implemented");
   }
 }

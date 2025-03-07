@@ -30,13 +30,7 @@ class Node extends ChangeEmitter {
 }
 
 class Element extends Node {
-  Element({
-    super.parent,
-    required this.tagName,
-    required this.attributes,
-    required super.doc,
-    required this.elementType,
-  });
+  Element({super.parent, required this.tagName, required this.attributes, required super.doc, required this.elementType});
 
   final ElementType elementType;
   final List<Node> children = [];
@@ -73,9 +67,9 @@ class Element extends Node {
       "changes": [
         {
           "nodeID": this.id,
-          "setAttributes": {name: value}
-        }
-      ]
+          "setAttributes": {name: value},
+        },
+      ],
     });
   }
 
@@ -86,16 +80,15 @@ class Element extends Node {
         {
           "nodeID": this.id,
           "removeAttributes": [name],
-        }
-      ]
+        },
+      ],
     });
   }
 
   ElementType _ensureChildValid(String tagName) {
     final childName = elementType.childPropertyName;
     if (childName == null) {
-      throw Exception(
-          "Children are not allowed on this element: $this.tagName");
+      throw Exception("Children are not allowed on this element: $this.tagName");
     }
 
     final childProp = elementType.property(childName);
@@ -108,8 +101,7 @@ class Element extends Node {
     return doc.schema.element(tagName);
   }
 
-  void _validateElementAttributes(
-      ElementType elType, Map<String, dynamic> attributes) {
+  void _validateElementAttributes(ElementType elType, Map<String, dynamic> attributes) {
     // Just ensure each attribute is defined in schema
     for (final k in attributes.keys) {
       // If this property doesn't exist, schema validation will fail later
@@ -117,16 +109,12 @@ class Element extends Node {
     }
   }
 
-  Element createChildElement(String tagName, Map<String, dynamic> attributes,
-      {String? id}) {
+  Element createChildElement(String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
     final elementData = <String, dynamic>{
       "name": tagName,
-      "attributes": {
-        "\$id": id ?? const Uuid().v4(),
-        ...attributes,
-      },
+      "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
       "children": this._defaultChildren(tagName),
     };
     this.doc.sendChanges({
@@ -136,27 +124,22 @@ class Element extends Node {
           "nodeID": this.id,
           "insertChildren": {
             "children": [
-              {"element": elementData}
-            ]
-          }
-        }
-      ]
+              {"element": elementData},
+            ],
+          },
+        },
+      ],
     });
     return this.getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
-  Element createChildElementAt(
-      int index, String tagName, Map<String, dynamic> attributes,
-      {String? id}) {
+  Element createChildElementAt(int index, String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
 
     final elementData = <String, dynamic>{
       "name": tagName,
-      "attributes": {
-        "\$id": id ?? const Uuid().v4(),
-        ...attributes,
-      },
+      "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
       "children": this._defaultChildren(tagName),
     };
     this.doc.sendChanges({
@@ -167,20 +150,16 @@ class Element extends Node {
           "insertChildren": {
             "index": index,
             "children": [
-              {
-                "element": elementData,
-              }
-            ]
-          }
-        }
-      ]
+              {"element": elementData},
+            ],
+          },
+        },
+      ],
     });
     return this.getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
-  Element createChildElementAfter(
-      Element element, String tagName, Map<String, dynamic> attributes,
-      {String? id}) {
+  Element createChildElementAfter(Element element, String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
 
@@ -189,10 +168,7 @@ class Element extends Node {
     }
     final elementData = <String, dynamic>{
       "name": tagName,
-      "attributes": {
-        "\$id": id ?? const Uuid().v4(),
-        ...attributes,
-      },
+      "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
       "children": this._defaultChildren(tagName),
     };
     this.doc.sendChanges({
@@ -203,13 +179,11 @@ class Element extends Node {
           "insertChildren": {
             "after": element.id,
             "children": [
-              {
-                "element": elementData,
-              }
-            ]
-          }
-        }
-      ]
+              {"element": elementData},
+            ],
+          },
+        },
+      ],
     });
     return this.getNodeByID(elementData["attributes"]!["\$id"])!;
   }
@@ -218,8 +192,8 @@ class Element extends Node {
     if (tagName == "text") {
       return [
         {
-          "text": {"delta": []}
-        }
+          "text": {"delta": []},
+        },
       ];
     }
     return [];
@@ -229,8 +203,8 @@ class Element extends Node {
     this.doc.sendChanges({
       "documentID": this.doc.id,
       "changes": [
-        {"nodeID": this.id, "delete": {}}
-      ]
+        {"nodeID": this.id, "delete": {}},
+      ],
     });
   }
 
@@ -244,11 +218,9 @@ class Element extends Node {
     final attributes = attributesFromJson(json);
     final elementType = doc.schema.element(tagName);
 
-    if (elementType.childPropertyName != null &&
-        attributes.containsKey(elementType.childPropertyName!)) {
+    if (elementType.childPropertyName != null && attributes.containsKey(elementType.childPropertyName!)) {
       // Extract children
-      final children =
-          attributes.remove(elementType.childPropertyName!) as List;
+      final children = attributes.remove(elementType.childPropertyName!) as List;
       // Create the element
       final element = this.createChildElement(tagName, attributes);
       // Append each child
@@ -274,13 +246,9 @@ class TextElement extends Node {
       "changes": [
         {
           "nodeID": this.parent!.id,
-          "insertText": {
-            "index": index,
-            "text": text,
-            "attributes": attributes ?? {},
-          }
-        }
-      ]
+          "insertText": {"index": index, "text": text, "attributes": attributes ?? {}},
+        },
+      ],
     });
   }
 
@@ -290,13 +258,9 @@ class TextElement extends Node {
       "changes": [
         {
           "nodeID": this.parent!.id,
-          "formatText": {
-            "from": from,
-            "length": length,
-            "attributes": attributes,
-          }
-        }
-      ]
+          "formatText": {"from": from, "length": length, "attributes": attributes},
+        },
+      ],
     });
   }
 
@@ -306,22 +270,15 @@ class TextElement extends Node {
       "changes": [
         {
           "nodeID": this.parent!.id,
-          "deleteText": {
-            "index": index,
-            "length": length,
-          }
-        }
-      ]
+          "deleteText": {"index": index, "length": length},
+        },
+      ],
     });
   }
 }
 
 class RuntimeDocument extends ChangeEmitter {
-  RuntimeDocument(
-      {required this.id,
-      required this.sendChanges,
-      this.sendChangesToBackend,
-      required this.schema});
+  RuntimeDocument({required this.id, required this.sendChanges, this.sendChangesToBackend, required this.schema});
 
   final _changes = StreamController<Map<String, dynamic>>.broadcast(sync: true);
 
@@ -337,12 +294,7 @@ class RuntimeDocument extends ChangeEmitter {
 
   final void Function(Map<String, dynamic>) sendChanges;
 
-  late final root = Element(
-      parent: null,
-      tagName: schema.root.tagName,
-      attributes: {},
-      doc: this,
-      elementType: schema.root);
+  late final root = Element(parent: null, tagName: schema.root.tagName, attributes: {}, doc: this, elementType: schema.root);
 
   Node _createNode(Element? parent, Map<String, dynamic> data) {
     if (data["element"] != null) {
@@ -351,13 +303,12 @@ class RuntimeDocument extends ChangeEmitter {
       final elementType = schema.element(tagName); // get schema type
 
       final element = Element(
-          parent: parent,
-          tagName: tagName,
-          attributes:
-              (elementData["attributes"] as Map?)?.cast<String, dynamic>() ??
-                  {},
-          doc: this,
-          elementType: elementType);
+        parent: parent,
+        tagName: tagName,
+        attributes: (elementData["attributes"] as Map?)?.cast<String, dynamic>() ?? {},
+        doc: this,
+        elementType: elementType,
+      );
 
       if (elementData["children"] != null) {
         for (final child in elementData["children"]) {
@@ -367,9 +318,7 @@ class RuntimeDocument extends ChangeEmitter {
       return element;
     } else if (data["text"] != null) {
       // text node
-      final delta = (data["text"]["delta"] as List)
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      final delta = (data["text"]["delta"] as List).whereType<Map<String, dynamic>>().toList();
       return TextElement(parent: parent, delta: delta, doc: this);
     } else {
       throw Exception("Unsupported node type");
@@ -382,8 +331,7 @@ class RuntimeDocument extends ChangeEmitter {
     print("Applying changes to dart doc ${jsonEncode(message)}");
 
     final nodeID = message["target"] as String?;
-    final target =
-        message["root"] == true ? this.root : this.root.getNodeByID(nodeID!);
+    final target = message["root"] == true ? this.root : this.root.getNodeByID(nodeID!);
     // process element deltas
 
     num retain = 0;
@@ -394,20 +342,17 @@ class RuntimeDocument extends ChangeEmitter {
       if (delta["insert"] != null) {
         for (final insert in delta["insert"] as List) {
           if (insert["element"] != null) {
-            target!.children
-                .insert(retain.toInt(), _createNode(target, insert));
+            target!.children.insert(retain.toInt(), _createNode(target, insert));
             retain++;
           } else if (insert["text"] != null) {
-            target!.children
-                .insert(retain.toInt(), _createNode(target, insert));
+            target!.children.insert(retain.toInt(), _createNode(target, insert));
             retain++;
           } else {
             throw new Exception("Unsupported element delta");
           }
         }
       } else if (delta["delete"] != null) {
-        target!.children.removeRange(
-            retain.toInt(), (retain + (delta["delete"] as num)).toInt());
+        target!.children.removeRange(retain.toInt(), (retain + (delta["delete"] as num)).toInt());
         retain -= delta["delete"];
       }
     }
@@ -428,19 +373,14 @@ class RuntimeDocument extends ChangeEmitter {
       for (final delta in text) {
         if (delta["insert"] != null) {
           if (i == targetDelta.length) {
-            targetDelta.add({
-              "insert": delta["insert"],
-              "attributes": delta["attributes"] ?? {}
-            });
+            targetDelta.add({"insert": delta["insert"], "attributes": delta["attributes"] ?? {}});
             i++;
             offset += (delta["insert"] as String).length;
             retain += (delta["insert"] as String).length;
           } else {
             final str = targetDelta[i]["insert"] as String;
             targetDelta[i]["insert"] =
-                str.substring(0, (retain - offset).toInt()) +
-                    delta["insert"] +
-                    str.substring((retain - offset).toInt());
+                str.substring(0, (retain - offset).toInt()) + delta["insert"] + str.substring((retain - offset).toInt());
             retain += (delta["insert"] as String).length;
           }
         } else if (delta["delete"] != null) {
@@ -461,12 +401,10 @@ class RuntimeDocument extends ChangeEmitter {
                 i++;
                 offset += str.length;
               } else {
-                targetDelta[i]["insert"] =
-                    start + end.substring(remaining.toInt());
+                targetDelta[i]["insert"] = start + end.substring(remaining.toInt());
                 deleted += (targetDelta[i]["insert"] as String).length;
               }
-            } else if (delta["delete"] - deleted >=
-                (targetDelta[i]["insert"] as String).length) {
+            } else if (delta["delete"] - deleted >= (targetDelta[i]["insert"] as String).length) {
               // delete segment
               deleted += (targetDelta[i]["insert"] as String).length;
               targetDelta.removeAt(i);
@@ -500,10 +438,7 @@ class RuntimeDocument extends ChangeEmitter {
                 targetDelta[i]["insert"] = start;
                 targetDelta.insert(i + 1, {
                   "insert": end,
-                  "attributes": {
-                    ...targetDelta[i]["attributes"] as Map,
-                    ...delta["attributes"] as Map,
-                  }
+                  "attributes": {...targetDelta[i]["attributes"] as Map, ...delta["attributes"] as Map},
                 });
 
                 formatted += end.length;
@@ -515,14 +450,11 @@ class RuntimeDocument extends ChangeEmitter {
                 targetDelta[i]["insert"] = start;
                 targetDelta.insert(i + 1, {
                   "insert": end.substring(0, remaining.toInt()),
-                  "attributes": {
-                    ...targetDelta[i]["attributes"] as Map,
-                    ...delta["attributes"] as Map,
-                  }
+                  "attributes": {...targetDelta[i]["attributes"] as Map, ...delta["attributes"] as Map},
                 });
                 targetDelta.insert(i + 2, {
                   "insert": end.substring(remaining.toInt()),
-                  "attributes": {...targetDelta[i]["attributes"] as Map}
+                  "attributes": {...targetDelta[i]["attributes"] as Map},
                 });
 
                 formatted += remaining;
@@ -531,13 +463,11 @@ class RuntimeDocument extends ChangeEmitter {
                 i++;
                 offset += start.length + remaining;
               }
-            } else if (delta["retain"] - formatted >=
-                (targetDelta[i]["insert"] as String).length) {
+            } else if (delta["retain"] - formatted >= (targetDelta[i]["insert"] as String).length) {
               formatted += (targetDelta[i]["insert"] as String).length;
 
               // format whole item
-              for (final k
-                  in (delta["attributes"] as Map<String, dynamic>).keys) {
+              for (final k in (delta["attributes"] as Map<String, dynamic>).keys) {
                 targetDelta[i]["attributes"][k] = delta["attributes"][k];
               }
               offset += (targetDelta[i]["insert"] as String).length;
@@ -550,9 +480,7 @@ class RuntimeDocument extends ChangeEmitter {
               targetDelta[i]["insert"] = start;
               targetDelta.add({
                 "insert": end,
-                "attributes": {
-                  ...targetDelta[i]["attributes"] as Map,
-                }
+                "attributes": {...targetDelta[i]["attributes"] as Map},
               });
               for (final k in (delta["attributes"] as Map).keys) {
                 targetDelta[i]["attributes"][k] = delta["attributes"][k];
@@ -566,9 +494,7 @@ class RuntimeDocument extends ChangeEmitter {
             retain += delta["retain"];
           }
 
-          while (retain >
-              (offset + ((targetDelta[i]["insert"] as String?)?.length ?? 0))
-                  .toInt()) {
+          while (retain > (offset + ((targetDelta[i]["insert"] as String?)?.length ?? 0)).toInt()) {
             offset += (targetDelta[i]["insert"] as String).length;
             i++;
           }

@@ -28,13 +28,10 @@ class MeshSchema {
   final List<ElementType> _elements;
   final Map<String, ElementType> elementsByTagName = {};
 
-  MeshSchema({required String rootTagName, required List<ElementType> elements})
-      : _rootTagName = rootTagName,
-        _elements = elements {
+  MeshSchema({required String rootTagName, required List<ElementType> elements}) : _rootTagName = rootTagName, _elements = elements {
     for (final t in elements) {
       if (elementsByTagName.containsKey(t.tagName)) {
-        throw MeshSchemaValidationException(
-            "${t.tagName} was found more than once in tags");
+        throw MeshSchemaValidationException("${t.tagName} was found more than once in tags");
       }
       elementsByTagName[t.tagName] = t;
     }
@@ -52,9 +49,7 @@ class MeshSchema {
     String rootTagRef = json["\$root_tag_ref"];
     final prefix = "#/\$defs/";
     // emulate removeprefix
-    String rootTagName = rootTagRef.startsWith(prefix)
-        ? rootTagRef.substring(prefix.length)
-        : rootTagRef;
+    String rootTagName = rootTagRef.startsWith(prefix) ? rootTagRef.substring(prefix.length) : rootTagRef;
 
     final defs = json["\$defs"] as Map;
 
@@ -120,11 +115,7 @@ class ValueProperty extends ElementProperty {
   final SimpleValue type;
   final List<dynamic>? enumValues;
 
-  ValueProperty(
-      {required super.name,
-      super.description,
-      required this.type,
-      this.enumValues});
+  ValueProperty({required super.name, super.description, required this.type, this.enumValues});
 
   @override
   void validate(MeshSchema schema) {
@@ -137,11 +128,7 @@ class ValueProperty extends ElementProperty {
   @override
   Map toJson() {
     return {
-      name: {
-        "type": type.value,
-        if (description != null) "description": description,
-        if (enumValues != null) "enum": enumValues,
-      }
+      name: {"type": type.value, if (description != null) "description": description, if (enumValues != null) "enum": enumValues},
     };
   }
 }
@@ -149,12 +136,8 @@ class ValueProperty extends ElementProperty {
 class ChildProperty extends ElementProperty {
   final List<String> _childTagNames;
 
-  ChildProperty(
-      {required super.name,
-      super.description,
-      required List<String> childTagNames,
-      this.ordered = false})
-      : _childTagNames = childTagNames;
+  ChildProperty({required super.name, super.description, required List<String> childTagNames, this.ordered = false})
+    : _childTagNames = childTagNames;
   final bool ordered;
 
   @override
@@ -180,10 +163,9 @@ class ChildProperty extends ElementProperty {
         name: {
           ...base,
           "type": "array",
-          "prefixItems":
-              _childTagNames.map((p) => {"\$ref": "#/\$defs/$p"}).toList(),
+          "prefixItems": _childTagNames.map((p) => {"\$ref": "#/\$defs/$p"}).toList(),
           "items": false,
-        }
+        },
       };
     } else {
       return {
@@ -191,10 +173,9 @@ class ChildProperty extends ElementProperty {
           ...base,
           "type": "array",
           "items": {
-            "anyOf":
-                _childTagNames.map((p) => {"\$ref": "#/\$defs/$p"}).toList()
-          }
-        }
+            "anyOf": _childTagNames.map((p) => {"\$ref": "#/\$defs/$p"}).toList(),
+          },
+        },
       };
     }
   }
@@ -207,18 +188,14 @@ class ElementType {
   final Map<String, ElementProperty> _propertyLookup = {};
   String? _childPropertyName;
 
-  ElementType(
-      {required String tagName,
-      required String? description,
-      required List<ElementProperty> properties})
-      : _tagName = tagName,
-        _description = description,
-        _properties = List<ElementProperty>.from(properties) {
+  ElementType({required String tagName, required String? description, required List<ElementProperty> properties})
+    : _tagName = tagName,
+      _description = description,
+      _properties = List<ElementProperty>.from(properties) {
     for (final p in _properties) {
       if (p is ChildProperty) {
         if (_childPropertyName != null) {
-          throw MeshSchemaValidationException(
-              "Only one child property is allowed");
+          throw MeshSchemaValidationException("Only one child property is allowed");
         }
         _childPropertyName = p.name;
       }
@@ -262,8 +239,7 @@ class ElementType {
     // }
 
     if (propertiesMap.isEmpty) {
-      throw MeshSchemaValidationException(
-          "Invalid schema json: no properties found");
+      throw MeshSchemaValidationException("Invalid schema json: no properties found");
     }
 
     // In Python code, it uses `for k, type_json in json["properties"].items()` then returns inside.
@@ -281,9 +257,7 @@ class ElementType {
       final pType = pMap["type"];
 
       if (pType == "array") {
-        if (pMap["items"] != null &&
-            pMap["items"] is Map &&
-            pMap["items"]["anyOf"] != null) {
+        if (pMap["items"] != null && pMap["items"] is Map && pMap["items"]["anyOf"] != null) {
           // handle ChildProperty
           final items = pMap["items"] as Map;
 
@@ -294,19 +268,11 @@ class ElementType {
             final refMap = refObj as Map;
             final refStr = refMap["\$ref"] as String;
             const prefix = "#/\$defs/";
-            final childTagName = refStr.startsWith(prefix)
-                ? refStr.substring(prefix.length)
-                : refStr;
+            final childTagName = refStr.startsWith(prefix) ? refStr.substring(prefix.length) : refStr;
             childTagNames.add(childTagName);
           }
 
-          properties.add(
-            ChildProperty(
-              name: propName,
-              description: propDescription,
-              childTagNames: childTagNames,
-            ),
-          );
+          properties.add(ChildProperty(name: propName, description: propDescription, childTagNames: childTagNames));
         } else if (pMap["prefixItems"] != null) {
           final anyOf = pMap["prefixItems"] as List<dynamic>;
           final childTagNames = <String>[];
@@ -315,23 +281,13 @@ class ElementType {
             final refMap = refObj as Map;
             final refStr = refMap["\$ref"] as String;
             const prefix = "#/\$defs/";
-            final childTagName = refStr.startsWith(prefix)
-                ? refStr.substring(prefix.length)
-                : refStr;
+            final childTagName = refStr.startsWith(prefix) ? refStr.substring(prefix.length) : refStr;
             childTagNames.add(childTagName);
           }
 
-          properties.add(
-            ChildProperty(
-              name: propName,
-              description: propDescription,
-              childTagNames: childTagNames,
-              ordered: true,
-            ),
-          );
+          properties.add(ChildProperty(name: propName, description: propDescription, childTagNames: childTagNames, ordered: true));
         } else {
-          throw new MeshSchemaValidationException(
-              "Invalid array type encountered");
+          throw new MeshSchemaValidationException("Invalid array type encountered");
         }
       } else {
         // handle ValueProperty
@@ -339,24 +295,15 @@ class ElementType {
         final valTypeStr = pType as String;
         final valType = SimpleValue.fromString(valTypeStr);
         if (valType == null) {
-          throw MeshSchemaValidationException(
-              "Invalid value type: $valTypeStr");
+          throw MeshSchemaValidationException("Invalid value type: $valTypeStr");
         }
 
         final enumValue = pMap["enum"] as List<dynamic>?;
-        properties.add(
-          ValueProperty(
-            name: propName,
-            description: propDescription,
-            type: valType,
-            enumValues: enumValue,
-          ),
-        );
+        properties.add(ValueProperty(name: propName, description: propDescription, type: valType, enumValues: enumValue));
       }
     });
 
-    return ElementType(
-        tagName: tagName, description: description, properties: properties);
+    return ElementType(tagName: tagName, description: description, properties: properties);
   }
 
   Map<String, dynamic> toJson() {
@@ -366,8 +313,7 @@ class ElementType {
     for (final p in _properties) {
       required.add(p.name);
       if (props.containsKey(p.name)) {
-        throw MeshSchemaValidationException(
-            "duplicate key in schema: ${p.name}");
+        throw MeshSchemaValidationException("duplicate key in schema: ${p.name}");
       }
       props[p.name] = p.toJson()[p.name];
     }
@@ -378,13 +324,8 @@ class ElementType {
       "description": _description,
       "required": [_tagName],
       "properties": {
-        _tagName: {
-          "type": "object",
-          "additionalProperties": false,
-          "required": required,
-          "properties": props,
-        }
-      }
+        _tagName: {"type": "object", "additionalProperties": false, "required": required, "properties": props},
+      },
     };
   }
 

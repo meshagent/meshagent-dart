@@ -4,23 +4,14 @@ class ParticipantGrant {
   final String name;
   final String? scope;
 
-  ParticipantGrant({
-    required this.name,
-    this.scope,
-  });
+  ParticipantGrant({required this.name, this.scope});
 
   Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'scope': scope,
-    };
+    return {'name': name, 'scope': scope};
   }
 
   factory ParticipantGrant.fromJson(Map<String, dynamic> json) {
-    return ParticipantGrant(
-      name: json['name'] as String,
-      scope: json['scope'] as String?,
-    );
+    return ParticipantGrant(name: json['name'] as String, scope: json['scope'] as String?);
   }
 }
 
@@ -33,15 +24,10 @@ class ParticipantToken {
 
   final Map<String, dynamic>? extra;
 
-  ParticipantToken({
-    required this.name,
-    required String projectId,
-    required String apiKeyId,
-    this.extra,
-    List<ParticipantGrant>? grants,
-  })  : grants = grants ?? [],
-        projectId = projectId,
-        apiKeyId = apiKeyId;
+  ParticipantToken({required this.name, required String projectId, required String apiKeyId, this.extra, List<ParticipantGrant>? grants})
+    : grants = grants ?? [],
+      projectId = projectId,
+      apiKeyId = apiKeyId;
 
   bool get isAgent {
     for (final grant in grants) {
@@ -78,16 +64,10 @@ class ParticipantToken {
     // Fallback to environment variable if not provided
     token ??= const String.fromEnvironment('MESHAGENT_SECRET');
 
-    final payload = <String, dynamic>{
-      ...toJson(),
-      ...?extra,
-    };
+    final payload = <String, dynamic>{...toJson(), ...?extra};
 
     final jwt = JWT(payload);
-    return jwt.sign(
-      SecretKey(token),
-      algorithm: JWTAlgorithm.HS256,
-    );
+    return jwt.sign(SecretKey(token), algorithm: JWTAlgorithm.HS256);
   }
 
   /// Creates a [ParticipantToken] from a JSON Map.
@@ -100,34 +80,26 @@ class ParticipantToken {
     }
 
     return ParticipantToken(
-        name: json['name'] as String,
-        projectId: json['sub'],
-        apiKeyId: json['kid'],
-        grants: (json['grants'] as List<dynamic>)
-            .map((g) => ParticipantGrant.fromJson(g as Map<String, dynamic>))
-            .toList(),
-        extra: extra);
+      name: json['name'] as String,
+      projectId: json['sub'],
+      apiKeyId: json['kid'],
+      grants: (json['grants'] as List<dynamic>).map((g) => ParticipantGrant.fromJson(g as Map<String, dynamic>)).toList(),
+      extra: extra,
+    );
   }
 
   /// Decodes a JWT string to create a [ParticipantToken].
   /// If [token] is not provided, tries to read from ENV ['MESHAGENT_SECRET'].
-  factory ParticipantToken.fromJwt(String jwtStr,
-      {String? token, bool verify = true}) {
+  factory ParticipantToken.fromJwt(String jwtStr, {String? token, bool verify = true}) {
     // Fallback to environment variable if not provided
     if (verify) {
       token ??= const String.fromEnvironment('MESHAGENT_SECRET');
-      final jwt = JWT.verify(
-        jwtStr,
-        SecretKey(token),
-        checkHeaderType: false,
-      );
+      final jwt = JWT.verify(jwtStr, SecretKey(token), checkHeaderType: false);
 
       final payload = jwt.payload as Map<String, dynamic>;
       return ParticipantToken.fromJson(payload);
     } else {
-      final jwt = JWT.decode(
-        jwtStr,
-      );
+      final jwt = JWT.decode(jwtStr);
 
       final payload = jwt.payload as Map<String, dynamic>;
       return ParticipantToken.fromJson(payload);

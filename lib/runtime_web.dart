@@ -9,8 +9,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 @JS("registerDocument")
-external void _runtimeRegisterDocument(JSString id, JSString? data,
-    JSFunction sendUpdateToBackend, JSFunction sendUpdateToClient);
+external void _runtimeRegisterDocument(JSString id, JSString? data, JSFunction sendUpdateToBackend, JSFunction sendUpdateToClient);
 
 @JS("unregisterDocument")
 external void _runtimeUnregisterDocument(JSString id);
@@ -28,12 +27,12 @@ Future<void> initializeDocumentRuntime() async {
 class DocumentRuntimeImpl extends DocumentRuntime {
   DocumentRuntimeImpl() : super.base();
 
-  static final _entrypointCode = rootBundle
-      .loadString("packages/meshagent/js/entrypoint.txt", cache: false);
+  static final _entrypointCode = rootBundle.loadString("packages/meshagent/js/entrypoint.txt", cache: false);
 
   static late final _init = (() async {
     final element = web.document.createElement("script")
-      ..innerHTML = ('''
+      ..innerHTML =
+          ('''
     
         const module = {
           exports: {
@@ -42,13 +41,12 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
 
     ''' +
-              await _entrypointCode)
-          .toJS;
+                  await _entrypointCode)
+              .toJS;
     web.document.body!.appendChild(element);
   }());
 
-  static void onDocumentSync(
-      {required String documentId, required String base64}) {
+  static void onDocumentSync({required String documentId, required String base64}) {
     final doc = _documents[documentId]!;
     if (doc.sendChangesToBackend != null) {
       doc.sendChangesToBackend!(base64);
@@ -88,8 +86,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     void Function(String) onSendUpdateToBackend = this.onSendUpdateToBackend;
     void Function(String) onSendUpdateToClient = this.onSendUpdateToClient;
 
-    _runtimeRegisterDocument(document.id.toJS, null, onSendUpdateToBackend.toJS,
-        onSendUpdateToClient.toJS);
+    _runtimeRegisterDocument(document.id.toJS, null, onSendUpdateToBackend.toJS, onSendUpdateToClient.toJS);
   }
 
   @override
@@ -105,8 +102,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   }
 
   @override
-  void applyBackendChanges(
-      {required String documentId, required String base64}) {
+  void applyBackendChanges({required String documentId, required String base64}) {
     _runtimeApplyBackendChanges(documentId.toJS, base64.toJS);
   }
 }

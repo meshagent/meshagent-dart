@@ -17,11 +17,7 @@ final MeshSchema testSchema = MeshSchema(
         ValueProperty(name: "hello", description: "", type: SimpleValue.string),
         ValueProperty(name: "hi", description: "", type: SimpleValue.string),
         ValueProperty(name: "test", description: "", type: SimpleValue.string),
-        ChildProperty(
-          name: "children",
-          description: "",
-          childTagNames: ["child", "text"],
-        )
+        ChildProperty(name: "children", description: "", childTagNames: ["child", "text"]),
       ],
     ),
     // <child> type
@@ -32,11 +28,7 @@ final MeshSchema testSchema = MeshSchema(
         ValueProperty(name: "hello", description: "", type: SimpleValue.string),
         ValueProperty(name: "hi", description: "", type: SimpleValue.string),
         ValueProperty(name: "test", description: "", type: SimpleValue.string),
-        ChildProperty(
-          name: "children",
-          description: "",
-          childTagNames: ["child"],
-        ),
+        ChildProperty(name: "children", description: "", childTagNames: ["child"]),
       ],
     ),
     // <text> type
@@ -45,11 +37,7 @@ final MeshSchema testSchema = MeshSchema(
       description: "",
       properties: [
         // "children" -> can contain <child> if needed, or just text in your schema
-        ChildProperty(
-          name: "children",
-          description: "",
-          childTagNames: ["child"],
-        ),
+        ChildProperty(name: "children", description: "", childTagNames: ["child"]),
         ValueProperty(name: "hello", description: "", type: SimpleValue.string),
       ],
     ),
@@ -63,8 +51,7 @@ void main() async {
   await DocumentRuntime.initialize();
 
   MeshDocument createNewDoc() {
-    final doc =
-        MeshDocument(schema: testSchema, sendChangesToBackend: (base64) {});
+    final doc = MeshDocument(schema: testSchema, sendChangesToBackend: (base64) {});
 
     return doc;
   }
@@ -288,27 +275,20 @@ void main() async {
       expect(child3.getAttribute("hello"), "world4");
 
       // insert_child_after in Python => createChildElementAfter in Dart
-      final child5 = child1.createChildElementAfter(
-        child2,
-        "child",
-        {"hello": "world5"},
-      );
+      final child5 = child1.createChildElementAfter(child2, "child", {"hello": "world5"});
       // child2 is index 0, child5 is inserted after => index 1, child3 is now index 2
-      final childrenOfChild1 =
-          child1.getChildren().whereType<Element>().toList();
+      final childrenOfChild1 = child1.getChildren().whereType<Element>().toList();
       expect(childrenOfChild1[1], equals(child5));
       expect(child5.getAttribute("hello"), "world5");
 
       // insert_child_at(2, "child", {"hello":"world6"})
-      final child6 =
-          child1.createChildElementAt(2, "child", {"hello": "world6"});
+      final child6 = child1.createChildElementAt(2, "child", {"hello": "world6"});
       // Now the order is:
       //   index=0 => child2
       //   index=1 => child5
       //   index=2 => child6
       //   index=3 => child3
-      final updatedChildren =
-          child1.getChildren().whereType<Element>().toList();
+      final updatedChildren = child1.getChildren().whereType<Element>().toList();
       expect(updatedChildren[2], equals(child6));
       expect(child6.getAttribute("hello"), "world6");
     });

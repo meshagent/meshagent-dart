@@ -7,11 +7,8 @@ import 'package:meshagent/protocol.dart';
 class AgentChatContext {
   List<Map<String, dynamic>> messages;
 
-  AgentChatContext(
-      {List<Map<String, dynamic>>? messages, this.systemRole = "system"})
-      : messages = messages != null
-            ? List<Map<String, dynamic>>.from(messages)
-            : <Map<String, dynamic>>[];
+  AgentChatContext({List<Map<String, dynamic>>? messages, this.systemRole = "system"})
+    : messages = messages != null ? List<Map<String, dynamic>>.from(messages) : <Map<String, dynamic>>[];
 
   final String systemRole;
 
@@ -48,18 +45,16 @@ class AgentChatContext {
       "content": [
         {
           "type": "image_url",
-          "image_url": {"url": url, "detail": "auto"}
-        }
-      ]
+          "image_url": {"url": url, "detail": "auto"},
+        },
+      ],
     });
   }
 
   AgentChatContext copy() {
     // Deep copy using json decode/encode:
     var cloned = jsonDecode(jsonEncode(messages)) as List<dynamic>;
-    return AgentChatContext(
-        messages: cloned.map((e) => Map<String, dynamic>.from(e)).toList(),
-        systemRole: systemRole);
+    return AgentChatContext(messages: cloned.map((e) => Map<String, dynamic>.from(e)).toList(), systemRole: systemRole);
   }
 
   Map<String, dynamic> to_json() {
@@ -67,8 +62,7 @@ class AgentChatContext {
   }
 
   static AgentChatContext from_json(Map<String, dynamic> json) {
-    return AgentChatContext(
-        messages: List<Map<String, dynamic>>.from(json["messages"]));
+    return AgentChatContext(messages: List<Map<String, dynamic>>.from(json["messages"]));
   }
 }
 
@@ -77,13 +71,10 @@ class AgentCallContext {
   final AgentChatContext _chat;
   final String _apiUrl;
 
-  AgentCallContext(
-      {required AgentChatContext chat,
-      required String jwt,
-      required String api_url})
-      : _jwt = jwt,
-        _chat = chat,
-        _apiUrl = api_url;
+  AgentCallContext({required AgentChatContext chat, required String jwt, required String api_url})
+    : _jwt = jwt,
+      _chat = chat,
+      _apiUrl = api_url;
 
   AgentChatContext get chat => _chat;
   String get jwt => _jwt;
@@ -91,12 +82,7 @@ class AgentCallContext {
 }
 
 abstract class Tool {
-  Tool(
-      {required this.name,
-      required this.description,
-      required this.title,
-      required this.inputSchema,
-      this.thumbnailUrl});
+  Tool({required this.name, required this.description, required this.title, required this.inputSchema, this.thumbnailUrl});
 
   final String name;
   final String description;
@@ -147,18 +133,18 @@ abstract class RemoteToolkit extends Toolkit {
   final String description;
   final String? thumbnailUrl;
 
-  RemoteToolkit(
-      {required String name,
-      required String title,
-      required String description,
-      this.thumbnailUrl,
-      required RoomClient room,
-      required super.tools,
-      super.rules = const []})
-      : client = room,
-        name = name,
-        description = description,
-        title = title;
+  RemoteToolkit({
+    required String name,
+    required String title,
+    required String description,
+    this.thumbnailUrl,
+    required RoomClient room,
+    required super.tools,
+    super.rules = const [],
+  }) : client = room,
+       name = name,
+       description = description,
+       title = title;
 
   Future<void> start({bool public = false}) async {
     client.protocol.addHandler("agent.tool_call.${name}", _toolCall);
@@ -187,25 +173,19 @@ abstract class RemoteToolkit extends Toolkit {
   }
 
   Future<void> _unregister() async {
-    await client
-        .sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+    await client.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
   }
 
-  Future<void> _toolCall(
-      Protocol protocol, int messageId, String type, List<int> data) async {
+  Future<void> _toolCall(Protocol protocol, int messageId, String type, List<int> data) async {
     var message = jsonDecode(utf8.decode(data)) as Map<String, dynamic>;
     var toolName = message["name"];
     var args = message["arguments"] as Map<String, dynamic>;
 
     try {
       var response = await execute(toolName, args);
-      await client.protocol
-          .send(id: messageId, "agent.tool_call_response", response.pack());
+      await client.protocol.send(id: messageId, "agent.tool_call_response", response.pack());
     } catch (e) {
-      await client.protocol.send(
-          id: messageId,
-          "agent.tool_call_response",
-          ErrorResponse(text: "${e}").pack());
+      await client.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "${e}").pack());
     }
   }
 }
@@ -230,9 +210,9 @@ abstract class RemoteTaskRunner {
     this.outputSchema,
     this.supportsTools = false,
     this.required = const [],
-  })  : client = client,
-        name = name,
-        description = description;
+  }) : client = client,
+       name = name,
+       description = description;
 
   final List<Requirement> required;
 
@@ -249,23 +229,22 @@ abstract class RemoteTaskRunner {
   }
 
   Future<void> _register() async {
-    final response = (await client.sendRequest("agent.register_agent", {
-      "name": this.name,
-      "description": this.description,
-      "input_schema": this.inputSchema,
-      "output_schema": this.outputSchema,
-      "supports_tools": this.supportsTools,
-      "requires": [
-        ...this.required.map((r) => r.toJson())
-      ]
-    }) as JsonResponse)
-        .json;
+    final response =
+        (await client.sendRequest("agent.register_agent", {
+                  "name": this.name,
+                  "description": this.description,
+                  "input_schema": this.inputSchema,
+                  "output_schema": this.outputSchema,
+                  "supports_tools": this.supportsTools,
+                  "requires": [...this.required.map((r) => r.toJson())],
+                })
+                as JsonResponse)
+            .json;
     _registrationId = response["id"];
   }
 
   Future<void> _unregister() async {
-    await client
-        .sendRequest("agent.unregister_agent", {"id": _registrationId!});
+    await client.sendRequest("agent.unregister_agent", {"id": _registrationId!});
   }
 
   Future<Map<String, dynamic>> ask(AgentCallContext context, Map<String, dynamic> arguments);
@@ -285,19 +264,9 @@ abstract class RemoteTaskRunner {
       var context = AgentCallContext(chat: chat_context, jwt: jwt, api_url: api_url);
       var response = await ask(context, args);
 
-      await protocol.send(
-          "agent.ask_response",
-          utf8.encode(jsonEncode({
-            "task_id": task_id,
-            "response": response,
-          })));
+      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": task_id, "response": response})));
     } catch (e) {
-      await protocol.send(
-          "agent.ask_response",
-          utf8.encode(jsonEncode({
-            "task_id": task_id,
-            "error": e.toString(),
-          })));
+      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": task_id, "error": e.toString()})));
     }
   }
 }

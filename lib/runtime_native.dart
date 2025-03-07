@@ -16,12 +16,13 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
   static final _entrypointCode = rootBundle
       .loadString("packages/meshagent/js/entrypoint.txt", cache: false)
-      .catchError((onError) =>
-          rootBundle.loadString("js/entrypoint.txt", cache: false));
+      .catchError((onError) => rootBundle.loadString("js/entrypoint.txt", cache: false));
   static final _jsRuntime = getJavascriptRuntime(xhr: false);
 
-  static late final _init = (() async {
-    _jsRuntime.executeSafe('''
+  static late final _init =
+      (() async {
+        _jsRuntime.executeSafe(
+          '''
         function onSendUpdateToBackend(msg) {
           sendMessage('onSendUpdateToBackend', msg);
         }
@@ -46,51 +47,51 @@ class DocumentRuntimeImpl extends DocumentRuntime {
         };
 
       ''' +
-        await _entrypointCode);
+              await _entrypointCode,
+        );
 
-    _jsRuntime.onMessage("getRandomValues", (p) {
-      var length = p[0];
-      var width = p[1];
-      var random = Random.secure();
-      if (width == 1) {
-        return List.generate(length, (_) => random.nextInt(255));
-      } else if (width == 2) {
-        return List.generate(length, (_) => random.nextInt(0xffff));
-      } else if (width == 4) {
-        return List.generate(length, (_) => random.nextInt(0xffffffff));
-      } else if (width == 8) {
-        return List.generate(length, (_) => random.nextInt(0xffffffffffffffff));
-      } else {
-        throw Exception("Unexpected width $width");
-      }
-    });
+        _jsRuntime.onMessage("getRandomValues", (p) {
+          var length = p[0];
+          var width = p[1];
+          var random = Random.secure();
+          if (width == 1) {
+            return List.generate(length, (_) => random.nextInt(255));
+          } else if (width == 2) {
+            return List.generate(length, (_) => random.nextInt(0xffff));
+          } else if (width == 4) {
+            return List.generate(length, (_) => random.nextInt(0xffffffff));
+          } else if (width == 8) {
+            return List.generate(length, (_) => random.nextInt(0xffffffffffffffff));
+          } else {
+            throw Exception("Unexpected width $width");
+          }
+        });
 
-    _jsRuntime.onMessage("onSendUpdateToBackend", (parsed) {
-      print("send to server $parsed");
-      onDocumentSync(documentId: parsed["documentID"], base64: parsed["data"]);
-    });
+        _jsRuntime.onMessage("onSendUpdateToBackend", (parsed) {
+          print("send to server $parsed");
+          onDocumentSync(documentId: parsed["documentID"], base64: parsed["data"]);
+        });
 
-    _jsRuntime.onMessage("onSendUpdateToClient", (data) {
-      try {
-        final documentID = data["documentID"];
-        print(documentID);
+        _jsRuntime.onMessage("onSendUpdateToClient", (data) {
+          try {
+            final documentID = data["documentID"];
+            print(documentID);
 
-        final doc = _documents[documentID];
-        if (doc != null) {
-          doc.receiveChanges(data["data"]);
-        } else {
-          throw new Exception("Document is not registered $documentID");
-        }
-      } catch (err, stack) {
-        print("error: $err $stack");
-      }
-    });
+            final doc = _documents[documentID];
+            if (doc != null) {
+              doc.receiveChanges(data["data"]);
+            } else {
+              throw new Exception("Document is not registered $documentID");
+            }
+          } catch (err, stack) {
+            print("error: $err $stack");
+          }
+        });
 
-    print("runtime initialized");
-  })();
+        print("runtime initialized");
+      })();
 
-  static void onDocumentSync(
-      {required String documentId, required String base64}) {
+  static void onDocumentSync({required String documentId, required String base64}) {
     final doc = _documents[documentId]!;
     if (doc.sendChangesToBackend != null) {
       doc.sendChangesToBackend!(base64);
@@ -128,10 +129,8 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   }
 
   @override
-  void applyBackendChanges(
-      {required String documentId, required String base64}) {
-    _jsRuntime.executeSafe(
-        "module.exports.applyBackendChanges(${jsonEncode(documentId)},${jsonEncode(base64)})");
+  void applyBackendChanges({required String documentId, required String base64}) {
+    _jsRuntime.executeSafe("module.exports.applyBackendChanges(${jsonEncode(documentId)},${jsonEncode(base64)})");
   }
 }
 

@@ -92,8 +92,7 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   }
 }
 
-typedef ProtocolMessageHandler = Future<void> Function(
-    Protocol, int messageId, String type, Uint8List data);
+typedef ProtocolMessageHandler = Future<void> Function(Protocol, int messageId, String type, Uint8List data);
 
 class Protocol<T extends ProtocolChannel> {
   Protocol({required this.channel});
@@ -151,11 +150,13 @@ class Protocol<T extends ProtocolChannel> {
         final packets = (message.data.length / 1024).ceil();
 
         final packet = BytesBuilder();
-        packet.add(Uint8List(16)
-          ..buffer.asByteData().setUint32(0, message.id >> 32, Endian.big)
-          ..buffer.asByteData().setUint32(4, message.id & 0xffff, Endian.big)
-          ..buffer.asByteData().setInt32(8, 0, Endian.big)
-          ..buffer.asByteData().setInt32(12, packets, Endian.big));
+        packet.add(
+          Uint8List(16)
+            ..buffer.asByteData().setUint32(0, message.id >> 32, Endian.big)
+            ..buffer.asByteData().setUint32(4, message.id & 0xffff, Endian.big)
+            ..buffer.asByteData().setInt32(8, 0, Endian.big)
+            ..buffer.asByteData().setInt32(12, packets, Endian.big),
+        );
         packet.add(utf8.encode(message.type));
         await channel.sendData(packet.toBytes());
 
@@ -168,8 +169,7 @@ class Protocol<T extends ProtocolChannel> {
           header.setInt32(8, i + 1, Endian.big);
 
           packetBuilder.add(Uint8List.view(header.buffer));
-          packetBuilder.add(Uint8List.sublistView(message.data, i * 1024,
-              min((i + 1) * 1024, message.data.length)));
+          packetBuilder.add(Uint8List.sublistView(message.data, i * 1024, min((i + 1) * 1024, message.data.length)));
 
           await channel.sendData(packetBuilder.toBytes());
         }
@@ -196,14 +196,12 @@ class Protocol<T extends ProtocolChannel> {
   void onDataReceived(Uint8List dataPacket) {
     final data = dataPacket.buffer.asByteData();
 
-    final messageId =
-        data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
+    final messageId = data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
     final packet = data.getInt32(8);
 
     if (packet != recvPacketId) {
       recvState = "error";
-      debugPrint(
-          "received out of order packet got $packet expected $recvPacketId, total $recvPacketTotal message ID: $messageId");
+      debugPrint("received out of order packet got $packet expected $recvPacketId, total $recvPacketTotal message ID: $messageId");
     }
 
     if (packet == 0) {

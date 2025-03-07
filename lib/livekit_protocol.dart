@@ -5,8 +5,7 @@ import "package:flutter/material.dart";
 import "package:livekit_client/livekit_client.dart" as lk;
 
 class LivekitProtocolChannel extends ProtocolChannel {
-  LivekitProtocolChannel(
-      {required this.room, required this.topic, required this.remote});
+  LivekitProtocolChannel({required this.room, required this.topic, required this.remote});
 
   final lk.RemoteParticipant remote;
   final lk.Room room;
@@ -31,13 +30,11 @@ class LivekitProtocolChannel extends ProtocolChannel {
 
   @override
   Future<void> sendData(Uint8List data) async {
-    await room.localParticipant!.publishData(data,
-        reliable: true, topic: topic, destinationIdentities: [remote.identity]);
+    await room.localParticipant!.publishData(data, reliable: true, topic: topic, destinationIdentities: [remote.identity]);
   }
 
   void onDataPacket(lk.DataReceivedEvent evt) {
-    debugPrint(
-        "Message on topic $topic ${evt.participant?.identity} vs ${remote.identity}");
+    debugPrint("Message on topic $topic ${evt.participant?.identity} vs ${remote.identity}");
     if (evt.topic == topic && evt.participant == remote) {
       debugPrint("Processing message on topic $topic");
 
