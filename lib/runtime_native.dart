@@ -19,7 +19,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
       .catchError((onError) => rootBundle.loadString("js/entrypoint.txt", cache: false));
   static final _jsRuntime = getJavascriptRuntime(xhr: false);
 
-  static late final _init =
+  static final _init =
       (() async {
         _jsRuntime.executeSafe(
           '''
@@ -81,7 +81,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
             if (doc != null) {
               doc.receiveChanges(data["data"]);
             } else {
-              throw new Exception("Document is not registered $documentID");
+              throw Exception("Document is not registered $documentID");
             }
           } catch (err, stack) {
             print("error: $err $stack");
@@ -100,7 +100,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     }
   }
 
-  static Map<String, RuntimeDocument> _documents = {};
+  static final Map<String, RuntimeDocument> _documents = {};
 
   @override
   void registerDocument(RuntimeDocument document) {
@@ -122,9 +122,9 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
   @override
   void sendChanges(Map<String, dynamic> message) {
-    final json_changes = jsonEncode(message);
+    final jsonChanges = jsonEncode(message);
     _jsRuntime.executeSafe('''
-    module.exports.applyChanges($json_changes);
+    module.exports.applyChanges($jsonChanges);
 ''');
   }
 
@@ -138,7 +138,7 @@ extension _Execute on JavascriptRuntime {
   dynamic executeSafe(String code) {
     final result = evaluate(code);
     if (result.isError) {
-      throw new Exception(result.stringResult);
+      throw Exception(result.stringResult);
     }
     return result.rawResult;
   }

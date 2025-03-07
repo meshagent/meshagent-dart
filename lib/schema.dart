@@ -3,7 +3,7 @@ class MeshSchemaValidationException implements Exception {
   MeshSchemaValidationException(this.message);
 
   @override
-  String toString() => '$message';
+  String toString() => message;
 }
 
 enum SimpleValue {
@@ -287,7 +287,7 @@ class ElementType {
 
           properties.add(ChildProperty(name: propName, description: propDescription, childTagNames: childTagNames, ordered: true));
         } else {
-          throw new MeshSchemaValidationException("Invalid array type encountered");
+          throw MeshSchemaValidationException("Invalid array type encountered");
         }
       } else {
         // handle ValueProperty

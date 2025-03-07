@@ -232,7 +232,7 @@ class FileCreatedEvent extends RoomEvent {
   final String path;
 
   String get name => "file created";
-  String get description => "a file was created at the path ${path}";
+  String get description => "a file was created at the path $path";
 }
 
 class FileDeletedEvent extends RoomEvent {
@@ -241,7 +241,7 @@ class FileDeletedEvent extends RoomEvent {
   final String path;
 
   String get name => "file deleted";
-  String get description => "a file was deleted at the path ${path}";
+  String get description => "a file was deleted at the path $path";
 }
 
 class FileUpdatedEvent extends RoomEvent {
@@ -250,7 +250,7 @@ class FileUpdatedEvent extends RoomEvent {
   final String path;
 
   String get name => "file updated";
-  String get description => "a file was updated at the path ${path}";
+  String get description => "a file was updated at the path $path";
 }
 
 class RoomLogEvent extends RoomEvent {
@@ -305,8 +305,8 @@ class RoomClient extends ChangeEmitter {
 
   void dispose() {
     sync.dispose();
-    this.protocol.dispose();
-    this._localParticipant = null;
+    protocol.dispose();
+    _localParticipant = null;
   }
 
   // send a request, optionally with a binary trailer
@@ -321,14 +321,14 @@ class RoomClient extends ChangeEmitter {
     await protocol.send(type, message, id: requestId);
     final response = await pr.fut;
     if (response is ErrorResponse) {
-      throw new RoomServerException(response.text);
+      throw RoomServerException(response.text);
     }
     return response;
   }
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
     final response = unpackResponse(data);
-    print("GOT RESPONSE: ${response}");
+    print("GOT RESPONSE: $response");
     final requestId = messageId;
 
     if (_pendingRequests.containsKey(requestId)) {
@@ -419,7 +419,7 @@ class SyncClient extends ChangeEmitter {
   }
 
   void dispose() {
-    this._changesToSync.close();
+    _changesToSync.close();
   }
 
   final _connectingDocuments = Map<String, Future>();
@@ -450,7 +450,7 @@ class SyncClient extends ChangeEmitter {
         doc._synchronized.complete(true);
       }
     } else {
-      throw RoomServerException("received change for a document that is not connected:" + path);
+      throw RoomServerException("received change for a document that is not connected:$path");
     }
   }
 
@@ -464,7 +464,7 @@ class SyncClient extends ChangeEmitter {
 
   Future<MeshDocument> open(String path, {bool create = true}) async {
     if (_connectingDocuments.containsKey(path) || _connectedDocuments.containsKey(path)) {
-      throw RoomServerException("Already connected to" + path);
+      throw RoomServerException("Already connected to $path");
     }
 
     // todo: add support for state vector / partial updates
@@ -499,7 +499,7 @@ class SyncClient extends ChangeEmitter {
     await room.sendRequest("room.disconnect", {"path": path});
 
     if (!_connectedDocuments.containsKey(path)) {
-      throw RoomServerException("Not connected to " + path);
+      throw RoomServerException("Not connected to $path");
     }
 
     final doc = _connectedDocuments.remove(path);
@@ -631,7 +631,7 @@ class LivekitConnectionInfo {
 }
 
 class LivekitClient {
-  LivekitClient({required this.room}) {}
+  LivekitClient({required this.room});
 
   RoomClient room;
 
@@ -643,7 +643,7 @@ class LivekitClient {
 }
 
 class AgentsClient extends ChangeEmitter {
-  AgentsClient({required this.room}) {}
+  AgentsClient({required this.room});
 
   RoomClient room;
 
@@ -825,8 +825,11 @@ class MessageStreamReader {
        _client = client,
        _controller = controller;
 
+  // ignore: unused_field
   final String _streamId;
+  // ignore: unused_field
   final Participant _to;
+  // ignore: unused_field
   final MessagingClient _client;
   final StreamController _controller;
 }
@@ -888,8 +891,8 @@ class MessagingClient extends ChangeEmitter {
     room.protocol.addHandler("messaging.send", _handleMessageSend);
   }
 
-  Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
-  Map<String, MessageStreamReader> _streamReaders = {};
+  final Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
+  final Map<String, MessageStreamReader> _streamReaders = {};
 
   Future<MessageStreamWriter> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
@@ -1035,7 +1038,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onStreamReject(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamWriters[streamId]!.completeError(new Exception("The stream was rejected by the remote client"));
+    _streamWriters[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
   }
 
   void _onStreamChunk(RoomMessage message) {
@@ -1105,7 +1108,7 @@ class LinkResponse extends Response {
 
   @override
   String toString() {
-    return "LinkResponse (${name}): ${url}";
+    return "LinkResponse ($name): $url";
   }
 }
 
@@ -1130,7 +1133,7 @@ class FileResponse extends Response {
 
   @override
   String toString() {
-    return "FileResponse (${mimeType}): ${name} ";
+    return "FileResponse ($mimeType): $name ";
   }
 }
 
@@ -1153,7 +1156,7 @@ class TextResponse extends Response {
 
   @override
   String toString() {
-    return "TextResponse: ${text}";
+    return "TextResponse: $text";
   }
 }
 
@@ -1176,7 +1179,7 @@ class ErrorResponse extends Response {
 
   @override
   String toString() {
-    return "ErrorResponse: ${text}";
+    return "ErrorResponse: $text";
   }
 }
 

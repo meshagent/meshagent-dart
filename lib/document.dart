@@ -5,7 +5,7 @@ import 'package:meshagent/schema.dart';
 import "package:uuid/uuid.dart";
 
 class ChangeEmitter {
-  List<void Function()> _listeners = [];
+  final List<void Function()> _listeners = [];
 
   void notifyListeners() {
     for (var l in _listeners) {
@@ -54,19 +54,19 @@ class Element extends Node {
   }
 
   String? get id {
-    return this.getAttribute("\$id");
+    return getAttribute("\$id");
   }
 
   dynamic getAttribute(String name) {
-    return this.attributes[name];
+    return attributes[name];
   }
 
   void setAttribute(String name, dynamic value) {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.id,
+          "nodeID": id,
           "setAttributes": {name: value},
         },
       ],
@@ -74,11 +74,11 @@ class Element extends Node {
   }
 
   void removeAttribute(String name) {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.id,
+          "nodeID": id,
           "removeAttributes": [name],
         },
       ],
@@ -115,13 +115,13 @@ class Element extends Node {
     final elementData = <String, dynamic>{
       "name": tagName,
       "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
-      "children": this._defaultChildren(tagName),
+      "children": _defaultChildren(tagName),
     };
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.id,
+          "nodeID": id,
           "insertChildren": {
             "children": [
               {"element": elementData},
@@ -130,7 +130,7 @@ class Element extends Node {
         },
       ],
     });
-    return this.getNodeByID(elementData["attributes"]["\$id"])!;
+    return getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
   Element createChildElementAt(int index, String tagName, Map<String, dynamic> attributes, {String? id}) {
@@ -140,10 +140,10 @@ class Element extends Node {
     final elementData = <String, dynamic>{
       "name": tagName,
       "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
-      "children": this._defaultChildren(tagName),
+      "children": _defaultChildren(tagName),
     };
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
           "nodeID": this.id,
@@ -156,7 +156,7 @@ class Element extends Node {
         },
       ],
     });
-    return this.getNodeByID(elementData["attributes"]["\$id"])!;
+    return getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
   Element createChildElementAfter(Element element, String tagName, Map<String, dynamic> attributes, {String? id}) {
@@ -169,10 +169,10 @@ class Element extends Node {
     final elementData = <String, dynamic>{
       "name": tagName,
       "attributes": {"\$id": id ?? const Uuid().v4(), ...attributes},
-      "children": this._defaultChildren(tagName),
+      "children": _defaultChildren(tagName),
     };
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
           "nodeID": this.id,
@@ -185,7 +185,7 @@ class Element extends Node {
         },
       ],
     });
-    return this.getNodeByID(elementData["attributes"]!["\$id"])!;
+    return getNodeByID(elementData["attributes"]!["\$id"])!;
   }
 
   List<Map<String, dynamic>> _defaultChildren(tagName) {
@@ -200,16 +200,16 @@ class Element extends Node {
   }
 
   void delete() {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
-        {"nodeID": this.id, "delete": {}},
+        {"nodeID": id, "delete": {}},
       ],
     });
   }
 
   List<Node> getChildren() {
-    return this.children;
+    return children;
   }
 
   // Equivalent of the Python append_json
@@ -222,7 +222,7 @@ class Element extends Node {
       // Extract children
       final children = attributes.remove(elementType.childPropertyName!) as List;
       // Create the element
-      final element = this.createChildElement(tagName, attributes);
+      final element = createChildElement(tagName, attributes);
       // Append each child
       for (final child in children) {
         element.appendJson(child as Map<String, dynamic>);
@@ -230,7 +230,7 @@ class Element extends Node {
       return element;
     } else {
       // Just create the child element with given attributes
-      return this.createChildElement(tagName, attributes);
+      return createChildElement(tagName, attributes);
     }
   }
 }
@@ -241,11 +241,11 @@ class TextElement extends Node {
   final List<Map<String, dynamic>> delta;
 
   void insert(int index, String text, {Map<String, dynamic>? attributes}) {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.parent!.id,
+          "nodeID": parent!.id,
           "insertText": {"index": index, "text": text, "attributes": attributes ?? {}},
         },
       ],
@@ -253,11 +253,11 @@ class TextElement extends Node {
   }
 
   void format(int from, int length, Map<String, dynamic> attributes) {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.parent!.id,
+          "nodeID": parent!.id,
           "formatText": {"from": from, "length": length, "attributes": attributes},
         },
       ],
@@ -265,11 +265,11 @@ class TextElement extends Node {
   }
 
   void delete(int index, int length) {
-    this.doc.sendChanges({
-      "documentID": this.doc.id,
+    doc.sendChanges({
+      "documentID": doc.id,
       "changes": [
         {
-          "nodeID": this.parent!.id,
+          "nodeID": parent!.id,
           "deleteText": {"index": index, "length": length},
         },
       ],
@@ -312,7 +312,7 @@ class RuntimeDocument extends ChangeEmitter {
 
       if (elementData["children"] != null) {
         for (final child in elementData["children"]) {
-          element.children.add(this._createNode(element, child));
+          element.children.add(_createNode(element, child));
         }
       }
       return element;
@@ -331,7 +331,7 @@ class RuntimeDocument extends ChangeEmitter {
     print("Applying changes to dart doc ${jsonEncode(message)}");
 
     final nodeID = message["target"] as String?;
-    final target = message["root"] == true ? this.root : this.root.getNodeByID(nodeID!);
+    final target = message["root"] == true ? root : root.getNodeByID(nodeID!);
     // process element deltas
 
     num retain = 0;
@@ -348,7 +348,7 @@ class RuntimeDocument extends ChangeEmitter {
             target!.children.insert(retain.toInt(), _createNode(target, insert));
             retain++;
           } else {
-            throw new Exception("Unsupported element delta");
+            throw Exception("Unsupported element delta");
           }
         }
       } else if (delta["delete"] != null) {
@@ -361,7 +361,7 @@ class RuntimeDocument extends ChangeEmitter {
     List? text = message["text"];
     if (text != null && text.isNotEmpty) {
       if (target!.tagName != "text") {
-        throw Exception("Node is not a text node: " + target.tagName);
+        throw Exception('Node is not a text node: $target.tagName');
       }
 
       final textNode = target.children[0] as TextElement;

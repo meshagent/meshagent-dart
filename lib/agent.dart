@@ -105,7 +105,7 @@ abstract class Toolkit {
         return tool;
       }
     }
-    throw Exception("Tool was not found ${name}");
+    throw Exception("Tool was not found $name");
   }
 
   Map<String, dynamic> getTools() {
@@ -147,7 +147,7 @@ abstract class RemoteToolkit extends Toolkit {
        title = title;
 
   Future<void> start({bool public = false}) async {
-    client.protocol.addHandler("agent.tool_call.${name}", _toolCall);
+    client.protocol.addHandler("agent.tool_call.$name", _toolCall);
 
     await _register(public: public);
   }
@@ -155,7 +155,7 @@ abstract class RemoteToolkit extends Toolkit {
   Future<void> stop() async {
     await _unregister();
 
-    client.protocol.removeHandler("agent.tool_call.${name}", _toolCall);
+    client.protocol.removeHandler("agent.tool_call.$name", _toolCall);
   }
 
   String? _registrationId;
@@ -185,7 +185,7 @@ abstract class RemoteToolkit extends Toolkit {
       var response = await execute(toolName, args);
       await client.protocol.send(id: messageId, "agent.tool_call_response", response.pack());
     } catch (e) {
-      await client.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "${e}").pack());
+      await client.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "$e").pack());
     }
   }
 }
@@ -231,12 +231,12 @@ abstract class RemoteTaskRunner {
   Future<void> _register() async {
     final response =
         (await client.sendRequest("agent.register_agent", {
-                  "name": this.name,
-                  "description": this.description,
-                  "input_schema": this.inputSchema,
-                  "output_schema": this.outputSchema,
-                  "supports_tools": this.supportsTools,
-                  "requires": [...this.required.map((r) => r.toJson())],
+                  "name": name,
+                  "description": description,
+                  "input_schema": inputSchema,
+                  "output_schema": outputSchema,
+                  "supports_tools": supportsTools,
+                  "requires": [...required.map((r) => r.toJson())],
                 })
                 as JsonResponse)
             .json;

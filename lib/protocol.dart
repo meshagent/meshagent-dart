@@ -112,7 +112,7 @@ class Protocol<T extends ProtocolChannel> {
 
     final handler = handlers[type] ?? handlers["*"];
     if (handler == null) {
-      throw new Exception("No handler registered for ${type}");
+      throw Exception("No handler registered for $type");
     }
     await handler(this, messageId, type, data);
   }
@@ -137,7 +137,7 @@ class Protocol<T extends ProtocolChannel> {
 
   final T channel;
 
-  void start([ProtocolMessageHandler? onMessage = null]) {
+  void start([ProtocolMessageHandler? onMessage]) {
     if (onMessage != null) {
       addHandler("*", onMessage);
     }
