@@ -702,8 +702,8 @@ class AgentsClient extends ChangeEmitter {
 
 class StorageClient extends ChangeEmitter {
   StorageClient({required this.room}) {
-    room.protocol.addHandler("storage.file_deleted", _handleFileDeleted);
-    room.protocol.addHandler("storage.file_updated", _handleFileUpdated);
+    room.protocol.addHandler("storage.file.deleted", _handleFileDeleted);
+    room.protocol.addHandler("storage.file.updated", _handleFileUpdated);
   }
 
   RoomClient room;
