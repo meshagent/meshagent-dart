@@ -5,11 +5,7 @@ import 'data_types.dart';
 /// A literal type for controlling table creation mode.
 /// In TypeScript: type CreateMode = "create" | "overwrite" | "create_if_not_exists";
 /// In Dart, we can use an enum or string constants. Here we'll use an enum.
-enum CreateMode {
-  create,
-  overwrite,
-  createIfNotExists,
-}
+enum CreateMode { create, overwrite, createIfNotExists }
 
 extension CreateModeValue on CreateMode {
   String get value {
@@ -58,12 +54,7 @@ class DatabaseClient {
       });
     }
 
-    final payload = <String, dynamic>{
-      "name": name,
-      "data": data,
-      "schema": schemaDict,
-      "mode": mode.value,
-    };
+    final payload = <String, dynamic>{"name": name, "data": data, "schema": schemaDict, "mode": mode.value};
 
     await room.sendRequest("database.create_table", payload);
   }
@@ -75,109 +66,48 @@ class DatabaseClient {
     List<Map<String, dynamic>>? data,
     CreateMode mode = CreateMode.create,
   }) {
-    return _createTable(
-      name: name,
-      schema: schema,
-      data: data,
-      mode: mode,
-    );
+    return _createTable(name: name, schema: schema, data: data, mode: mode);
   }
 
   /// Create a table from initial data, optionally specifying a mode.
-  Future<void> createTableFromData({
-    required String name,
-    List<Map<String, dynamic>>? data,
-    CreateMode mode = CreateMode.create,
-  }) {
-    return _createTable(
-      name: name,
-      data: data,
-      mode: mode,
-    );
+  Future<void> createTableFromData({required String name, List<Map<String, dynamic>>? data, CreateMode mode = CreateMode.create}) {
+    return _createTable(name: name, data: data, mode: mode);
   }
 
   /// Drop (delete) a table by name.
-  Future<void> dropTable({
-    required String name,
-    bool ignoreMissing = false,
-  }) async {
-    await room.sendRequest("database.drop_table", {
-      "name": name,
-      "ignoreMissing": ignoreMissing,
-    });
+  Future<void> dropTable({required String name, bool ignoreMissing = false}) async {
+    await room.sendRequest("database.drop_table", {"name": name, "ignoreMissing": ignoreMissing});
   }
 
   /// Add new columns to an existing table.
-  Future<void> addColumns({
-    required String table,
-    required Map<String, String> newColumns,
-  }) async {
-    await room.sendRequest("database.add_columns", {
-      "table": table,
-      "new_columns": newColumns,
-    });
+  Future<void> addColumns({required String table, required Map<String, String> newColumns}) async {
+    await room.sendRequest("database.add_columns", {"table": table, "new_columns": newColumns});
   }
 
   /// Drop columns from an existing table.
-  Future<void> dropColumns({
-    required String table,
-    required List<String> columns,
-  }) async {
-    await room.sendRequest("database.drop_columns", {
-      "table": table,
-      "columns": columns,
-    });
+  Future<void> dropColumns({required String table, required List<String> columns}) async {
+    await room.sendRequest("database.drop_columns", {"table": table, "columns": columns});
   }
 
   /// Insert new records into a table.
-  Future<void> insert({
-    required String table,
-    required List<Map<String, dynamic>> records,
-  }) async {
-    await room.sendRequest("database.insert", {
-      "table": table,
-      "records": records,
-    });
+  Future<void> insert({required String table, required List<Map<String, dynamic>> records}) async {
+    await room.sendRequest("database.insert", {"table": table, "records": records});
   }
 
   /// Update existing records in a table.
-  Future<void> update({
-    required String table,
-    required String where,
-    Map<String, dynamic>? values,
-    Map<String, String>? valuesSql,
-  }) async {
-    final payload = <String, dynamic>{
-      "table": table,
-      "where": where,
-      "values": values,
-      "valuesSql": valuesSql,
-    };
+  Future<void> update({required String table, required String where, Map<String, dynamic>? values, Map<String, String>? valuesSql}) async {
+    final payload = <String, dynamic>{"table": table, "where": where, "values": values, "valuesSql": valuesSql};
     await room.sendRequest("database.update", payload);
   }
 
   /// Delete records from a table.
-  Future<void> delete({
-    required String table,
-    required String where,
-  }) async {
-    await room.sendRequest("database.delete", {
-      "table": table,
-      "where": where,
-    });
+  Future<void> delete({required String table, required String where}) async {
+    await room.sendRequest("database.delete", {"table": table, "where": where});
   }
 
   /// Merge (upsert) records into a table.
-  Future<void> merge({
-    required String table,
-    required String on,
-    required List<Map<String, dynamic>> records,
-  }) async {
-    await room.sendRequest("database.merge", {
-      "table": table,
-      "on": on,
-      "records": records,
-    });
+  Future<void> merge({required String table, required String on, required List<Map<String, dynamic>> records}) async {
+    await room.sendRequest("database.merge", {"table": table, "on": on, "records": records});
   }
 
   /// Search for records in a table.
@@ -201,11 +131,7 @@ class DatabaseClient {
       whereClause = where;
     }
 
-    final payload = <String, dynamic>{
-      "table": table,
-      "where": whereClause,
-      "text": text,
-    };
+    final payload = <String, dynamic>{"table": table, "where": whereClause, "text": text};
 
     if (limit != null) {
       payload["limit"] = limit;
@@ -243,42 +169,23 @@ class DatabaseClient {
   }
 
   /// Create a vector index on a given column.
-  Future<void> createVectorIndex({
-    required String table,
-    required String column,
-  }) async {
-    await room.sendRequest("database.create_vector_index", {
-      "table": table,
-      "column": column,
-    });
+  Future<void> createVectorIndex({required String table, required String column}) async {
+    await room.sendRequest("database.create_vector_index", {"table": table, "column": column});
   }
 
   /// Create a scalar index on a given column.
-  Future<void> createScalarIndex({
-    required String table,
-    required String column,
-  }) async {
-    await room.sendRequest("database.create_scalar_index", {
-      "table": table,
-      "column": column,
-    });
+  Future<void> createScalarIndex({required String table, required String column}) async {
+    await room.sendRequest("database.create_scalar_index", {"table": table, "column": column});
   }
 
   /// Create a full-text search index on a given text column.
-  Future<void> createFullTextSearchIndex({
-    required String table,
-    required String column,
-  }) async {
-    await room.sendRequest("database.create_full_text_search_index", {
-      "table": table,
-      "column": column,
-    });
+  Future<void> createFullTextSearchIndex({required String table, required String column}) async {
+    await room.sendRequest("database.create_full_text_search_index", {"table": table, "column": column});
   }
 
   /// List all indexes on a table.
   Future<Map<String, dynamic>> listIndexes({required String table}) async {
-    final response = await room.sendRequest("database.list_indexes", {"table": table})
-        as Map<String, dynamic>?;
+    final response = await room.sendRequest("database.list_indexes", {"table": table}) as Map<String, dynamic>?;
     final json = response?["json"] as Map<String, dynamic>?;
 
     return json ?? {};

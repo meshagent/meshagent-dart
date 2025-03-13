@@ -103,19 +103,12 @@ class VectorDataType extends DataType {
     if (data['type'] != 'vector') {
       throw Exception("Expected type 'vector', got '${data['type']}'");
     }
-    return VectorDataType(
-      size: data['size'] as int,
-      elementType: DataType.fromJson(data['element_type'] as Map<String, dynamic>),
-    );
+    return VectorDataType(size: data['size'] as int, elementType: DataType.fromJson(data['element_type'] as Map<String, dynamic>));
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {
-      'type': 'vector',
-      'size': size,
-      'element_type': elementType.toJson(),
-    };
+    return {'type': 'vector', 'size': size, 'element_type': elementType.toJson()};
   }
 }
 
@@ -154,4 +147,3 @@ void registerAllDataTypes() {
   _registerVectorDataType();
   _registerTextDataType();
 }
-

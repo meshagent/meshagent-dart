@@ -875,9 +875,7 @@ class QueuesClient {
   Future<List<Queue>> list() async {
     final response = (await room.sendRequest("queues.list", {})) as JsonResponse;
 
-    return (response.json["queues"] as List)
-      .map((i) => Queue(name: i["name"], size: i["size"]))
-      .toList();
+    return (response.json["queues"] as List).map((i) => Queue(name: i["name"], size: i["size"])).toList();
   }
 
   Future<void> open(String name) async {
@@ -893,19 +891,11 @@ class QueuesClient {
   }
 
   Future<void> send(String name, Map<String, dynamic> message, {bool create = true}) async {
-    await room.sendRequest("queues.send", {
-      "name": name,
-      "create": create,
-      "message": message,
-    });
+    await room.sendRequest("queues.send", {"name": name, "create": create, "message": message});
   }
 
   Future<Map<String, dynamic>?> receive(String name, {bool create = true, bool wait = true}) async {
-    final response = await room.sendRequest("queues.receive", {
-      "name": name,
-      "create": create,
-      "wait": wait,
-    });
+    final response = await room.sendRequest("queues.receive", {"name": name, "create": create, "wait": wait});
 
     if (response is EmptyResponse) {
       return null;
