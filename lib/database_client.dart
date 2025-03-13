@@ -34,11 +34,10 @@ class DatabaseClient {
   /// List all tables in the database.
   /// @returns A future resolving to an array of table names.
   Future<List<String>> listTables() async {
-    final response = await room.sendRequest("database.list_tables", {}) as Map<String, dynamic>?;
-    final json = response?["json"] as Map<String, dynamic>?;
+    final response = (await room.sendRequest("database.list_tables", {}) as JsonResponse);
 
     // Safely extract tables from response JSON
-    final tables = json?["tables"] as List<dynamic>? ?? [];
+    final tables = response.json["tables"] as List<dynamic>? ?? [];
 
     return tables.map((e) => e.toString()).toList();
   }
@@ -207,6 +206,7 @@ class DatabaseClient {
       "where": whereClause,
       "text": text,
     };
+
     if (limit != null) {
       payload["limit"] = limit;
     }
@@ -217,18 +217,16 @@ class DatabaseClient {
       payload["vector"] = vector;
     }
 
-    final response = await room.sendRequest("database.search", payload);
+    final response = (await room.sendRequest("database.search", payload) as JsonResponse);
+
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
     // Then parse it accordingly:
-    if (response is Map<String, dynamic>) {
-      final json = response["json"];
-      if (json is Map<String, dynamic>) {
-        final results = json["results"];
-        if (results is List) {
-          return results.map((e) => e as Map<String, dynamic>).toList();
-        }
-      }
+    final results = response.json["results"];
+
+    if (results is List) {
+      return results.map((e) => e as Map<String, dynamic>).toList();
     }
+
     return [];
   }
 
