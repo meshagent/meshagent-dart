@@ -946,7 +946,7 @@ class MessagingClient extends ChangeEmitter {
       fromParticipantId: header["from_participant_id"],
       type: header["type"],
       message: header["message"],
-      attachment: payload,
+      attachment: payload.isEmpty ? null : payload,
     );
 
     if (message.type == "messaging.enabled") {
