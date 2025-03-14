@@ -20,7 +20,7 @@ class ProtocolMessage {
 abstract class ProtocolChannel {
   ProtocolChannel();
 
-  void start(void Function(Uint8List data) onDataReceived);
+  void start(void Function(Uint8List data) onDataReceived, { void Function()? onDone, void Function(Object? error)? onError });
   void dispose();
 
   Future<void> sendData(Uint8List data);
@@ -35,12 +35,14 @@ class StreamProtocolChannel extends ProtocolChannel {
   StreamSubscription<Uint8List>? subscription;
 
   @override
-  void start(void Function(Uint8List data) onDataReceived) {
+  void start(void Function(Uint8List data) onDataReceived,  { void Function()? onDone, void Function(Object? error)? onError }) {
     if (subscription != null) {
       throw Exception("Already started");
     }
-    subscription = input.listen(onDataReceived);
+    subscription = input.listen(onDataReceived, onError: onError, onDone: onDone, cancelOnError: true);
   }
+
+
 
   @override
   void dispose() {
@@ -70,10 +72,10 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void Function(Uint8List data)? onDataReceived;
 
   @override
-  void start(void Function(Uint8List data) onDataReceived) {
+  void start(void Function(Uint8List data) onDataReceived,  { void Function()? onDone, void Function(Object? error)? onError }) {
     this.onDataReceived = onDataReceived;
     webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt}));
-    sub = webSocket!.stream.listen(onData);
+    sub = webSocket!.stream.listen(onData, onDone: onDone, onError: onError);
   }
 
   void onData(dynamic data) {
@@ -137,11 +139,11 @@ class Protocol<T extends ProtocolChannel> {
 
   final T channel;
 
-  void start([ProtocolMessageHandler? onMessage]) {
+  void start({ProtocolMessageHandler? onMessage, void Function()? onDone, void Function(Object? error)? onError }) {
     if (onMessage != null) {
       addHandler("*", onMessage);
     }
-    channel.start(onDataReceived);
+    channel.start(onDataReceived, onDone: onDone, onError: onError);
 
     () async {
       await for (final message in _send.stream) {

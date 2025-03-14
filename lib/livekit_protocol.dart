@@ -15,8 +15,8 @@ class LivekitProtocolChannel extends ProtocolChannel {
 
   void Function(Uint8List data)? onDataReceived;
 
-  @override
-  void start(void Function(Uint8List data) onDataReceived) {
+  @override  
+  void start(void Function(Uint8List data) onDataReceived, { void Function()? onDone, void Function(Object? error)? onError }) {
     this.onDataReceived = onDataReceived;
     listener = room.createListener();
     listener!.on<lk.DataReceivedEvent>(onDataPacket);

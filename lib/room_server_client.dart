@@ -316,7 +316,9 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
-  void start() {
+  void start({ void Function()? onDone, void Function(Object? error)? onError }) {
+    protocol.start(onDone: onDone, onError: onError);
+
     sync.start();
   }
 
@@ -428,8 +430,7 @@ class SyncClient extends ChangeEmitter {
   }
 
   void start() {
-    room.protocol.start();
-
+   
     () async {
       await for (final message in _changesToSync.stream) {
         print("sending changes to backend ${message.base64}");
