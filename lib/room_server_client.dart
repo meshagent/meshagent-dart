@@ -490,17 +490,17 @@ class SyncClient extends ChangeEmitter {
 
   Future<MeshDocument> open(String path, {bool create = true}) async {
     final pending = _connectingDocuments[path];
-      
+
     if (pending != null) {
       await pending;
-    } 
-    
-    if(_connectedDocuments[path] != null) {
+    }
+
+    if (_connectedDocuments[path] != null) {
       final connectedDoc = _connectedDocuments[path];
       connectedDoc!.count++;
       return connectedDoc.ref;
     }
-    
+
     // todo: add support for state vector / partial updates
     // todo: initial bytes loading
 
@@ -537,7 +537,7 @@ class SyncClient extends ChangeEmitter {
 
     final doc = _connectedDocuments[path];
     doc!.count--;
-    if(doc.count == 0) {
+    if (doc.count == 0) {
       _connectedDocuments.remove(path);
       await room.sendRequest("room.disconnect", {"path": path});
       DocumentRuntime.instance.unregisterDocument(doc.ref!);

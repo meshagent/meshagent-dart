@@ -234,22 +234,20 @@ class MeshElement extends MeshNode {
     }
   }
 
-  Map<String,dynamic> toJson({ bool includeIds = false }) {
-    final props = <String,dynamic> {};
+  Map<String, dynamic> toJson({bool includeIds = false}) {
+    final props = <String, dynamic>{};
 
-    for(final k in attributes.keys) {
-        if(k != "\$id" || includeIds) {
-            props[k] = attributes[k];
-        }
+    for (final k in attributes.keys) {
+      if (k != "\$id" || includeIds) {
+        props[k] = attributes[k];
+      }
     }
 
     final schema = doc.schema.elementsByTagName[tagName];
-    if(schema!.childPropertyName != null) {
-        props[schema.childPropertyName!] = getChildren().whereType<MeshElement>().map((x) => x.toJson(includeIds: includeIds)).toList();
+    if (schema!.childPropertyName != null) {
+      props[schema.childPropertyName!] = getChildren().whereType<MeshElement>().map((x) => x.toJson(includeIds: includeIds)).toList();
     }
-    return {
-        tagName: props
-    };
+    return {tagName: props};
   }
 }
 
@@ -532,11 +530,7 @@ class RuntimeDocument extends ChangeEmitter {
 
     notifyListeners();
   }
-
-
-
 }
- 
 
 String tagNameFromJson(Map<String, dynamic> json) {
   if (json.length != 1) {
