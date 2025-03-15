@@ -57,11 +57,11 @@ class AgentChatContext {
     return AgentChatContext(messages: cloned.map((e) => Map<String, dynamic>.from(e)).toList(), systemRole: systemRole);
   }
 
-  Map<String, dynamic> to_json() {
+  Map<String, dynamic> toJson() {
     return {"messages": messages, "system_role": systemRole};
   }
 
-  static AgentChatContext from_json(Map<String, dynamic> json) {
+  static AgentChatContext fromJson(Map<String, dynamic> json) {
     return AgentChatContext(messages: List<Map<String, dynamic>>.from(json["messages"]));
   }
 }
@@ -78,7 +78,7 @@ class AgentCallContext {
 
   AgentChatContext get chat => _chat;
   String get jwt => _jwt;
-  String get api_url => _apiUrl;
+  String get apiUrl => _apiUrl;
 }
 
 abstract class Tool {
@@ -255,18 +255,18 @@ abstract class RemoteTaskRunner {
 
     var jwt = message["jwt"] as String;
     var args = message["arguments"] as Map<String, dynamic>;
-    var task_id = message["task_id"] as String;
-    var context_json = message["context"] as Map<String, dynamic>;
+    var taskId = message["task_id"] as String;
+    var contextJson = message["context"] as Map<String, dynamic>;
     var api_url = message["api_url"] as String;
 
     try {
-      var chat_context = AgentChatContext.from_json(context_json);
-      var context = AgentCallContext(chat: chat_context, jwt: jwt, api_url: api_url);
+      var chatContext = AgentChatContext.fromJson(contextJson);
+      var context = AgentCallContext(chat: chatContext, jwt: jwt, api_url: api_url);
       var response = await ask(context, args);
 
-      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": task_id, "response": response})));
+      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": taskId, "response": response})));
     } catch (e) {
-      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": task_id, "error": e.toString()})));
+      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": taskId, "error": e.toString()})));
     }
   }
 }

@@ -22,28 +22,28 @@ class ChangeEmitter {
   }
 }
 
-class Node extends ChangeEmitter {
-  Node({this.parent, required this.doc});
+class MeshNode extends ChangeEmitter {
+  MeshNode({this.parent, required this.doc});
 
-  final Element? parent;
+  final MeshElement? parent;
   final RuntimeDocument doc;
 }
 
-class Element extends Node {
-  Element({super.parent, required this.tagName, required this.attributes, required super.doc, required this.elementType});
+class MeshElement extends MeshNode {
+  MeshElement({super.parent, required this.tagName, required this.attributes, required super.doc, required this.elementType});
 
   final ElementType elementType;
-  final List<Node> children = [];
+  final List<MeshNode> children = [];
   final String tagName;
   final Map<String, dynamic> attributes;
 
-  Element? getNodeByID(String id) {
+  MeshElement? getNodeByID(String id) {
     if (id == this.id) {
       return this;
     }
 
     for (final child in getChildren()) {
-      if (child is Element) {
+      if (child is MeshElement) {
         final n = child.getNodeByID(id);
         if (n != null) {
           return n;
@@ -109,7 +109,7 @@ class Element extends Node {
     }
   }
 
-  Element createChildElement(String tagName, Map<String, dynamic> attributes, {String? id}) {
+  MeshElement createChildElement(String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
     final elementData = <String, dynamic>{
@@ -121,7 +121,7 @@ class Element extends Node {
       "documentID": doc.id,
       "changes": [
         {
-          "nodeID": id,
+          "nodeID": this.id,
           "insertChildren": {
             "children": [
               {"element": elementData},
@@ -133,7 +133,7 @@ class Element extends Node {
     return getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
-  Element createChildElementAt(int index, String tagName, Map<String, dynamic> attributes, {String? id}) {
+  MeshElement createChildElementAt(int index, String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
 
@@ -159,7 +159,7 @@ class Element extends Node {
     return getNodeByID(elementData["attributes"]["\$id"])!;
   }
 
-  Element createChildElementAfter(Element element, String tagName, Map<String, dynamic> attributes, {String? id}) {
+  MeshElement createChildElementAfter(MeshElement element, String tagName, Map<String, dynamic> attributes, {String? id}) {
     final childElementType = _ensureChildValid(tagName);
     _validateElementAttributes(childElementType, attributes);
 
@@ -208,12 +208,12 @@ class Element extends Node {
     });
   }
 
-  List<Node> getChildren() {
+  List<MeshNode> getChildren() {
     return children;
   }
 
   // Equivalent of the Python append_json
-  Element appendJson(Map<String, dynamic> json) {
+  MeshElement appendJson(Map<String, dynamic> json) {
     final tagName = tagNameFromJson(json);
     final attributes = attributesFromJson(json);
     final elementType = doc.schema.element(tagName);
@@ -233,9 +233,27 @@ class Element extends Node {
       return createChildElement(tagName, attributes);
     }
   }
+
+  Map<String,dynamic> toJson({ bool includeIds = false }) {
+    final props = <String,dynamic> {};
+
+    for(final k in attributes.keys) {
+        if(k != "\$id" || includeIds) {
+            props[k] = attributes[k];
+        }
+    }
+
+    final schema = doc.schema.elementsByTagName[tagName];
+    if(schema!.childPropertyName != null) {
+        props[schema.childPropertyName!] = getChildren().whereType<MeshElement>().map((x) => x.toJson(includeIds: includeIds)).toList();
+    }
+    return {
+        tagName: props
+    };
+  }
 }
 
-class TextElement extends Node {
+class TextElement extends MeshNode {
   TextElement({required super.parent, required this.delta, required super.doc});
 
   final List<Map<String, dynamic>> delta;
@@ -294,15 +312,15 @@ class RuntimeDocument extends ChangeEmitter {
 
   final void Function(Map<String, dynamic>) sendChanges;
 
-  late final root = Element(parent: null, tagName: schema.root.tagName, attributes: {}, doc: this, elementType: schema.root);
+  late final root = MeshElement(parent: null, tagName: schema.root.tagName, attributes: {}, doc: this, elementType: schema.root);
 
-  Node _createNode(Element? parent, Map<String, dynamic> data) {
+  MeshNode _createNode(MeshElement? parent, Map<String, dynamic> data) {
     if (data["element"] != null) {
       final elementData = data["element"];
       final tagName = elementData["tagName"] as String;
       final elementType = schema.element(tagName); // get schema type
 
-      final element = Element(
+      final element = MeshElement(
         parent: parent,
         tagName: tagName,
         attributes: (elementData["attributes"] as Map?)?.cast<String, dynamic>() ?? {},
@@ -514,7 +532,11 @@ class RuntimeDocument extends ChangeEmitter {
 
     notifyListeners();
   }
+
+
+
 }
+ 
 
 String tagNameFromJson(Map<String, dynamic> json) {
   if (json.length != 1) {

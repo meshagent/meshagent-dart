@@ -278,6 +278,13 @@ class RoomLogEvent extends RoomEvent {
   String get description => jsonEncode(data);
 }
 
+class _RefCount<T> {
+  _RefCount(this.ref);
+
+  T ref;
+  int count = 0;
+}
+
 class RoomClient extends ChangeEmitter {
   RoomClient({required this.protocol}) {
     protocol.addHandler("__response__", _handleResponse);
@@ -442,9 +449,9 @@ class SyncClient extends ChangeEmitter {
     _changesToSync.close();
   }
 
-  final _connectingDocuments = <String, Future>{};
+  final _connectingDocuments = <String, Future<_RefCount<MeshDocument>>>{};
   final _changesToSync = StreamController<_QueuedSync>();
-  final _connectedDocuments = <String, MeshDocument>{};
+  final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
 
   Future<void> _handleSync(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     print("GOT SYNC");
@@ -463,10 +470,10 @@ class SyncClient extends ChangeEmitter {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
       print("GOT SYNC $base64");
-      DocumentRuntime.instance.applyBackendChanges(documentId: doc.id, base64: base64);
+      DocumentRuntime.instance.applyBackendChanges(documentId: doc.ref.id, base64: base64);
 
-      if (!doc._synchronized.isCompleted) {
-        doc._synchronized.complete(true);
+      if (!doc.ref._synchronized.isCompleted) {
+        doc.ref._synchronized.complete(true);
       }
     } else {
       throw RoomServerException("received change for a document that is not connected:$path");
@@ -482,14 +489,22 @@ class SyncClient extends ChangeEmitter {
   }
 
   Future<MeshDocument> open(String path, {bool create = true}) async {
-    if (_connectingDocuments.containsKey(path) || _connectedDocuments.containsKey(path)) {
-      throw RoomServerException("Already connected to $path");
+    final pending = _connectingDocuments[path];
+      
+    if (pending != null) {
+      await pending;
+    } 
+    
+    if(_connectedDocuments[path] != null) {
+      final connectedDoc = _connectedDocuments[path];
+      connectedDoc!.count++;
+      return connectedDoc.ref;
     }
-
+    
     // todo: add support for state vector / partial updates
     // todo: initial bytes loading
 
-    final c = Completer();
+    final c = Completer<_RefCount<MeshDocument>>();
     _connectingDocuments[path] = c.future;
     try {
       final result = (await room.sendRequest("room.connect", {"path": path, "create": create})) as JsonResponse;
@@ -501,10 +516,11 @@ class SyncClient extends ChangeEmitter {
         schema: schema,
         sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)),
       );
-      _connectedDocuments[path] = doc;
+      final rc = _RefCount(doc);
+      _connectedDocuments[path] = rc;
       notifyListeners();
 
-      c.complete();
+      c.complete(rc);
       return doc;
     } catch (err) {
       c.completeError(err);
@@ -515,14 +531,17 @@ class SyncClient extends ChangeEmitter {
   }
 
   Future<void> close(String path) async {
-    await room.sendRequest("room.disconnect", {"path": path});
-
     if (!_connectedDocuments.containsKey(path)) {
       throw RoomServerException("Not connected to $path");
     }
 
-    final doc = _connectedDocuments.remove(path);
-    DocumentRuntime.instance.unregisterDocument(doc!);
+    final doc = _connectedDocuments[path];
+    doc!.count--;
+    if(doc.count == 0) {
+      _connectedDocuments.remove(path);
+      await room.sendRequest("room.disconnect", {"path": path});
+      DocumentRuntime.instance.unregisterDocument(doc.ref!);
+    }
   }
 
   Future<void> sync(String path, Uint8List data) async {
