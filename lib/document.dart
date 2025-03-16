@@ -33,7 +33,7 @@ class MeshElement extends MeshNode {
   MeshElement({super.parent, required this.tagName, required this.attributes, required super.doc, required this.elementType});
 
   final ElementType elementType;
-  final List<MeshNode> children = [];
+  final List<MeshNode> _children = [];
   final String tagName;
   final Map<String, dynamic> attributes;
 
@@ -209,7 +209,7 @@ class MeshElement extends MeshNode {
   }
 
   List<MeshNode> getChildren() {
-    return children;
+    return _children;
   }
 
   // Equivalent of the Python append_json
@@ -328,7 +328,7 @@ class RuntimeDocument extends ChangeEmitter {
 
       if (elementData["children"] != null) {
         for (final child in elementData["children"]) {
-          element.children.add(_createNode(element, child));
+          element._children.add(_createNode(element, child));
         }
       }
       return element;
@@ -358,17 +358,17 @@ class RuntimeDocument extends ChangeEmitter {
       if (delta["insert"] != null) {
         for (final insert in delta["insert"] as List) {
           if (insert["element"] != null) {
-            target!.children.insert(retain.toInt(), _createNode(target, insert));
+            target!._children.insert(retain.toInt(), _createNode(target, insert));
             retain++;
           } else if (insert["text"] != null) {
-            target!.children.insert(retain.toInt(), _createNode(target, insert));
+            target!._children.insert(retain.toInt(), _createNode(target, insert));
             retain++;
           } else {
             throw Exception("Unsupported element delta");
           }
         }
       } else if (delta["delete"] != null) {
-        target!.children.removeRange(retain.toInt(), (retain + (delta["delete"] as num)).toInt());
+        target!._children.removeRange(retain.toInt(), (retain + (delta["delete"] as num)).toInt());
         retain -= delta["delete"];
       }
     }
@@ -380,7 +380,7 @@ class RuntimeDocument extends ChangeEmitter {
         throw Exception('Node is not a text node: $target.tagName');
       }
 
-      final textNode = target.children[0] as TextElement;
+      final textNode = target._children[0] as TextElement;
       num retain = 0;
       int i = 0;
       num offset = 0;
