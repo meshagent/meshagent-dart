@@ -640,27 +640,6 @@ class ToolDescription {
   final Map<String, dynamic>? defs;
 }
 
-class ToolkitConfiguration {
-  const ToolkitConfiguration.all({required this.name}) : use = null;
-
-  const ToolkitConfiguration.partial({required this.name, required this.use});
-
-  final String name;
-  final List<String>? use;
-
-  Map<String, dynamic> toJson() {
-    if (use == null) {
-      return {name: {}};
-    } else {
-      return {
-        name: {
-          "use": {for (final tool in use!) tool: {}},
-        },
-      };
-    }
-  }
-}
-
 class LivekitConnectionInfo {
   const LivekitConnectionInfo({required this.url, required this.token});
 
@@ -691,14 +670,14 @@ class AgentsClient extends ChangeEmitter {
 
   Future<Map<String, dynamic>> ask({
     required String agentName,
-    List<ToolkitConfiguration> toolkits = const [],
+    List<Requirement> requires = const [],
     required Map<String, dynamic> arguments,
   }) async {
     try {
-      final usedToolkits = {for (final t in toolkits) ...t.toJson()};
+      final requiresJson = [ for (final t in requires) t.toJson() ];
 
       final result =
-          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "toolkits": usedToolkits})) as JsonResponse;
+          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson})) as JsonResponse;
 
       return result.json["answer"];
     } catch (err) {
