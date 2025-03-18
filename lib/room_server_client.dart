@@ -357,7 +357,6 @@ class RoomClient extends ChangeEmitter {
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
     final response = unpackResponse(data);
-    print("GOT RESPONSE: $response");
     final requestId = messageId;
 
     if (_pendingRequests.containsKey(requestId)) {
@@ -368,8 +367,7 @@ class RoomClient extends ChangeEmitter {
         pr._completer.complete(response);
       }
     } else {
-      // warning
-      print("received a response for a request that is not pending $requestId");
+      Logger.root.log(Level.WARNING, "received a response for a request that is not pending $requestId");
     }
     return;
   }
@@ -439,7 +437,6 @@ class SyncClient extends ChangeEmitter {
   void start() {
     () async {
       await for (final message in _changesToSync.stream) {
-        print("sending changes to backend ${message.base64}");
         room.sendRequest("room.sync", {"path": message.path}, data: utf8.encode(message.base64));
       }
     }();
@@ -454,7 +451,6 @@ class SyncClient extends ChangeEmitter {
   final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
 
   Future<void> _handleSync(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    print("GOT SYNC");
     final headerStr = splitMessageHeader(bytes);
     final payload = splitMessagePayload(bytes);
 
@@ -469,7 +465,6 @@ class SyncClient extends ChangeEmitter {
     if (_connectedDocuments.containsKey(path)) {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
-      print("GOT SYNC $base64");
       DocumentRuntime.instance.applyBackendChanges(documentId: doc.ref.id, base64: base64);
 
       if (!doc.ref._synchronized.isCompleted) {
@@ -510,7 +505,6 @@ class SyncClient extends ChangeEmitter {
       final result = (await room.sendRequest("room.connect", {"path": path, "create": create})) as JsonResponse;
 
       MeshSchema schema = MeshSchema.fromJson(result.json["schema"]);
-      print(jsonEncode(schema.toJson()));
 
       final doc = MeshDocument(
         schema: schema,
@@ -540,7 +534,7 @@ class SyncClient extends ChangeEmitter {
     if (doc.count == 0) {
       _connectedDocuments.remove(path);
       await room.sendRequest("room.disconnect", {"path": path});
-      DocumentRuntime.instance.unregisterDocument(doc.ref!);
+      DocumentRuntime.instance.unregisterDocument(doc.ref);
     }
   }
 

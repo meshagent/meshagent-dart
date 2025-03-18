@@ -24,10 +24,8 @@ class ParticipantToken {
 
   final Map<String, dynamic>? extra;
 
-  ParticipantToken({required this.name, required String projectId, required String apiKeyId, this.extra, List<ParticipantGrant>? grants})
-    : grants = grants ?? [],
-      projectId = projectId,
-      apiKeyId = apiKeyId;
+  ParticipantToken({required this.name, required this.projectId, required this.apiKeyId, this.extra, List<ParticipantGrant>? grants})
+    : grants = grants ?? [];
 
   bool get isAgent {
     for (final grant in grants) {
@@ -72,7 +70,7 @@ class ParticipantToken {
 
   /// Creates a [ParticipantToken] from a JSON Map.
   factory ParticipantToken.fromJson(Map<String, dynamic> json) {
-    var extra = Map<String, dynamic>();
+    var extra = <String, dynamic>{};
     for (final key in json.keys) {
       if (key != 'name' && key != 'sub' && key != 'grants' && key != 'kid') {
         extra[key] = json[key];

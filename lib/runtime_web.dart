@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import "package:logging/logging.dart";
 import 'document.dart';
 import 'runtime.dart';
 
@@ -32,7 +33,9 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   static final _init = (() async {
     final element = web.document.createElement("script")
       ..innerHTML =
-          ('''
+          (
+              // ignore: prefer_interpolation_to_compose_strings
+              '''
     
         const module = {
           exports: {
@@ -51,7 +54,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     if (doc.sendChangesToBackend != null) {
       doc.sendChangesToBackend!(base64);
     } else {
-      print("Document sync handler is not attached");
+      Logger.root.log(Level.WARNING, "Document sync handler is not attached");
     }
   }
 
@@ -66,7 +69,6 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     final parsed = jsonDecode(js) as Map;
     try {
       final documentID = parsed["documentID"];
-      print(documentID);
 
       final doc = _documents[documentID];
       if (doc != null) {
@@ -75,13 +77,12 @@ class DocumentRuntimeImpl extends DocumentRuntime {
         throw Exception("Document is not registered $documentID");
       }
     } catch (err, stack) {
-      print("error: $err $stack");
+      Logger.root.log(Level.WARNING, "error: $err $stack");
     }
   }
 
   @override
   void registerDocument(RuntimeDocument document) {
-    print("Registering document ${document.id}");
     _documents[document.id] = document;
     void Function(String) onSendUpdateToBackend = this.onSendUpdateToBackend;
     void Function(String) onSendUpdateToClient = this.onSendUpdateToClient;
@@ -91,7 +92,6 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
   @override
   void unregisterDocument(RuntimeDocument document) {
-    print("Unregistering document ${document.id}");
     _documents.remove(document.id);
     _runtimeUnregisterDocument(document.id.toJS);
   }

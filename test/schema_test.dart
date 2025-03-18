@@ -1,6 +1,6 @@
 import 'package:test/test.dart';
 import 'package:json_schema/json_schema.dart';
-import '../lib/schema.dart'; // This should contain the translated MeshSchema, ElementType, etc.
+import 'package:meshagent/schema.dart'; // This should contain the translated MeshSchema, ElementType, etc.
 
 void main() {
   test('test_schema_validates_tag_names', () {
