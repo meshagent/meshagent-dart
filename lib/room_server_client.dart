@@ -674,7 +674,7 @@ class AgentsClient extends ChangeEmitter {
     required Map<String, dynamic> arguments,
   }) async {
     try {
-      final requiresJson = [ for (final t in requires) t.toJson() ];
+      final requiresJson = [for (final t in requires) t.toJson()];
 
       final result =
           (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson})) as JsonResponse;
