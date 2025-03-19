@@ -32,11 +32,6 @@ class DocumentRuntimeImpl extends DocumentRuntime {
           sendMessage('onSendUpdateToClient', msg);
         }
 
-        const module = {
-          exports: {
-          }
-        };
-
         const crypto = {
           getRandomValues(v) {
               const rands = sendMessage('getRandomValues', JSON.stringify([v.length, v.BYTES_PER_ELEMENT]));
@@ -102,7 +97,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   void registerDocument(RuntimeDocument document) {
     _documents[document.id] = document;
     _jsRuntime.executeSafe('''
-          module.exports.registerDocument(${jsonEncode(document.id)});
+          meshagent.registerDocument(${jsonEncode(document.id)});
       ''');
   }
 
@@ -110,7 +105,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   void unregisterDocument(RuntimeDocument document) {
     _documents.remove(document.id);
     _jsRuntime.executeSafe('''
-        module.exports.unregisterDocument(${jsonEncode(document.id)});
+        meshagent.unregisterDocument(${jsonEncode(document.id)});
     ''');
   }
 
@@ -118,13 +113,13 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   void sendChanges(Map<String, dynamic> message) {
     final jsonChanges = jsonEncode(message);
     _jsRuntime.executeSafe('''
-    module.exports.applyChanges($jsonChanges);
+    meshagent.applyChanges($jsonChanges);
 ''');
   }
 
   @override
   void applyBackendChanges({required String documentId, required String base64}) {
-    _jsRuntime.executeSafe("module.exports.applyBackendChanges(${jsonEncode(documentId)},${jsonEncode(base64)})");
+    _jsRuntime.executeSafe("meshagent.applyBackendChanges(${jsonEncode(documentId)},${jsonEncode(base64)})");
   }
 }
 
