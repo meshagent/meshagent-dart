@@ -39,6 +39,7 @@ class StreamProtocolChannel extends ProtocolChannel {
     if (subscription != null) {
       throw Exception("Already started");
     }
+
     subscription = input.listen(onDataReceived, onError: onError, onDone: onDone, cancelOnError: true);
   }
 
@@ -72,6 +73,11 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   @override
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
+
+    final s = url.replace(queryParameters: {"token": jwt}).toString();
+
+    print("jkkkk connecting to $s");
+
     webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt}));
     sub = webSocket!.stream.listen(onData, onDone: onDone, onError: onError);
   }

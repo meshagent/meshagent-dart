@@ -8,16 +8,16 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
-@JS("registerDocument")
+@JS("meshagent.registerDocument")
 external void _runtimeRegisterDocument(JSString id, JSString? data, JSFunction sendUpdateToBackend, JSFunction sendUpdateToClient);
 
-@JS("unregisterDocument")
+@JS("meshagent.unregisterDocument")
 external void _runtimeUnregisterDocument(JSString id);
 
-@JS("applyChanges")
+@JS("meshagent.applyChanges")
 external void _runtimeApplyChanges(JSObject changes);
 
-@JS("applyBackendChanges")
+@JS("meshagent.applyBackendChanges")
 external void _runtimeApplyBackendChanges(JSString documentID, JSString base64);
 
 Future<void> initializeDocumentRuntime() async {
@@ -30,19 +30,8 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   static final _entrypointCode = rootBundle.loadString("packages/meshagent/js/entrypoint.txt", cache: false);
 
   static final _init = (() async {
-    final element = web.document.createElement("script")
-      ..innerHTML =
-          ('''
-    
-        const module = {
-          exports: {
-          }
-        };
+    final element = web.document.createElement("script")..innerHTML = (await _entrypointCode).toJS;
 
-
-    ''' +
-                  await _entrypointCode)
-              .toJS;
     web.document.body!.appendChild(element);
   }());
 
