@@ -31,8 +31,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   static final _entrypointCode = rootBundle.loadString("packages/meshagent/js/entrypoint.txt", cache: false);
 
   static final _init = (() async {
-    final element = web.document.createElement("script")
-      ..innerHTML = (await _entrypointCode).toJS;
+    final element = web.document.createElement("script")..innerHTML = (await _entrypointCode).toJS;
 
     web.document.body!.appendChild(element);
   }());
