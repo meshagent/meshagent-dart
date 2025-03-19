@@ -74,10 +74,6 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
 
-    final s = url.replace(queryParameters: {"token": jwt}).toString();
-
-    print("jkkkk connecting to $s");
-
     webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt}));
     sub = webSocket!.stream.listen(onData, onDone: onDone, onError: onError);
   }
