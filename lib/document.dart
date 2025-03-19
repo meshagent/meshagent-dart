@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:meshagent/schema.dart';
 import "package:uuid/uuid.dart";
@@ -343,9 +342,6 @@ class RuntimeDocument extends ChangeEmitter {
 
   void receiveChanges(Map<String, dynamic> message) {
     _changes.add(message);
-
-    print("Applying changes to dart doc ${jsonEncode(message)}");
-
     final nodeID = message["target"] as String?;
     final target = message["root"] == true ? root : root.getNodeByID(nodeID!);
     // process element deltas

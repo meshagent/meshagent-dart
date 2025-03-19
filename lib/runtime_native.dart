@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:flutter_js/flutter_js.dart';
 import "dart:convert";
-
+import "package:logging/logging.dart";
 import 'document.dart';
 import 'runtime.dart';
 
@@ -22,6 +22,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
   static final _init =
       (() async {
         _jsRuntime.executeSafe(
+          // ignore: prefer_interpolation_to_compose_strings
           '''
         function onSendUpdateToBackend(msg) {
           sendMessage('onSendUpdateToBackend', msg);
@@ -68,15 +69,12 @@ class DocumentRuntimeImpl extends DocumentRuntime {
         });
 
         _jsRuntime.onMessage("onSendUpdateToBackend", (parsed) {
-          print("send to server $parsed");
           onDocumentSync(documentId: parsed["documentID"], base64: parsed["data"]);
         });
 
         _jsRuntime.onMessage("onSendUpdateToClient", (data) {
           try {
             final documentID = data["documentID"];
-            print(documentID);
-
             final doc = _documents[documentID];
             if (doc != null) {
               doc.receiveChanges(data["data"]);
@@ -84,11 +82,9 @@ class DocumentRuntimeImpl extends DocumentRuntime {
               throw Exception("Document is not registered $documentID");
             }
           } catch (err, stack) {
-            print("error: $err $stack");
+            Logger.root.log(Level.WARNING, "error: $err $stack");
           }
         });
-
-        print("runtime initialized");
       })();
 
   static void onDocumentSync({required String documentId, required String base64}) {
@@ -96,7 +92,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     if (doc.sendChangesToBackend != null) {
       doc.sendChangesToBackend!(base64);
     } else {
-      print("Document sync handler is not attached");
+      Logger.root.log(Level.WARNING, "Document sync handler is not attached");
     }
   }
 
@@ -104,7 +100,6 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
   @override
   void registerDocument(RuntimeDocument document) {
-    print("Registering document ${document.id}");
     _documents[document.id] = document;
     _jsRuntime.executeSafe('''
           module.exports.registerDocument(${jsonEncode(document.id)});
@@ -113,7 +108,6 @@ class DocumentRuntimeImpl extends DocumentRuntime {
 
   @override
   void unregisterDocument(RuntimeDocument document) {
-    print("Unregistering document ${document.id}");
     _documents.remove(document.id);
     _jsRuntime.executeSafe('''
         module.exports.unregisterDocument(${jsonEncode(document.id)});

@@ -71,10 +71,10 @@ class AgentCallContext {
   final AgentChatContext _chat;
   final String _apiUrl;
 
-  AgentCallContext({required AgentChatContext chat, required String jwt, required String api_url})
+  AgentCallContext({required AgentChatContext chat, required String jwt, required String apiUrl})
     : _jwt = jwt,
       _chat = chat,
-      _apiUrl = api_url;
+      _apiUrl = apiUrl;
 
   AgentChatContext get chat => _chat;
   String get jwt => _jwt;
@@ -134,17 +134,14 @@ abstract class RemoteToolkit extends Toolkit {
   final String? thumbnailUrl;
 
   RemoteToolkit({
-    required String name,
-    required String title,
-    required String description,
+    required this.name,
+    required this.title,
+    required this.description,
     this.thumbnailUrl,
     required RoomClient room,
     required super.tools,
     super.rules = const [],
-  }) : client = room,
-       name = name,
-       description = description,
-       title = title;
+  }) : client = room;
 
   Future<void> start({bool public = false}) async {
     client.protocol.addHandler("agent.tool_call.$name", _toolCall);
@@ -203,16 +200,14 @@ abstract class RemoteTaskRunner {
   String? _registrationId;
 
   RemoteTaskRunner({
-    required String name,
-    required String description,
-    required RoomClient client,
+    required this.name,
+    required this.description,
+    required this.client,
     this.inputSchema,
     this.outputSchema,
     this.supportsTools = false,
     this.required = const [],
-  }) : client = client,
-       name = name,
-       description = description;
+  });
 
   final List<Requirement> required;
 
@@ -249,7 +244,7 @@ abstract class RemoteTaskRunner {
 
   Future<Map<String, dynamic>> ask(AgentCallContext context, Map<String, dynamic> arguments);
 
-  Future<void> _ask(Protocol protocol, int message_id, String msg_type, List<int> data) async {
+  Future<void> _ask(Protocol protocol, int messageId, String msgType, List<int> data) async {
     var message = jsonDecode(utf8.decode(data)) as Map<String, dynamic>;
     Logger.root.info("got message $message");
 
@@ -257,11 +252,11 @@ abstract class RemoteTaskRunner {
     var args = message["arguments"] as Map<String, dynamic>;
     var taskId = message["task_id"] as String;
     var contextJson = message["context"] as Map<String, dynamic>;
-    var api_url = message["api_url"] as String;
+    var apiUrl = message["api_url"] as String;
 
     try {
       var chatContext = AgentChatContext.fromJson(contextJson);
-      var context = AgentCallContext(chat: chatContext, jwt: jwt, api_url: api_url);
+      var context = AgentCallContext(chat: chatContext, jwt: jwt, apiUrl: apiUrl);
       var response = await ask(context, args);
 
       await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": taskId, "response": response})));
