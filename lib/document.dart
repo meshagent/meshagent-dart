@@ -29,7 +29,13 @@ class MeshNode extends ChangeEmitter {
 }
 
 class MeshElement extends MeshNode {
-  MeshElement({super.parent, required this.tagName, required this.attributes, required super.doc, required this.elementType});
+  MeshElement({
+    super.parent,
+    required super.doc,
+    required this.tagName,
+    required this.attributes,
+    required this.elementType,
+  });
 
   final ElementType elementType;
   final List<MeshNode> _children = [];
@@ -207,6 +213,24 @@ class MeshElement extends MeshNode {
     });
   }
 
+  void undo() {
+    doc.sendChanges({
+      "documentID": doc.id,
+      "changes": [
+        {"undo": {}},
+      ],
+    });
+  }
+
+  void redo() {
+    doc.sendChanges({
+      "documentID": doc.id,
+      "changes": [
+        {"redo": {}},
+      ],
+    });
+  }
+
   List<MeshNode> getChildren() {
     return _children;
   }
@@ -318,10 +342,10 @@ class RuntimeDocument extends ChangeEmitter {
       final elementType = schema.element(tagName); // get schema type
 
       final element = MeshElement(
+        doc: this,
         parent: parent,
         tagName: tagName,
         attributes: (elementData["attributes"] as Map?)?.cast<String, dynamic>() ?? {},
-        doc: this,
         elementType: elementType,
       );
 
@@ -330,6 +354,7 @@ class RuntimeDocument extends ChangeEmitter {
           element._children.add(_createNode(element, child));
         }
       }
+
       return element;
     } else if (data["text"] != null) {
       // text node
