@@ -229,22 +229,11 @@ class RoomMessageEvent extends RoomEvent {
   }
 }
 
-class FileCreatedEvent extends RoomEvent {
-  FileCreatedEvent({required this.path});
-
-  final String path;
-
-  @override
-  String get name => "file created";
-
-  @override
-  String get description => "a file was created at the path $path";
-}
-
 class FileDeletedEvent extends RoomEvent {
-  FileDeletedEvent({required this.path});
+  FileDeletedEvent({required this.path, required this.participantId});
 
   final String path;
+  final String participantId;
 
   @override
   String get name => "file deleted";
@@ -254,9 +243,10 @@ class FileDeletedEvent extends RoomEvent {
 }
 
 class FileUpdatedEvent extends RoomEvent {
-  FileUpdatedEvent({required this.path});
+  FileUpdatedEvent({required this.path, required this.participantId});
 
   final String path;
+  final String participantId;
 
   @override
   String get name => "file updated";
@@ -721,12 +711,12 @@ class StorageClient extends ChangeEmitter {
 
   Future<void> _handleFileUpdated(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
-    room._eventsController.add(FileUpdatedEvent(path: data["path"]));
+    room._eventsController.add(FileUpdatedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = jsonDecode(utf8.decode(bytes));
-    room._eventsController.add(FileDeletedEvent(path: data["path"]));
+    room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<List<StorageEntry>> list(String path) async {
