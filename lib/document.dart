@@ -29,13 +29,7 @@ class MeshNode extends ChangeEmitter {
 }
 
 class MeshElement extends MeshNode {
-  MeshElement({
-    super.parent,
-    required super.doc,
-    required this.tagName,
-    required this.attributes,
-    required this.elementType,
-  });
+  MeshElement({super.parent, required super.doc, required this.tagName, required this.attributes, required this.elementType});
 
   final ElementType elementType;
   final List<MeshNode> _children = [];
