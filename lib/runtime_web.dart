@@ -10,7 +10,13 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 @JS("meshagent.registerDocument")
-external void _runtimeRegisterDocument(JSString id, JSString? data, JSFunction sendUpdateToBackend, JSFunction sendUpdateToClient);
+external void _runtimeRegisterDocument(
+  JSString id,
+  JSString? data,
+  bool undo,
+  JSFunction sendUpdateToBackend,
+  JSFunction sendUpdateToClient,
+);
 
 @JS("meshagent.unregisterDocument")
 external void _runtimeUnregisterDocument(JSString id);
@@ -74,7 +80,7 @@ class DocumentRuntimeImpl extends DocumentRuntime {
     void Function(String) onSendUpdateToBackend = this.onSendUpdateToBackend;
     void Function(String) onSendUpdateToClient = this.onSendUpdateToClient;
 
-    _runtimeRegisterDocument(document.id.toJS, null, onSendUpdateToBackend.toJS, onSendUpdateToClient.toJS);
+    _runtimeRegisterDocument(document.id.toJS, null, true, onSendUpdateToBackend.toJS, onSendUpdateToClient.toJS);
   }
 
   @override
