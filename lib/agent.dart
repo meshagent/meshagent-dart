@@ -82,13 +82,21 @@ class AgentCallContext {
 }
 
 abstract class Tool {
-  Tool({required this.name, required this.description, required this.title, required this.inputSchema, this.thumbnailUrl});
+  Tool({
+    required this.name,
+    required this.description,
+    required this.title,
+    required this.inputSchema,
+    this.thumbnailUrl,
+    this.supportsContext = false,
+  });
 
   final String name;
   final String description;
   final String title;
   final String? thumbnailUrl;
   final Map<String, dynamic> inputSchema;
+  final bool supportsContext;
 
   Future<Response> execute(Map<String, dynamic> arguments);
 }
@@ -116,6 +124,7 @@ abstract class Toolkit {
         "title": tool.title,
         "input_schema": tool.inputSchema,
         "thumbnail_url": tool.thumbnailUrl,
+        "supports_context": tool.supportsContext,
       };
     }
     return json;
