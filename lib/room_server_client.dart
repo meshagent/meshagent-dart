@@ -584,6 +584,7 @@ class ToolkitDescription {
               thumbnailUrl: tool["thumbnail_url"],
               pricing: tool["pricing"],
               defs: tool["defs"],
+              supportsContext: tool["supports_context"] ?? false,
             );
           }),
         if (json["tools"] is Map)
@@ -597,6 +598,7 @@ class ToolkitDescription {
               inputSchema: tool["input_schema"],
               thumbnailUrl: tool["thumbnail_url"],
               defs: tool["defs"],
+              supportsContext: tool["supports_context"] ?? false,
             );
           }),
       ],
@@ -612,6 +614,7 @@ class ToolDescription {
     required this.inputSchema,
     required this.defs,
     required this.pricing,
+    required this.supportsContext,
     this.thumbnailUrl,
   });
 
@@ -622,6 +625,7 @@ class ToolDescription {
   final String? thumbnailUrl;
   final Map<String, dynamic> inputSchema;
   final Map<String, dynamic>? defs;
+  final bool supportsContext;
 }
 
 class LivekitConnectionInfo {
