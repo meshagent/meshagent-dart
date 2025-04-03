@@ -151,6 +151,7 @@ void main() async {
 
       // Insert "hello world"
       text.insert(0, "hello world");
+
       // Format entire text with {"bold": true}
       text.format(0, "hello world".length, {"bold": true});
 

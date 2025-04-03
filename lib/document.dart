@@ -361,6 +361,7 @@ class RuntimeDocument extends ChangeEmitter {
 
   void receiveChanges(Map<String, dynamic> message) {
     _changes.add(message);
+
     final nodeID = message["target"] as String?;
     final target = message["root"] == true ? root : root.getNodeByID(nodeID!);
     // process element deltas

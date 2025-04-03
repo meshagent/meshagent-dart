@@ -465,12 +465,8 @@ class SyncClient extends ChangeEmitter {
     }
   }
 
-  Future<void> createMeshDocumentWithMeshSchema(String path, MeshSchema schema, [Map<String, dynamic>? json]) async {
-    await room.sendRequest("room.create", {"path": path, "schema": schema.toJson(), "json": json});
-  }
-
-  Future<void> createMeshDocumentWithFormat(String path, String format, [Map<String, dynamic>? json]) async {
-    await room.sendRequest("room.create", {"path": path, "format": format, "json": json});
+  Future<void> create(String path, [Map<String, dynamic>? json]) async {
+    await room.sendRequest("room.create", {"path": path, "json": json});
   }
 
   Future<MeshDocument> open(String path, {bool create = true}) async {

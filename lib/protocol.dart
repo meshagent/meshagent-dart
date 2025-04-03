@@ -5,7 +5,7 @@ import "dart:convert";
 import "package:flutter/material.dart";
 
 import "package:web_socket_channel/web_socket_channel.dart";
-import 'package:web_socket_channel/status.dart' as status;
+import "package:web_socket_channel/status.dart" as status;
 
 class ProtocolMessage {
   ProtocolMessage({required this.id, required this.data, required this.type}) : sent = Completer();
@@ -260,4 +260,8 @@ class Protocol<T extends ProtocolChannel> {
       }
     }
   }
+}
+
+class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
+  WebSocketClientProtocol({required Uri url, required String token}) : super(channel: WebSocketProtocolChannel(url: url, jwt: token));
 }
