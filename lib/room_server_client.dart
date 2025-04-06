@@ -272,7 +272,7 @@ class _RefCount<T> {
   _RefCount(this.ref);
 
   T ref;
-  int count = 0;
+  int count = 1;
 }
 
 class RoomClient extends ChangeEmitter {
