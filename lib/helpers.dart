@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'room_server_client.dart';
 import 'participant_token.dart';
@@ -35,8 +34,8 @@ String meshagentBaseUrl([String? baseUrl]) {
   }
 
   // Otherwise, check environment variable or default.
-  final envUrl = Platform.environment['MESHAGENT_API_URL'];
-  if (envUrl == null) {
+  final envUrl = String.fromEnvironment('MESHAGENT_API_URL', defaultValue: "");
+  if (envUrl.isEmpty) {
     return 'https://api.meshagent.com';
   }
 
@@ -46,9 +45,9 @@ String meshagentBaseUrl([String? baseUrl]) {
 /// Construct the WebSocket URL for a room.
 Uri websocketRoomUrl({required String roomName, String? baseUrl}) {
   // If no `baseUrl` provided, derive from environment.
-  baseUrl ??= Platform.environment['MESHAGENT_API_URL'];
+  baseUrl ??= String.fromEnvironment('MESHAGENT_API_URL', defaultValue: "");
 
-  if (baseUrl == null) {
+  if (baseUrl.isEmpty) {
     // Default if not set:
     baseUrl = 'wss://api.meshagent.com';
   } else {
