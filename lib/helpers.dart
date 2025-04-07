@@ -88,7 +88,7 @@ ParticipantToken participantToken({required String participantName, required Str
 }
 
 /// Create a WebSocket protocol instance for the given participant and room.
-WebSocketProtocolChannel websocketProtocol({required String participantName, required String roomName, String? role}) {
+WebSocketClientProtocol websocketProtocol({required String participantName, required String roomName, String? role}) {
   final url = websocketRoomUrl(roomName: roomName);
   final token = participantToken(participantName: participantName, roomName: roomName, role: role);
 
@@ -97,5 +97,5 @@ WebSocketProtocolChannel websocketProtocol({required String participantName, req
     throw Exception('MESHAGENT_SECRET must be set in the environment.');
   }
 
-  return WebSocketProtocolChannel(url: url, jwt: token.toJwt(token: secret));
+  return WebSocketClientProtocol(url: url, token: token.toJwt(token: secret));
 }

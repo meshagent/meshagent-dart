@@ -313,10 +313,12 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
-  void start({void Function()? onDone, void Function(Object? error)? onError}) {
+  Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
     protocol.start(onDone: onDone, onError: onError);
 
     sync.start();
+
+    await ready;
   }
 
   void dispose() {
