@@ -2,6 +2,8 @@ import "dart:async";
 import "dart:convert";
 import "dart:typed_data";
 
+import "package:meshagent/agents_client.dart";
+import "package:meshagent/queues_client.dart";
 import "package:meshagent/schema.dart";
 import "package:logging/logging.dart";
 
@@ -12,6 +14,7 @@ import "protocol.dart";
 import "document.dart";
 import "runtime.dart";
 import "database_client.dart";
+import "livekit_client.dart";
 
 class RoomServerException implements Exception {
   RoomServerException(this.message);
@@ -626,83 +629,6 @@ class ToolDescription {
   final bool supportsContext;
 }
 
-class LivekitConnectionInfo {
-  const LivekitConnectionInfo({required this.url, required this.token});
-
-  final String url;
-  final String token;
-}
-
-class LivekitClient {
-  LivekitClient({required this.room});
-
-  RoomClient room;
-
-  Future<LivekitConnectionInfo> getConnectionInfo() async {
-    final response = (await room.sendRequest("livekit.connect", {}) as JsonResponse).json;
-
-    return LivekitConnectionInfo(token: response["token"], url: response["url"]);
-  }
-}
-
-class AgentsClient extends ChangeEmitter {
-  AgentsClient({required this.room});
-
-  RoomClient room;
-
-  Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
-    await room.sendRequest("agent.call", {"name": name, "url": url, "arguments": arguments});
-  }
-
-  Future<Map<String, dynamic>> ask({
-    required String agentName,
-    List<Requirement> requires = const [],
-    required Map<String, dynamic> arguments,
-  }) async {
-    try {
-      final requiresJson = [for (final t in requires) t.toJson()];
-
-      final result =
-          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson})) as JsonResponse;
-
-      return result.json["answer"];
-    } catch (err) {
-      rethrow;
-    }
-  }
-
-  Future<List<ToolkitDescription>> listToolkits() async {
-    final result = (await room.sendRequest("agent.list_toolkits", {})) as JsonResponse;
-
-    final toolkits = <ToolkitDescription>[];
-    final tools = result.json["tools"];
-
-    for (final name in tools.keys) {
-      final json = tools[name];
-
-      toolkits.add(ToolkitDescription.fromJson(json, name: name));
-    }
-
-    return toolkits;
-  }
-
-  Future<List<AgentDescription>> listAgents() async {
-    final result = (await room.sendRequest("agent.list_agents", {}) as JsonResponse);
-
-    final agents = <AgentDescription>[];
-
-    for (final a in result.json["agents"]) {
-      agents.add(AgentDescription.fromJson(a));
-    }
-
-    return agents;
-  }
-
-  Future<Response> invokeTool({required String toolkit, required String tool, required Map<String, dynamic> arguments}) async {
-    return await room.sendRequest("agent.invoke_tool", {"toolkit": toolkit, "tool": tool, "arguments": arguments});
-  }
-}
-
 class StorageClient extends ChangeEmitter {
   StorageClient({required this.room}) {
     room.protocol.addHandler("storage.file.deleted", _handleFileDeleted);
@@ -849,44 +775,6 @@ class Queue {
 
   final String name;
   final int size;
-}
-
-class QueuesClient {
-  QueuesClient({required this.room});
-
-  RoomClient room;
-
-  Future<List<Queue>> list() async {
-    final response = (await room.sendRequest("queues.list", {})) as JsonResponse;
-
-    return (response.json["queues"] as List).map((i) => Queue(name: i["name"], size: i["size"])).toList();
-  }
-
-  Future<void> open(String name) async {
-    await room.sendRequest("queues.open", {"name": name});
-  }
-
-  Future<void> drain(String name) async {
-    await room.sendRequest("queues.drain", {"name": name});
-  }
-
-  Future<void> close(String name) async {
-    await room.sendRequest("queues.close", {"name": name});
-  }
-
-  Future<void> send(String name, Map<String, dynamic> message, {bool create = true}) async {
-    await room.sendRequest("queues.send", {"name": name, "create": create, "message": message});
-  }
-
-  Future<Map<String, dynamic>?> receive(String name, {bool create = true, bool wait = true}) async {
-    final response = await room.sendRequest("queues.receive", {"name": name, "create": create, "wait": wait});
-
-    if (response is EmptyResponse) {
-      return null;
-    } else {
-      return (response as JsonResponse).json;
-    }
-  }
 }
 
 class MessagingClient extends ChangeEmitter {

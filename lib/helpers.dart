@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'room_server_client.dart';
 import 'participant_token.dart';
@@ -8,7 +7,7 @@ import 'schema.dart';
 import 'protocol.dart';
 
 /// Validate schema name.
-void validateSchemaName(String name) {
+void _validateSchemaName(String name) {
   if (name.contains('.')) {
     throw MeshSchemaValidationException("schema name cannot contain '.'");
   }
@@ -16,7 +15,7 @@ void validateSchemaName(String name) {
 
 /// Deploy schema to the room’s storage.
 Future<void> deploySchema({required RoomClient room, required MeshSchema schema, required String name, bool overwrite = true}) async {
-  validateSchemaName(name);
+  _validateSchemaName(name);
 
   final handle = await room.storage.open('.schemas/$name.json', overwrite: overwrite);
 
@@ -35,8 +34,8 @@ String meshagentBaseUrl([String? baseUrl]) {
   }
 
   // Otherwise, check environment variable or default.
-  final envUrl = Platform.environment['MESHAGENT_API_URL'];
-  if (envUrl == null) {
+  final envUrl = String.fromEnvironment('MESHAGENT_API_URL', defaultValue: "");
+  if (envUrl.isEmpty) {
     return 'https://api.meshagent.com';
   }
 
@@ -46,9 +45,9 @@ String meshagentBaseUrl([String? baseUrl]) {
 /// Construct the WebSocket URL for a room.
 Uri websocketRoomUrl({required String roomName, String? baseUrl}) {
   // If no `baseUrl` provided, derive from environment.
-  baseUrl ??= Platform.environment['MESHAGENT_API_URL'];
+  baseUrl ??= String.fromEnvironment('MESHAGENT_API_URL', defaultValue: "");
 
-  if (baseUrl == null) {
+  if (baseUrl.isEmpty) {
     // Default if not set:
     baseUrl = 'wss://api.meshagent.com';
   } else {
@@ -65,14 +64,14 @@ Uri websocketRoomUrl({required String roomName, String? baseUrl}) {
 
 /// Create a participant token, requires environment variables to be set.
 ParticipantToken participantToken({required String participantName, required String roomName, String? role}) {
-  final projectId = Platform.environment['MESHAGENT_PROJECT_ID'];
-  final keyId = Platform.environment['MESHAGENT_KEY_ID'];
+  final projectId = String.fromEnvironment('MESHAGENT_PROJECT_ID', defaultValue: "");
+  final keyId = String.fromEnvironment('MESHAGENT_KEY_ID', defaultValue: "");
 
-  if (projectId == null) {
+  if (projectId.isEmpty) {
     throw Exception('MESHAGENT_PROJECT_ID must be set. You can find this value in Meshagent Studio under API keys.');
   }
 
-  if (keyId == null) {
+  if (keyId.isEmpty) {
     throw Exception('MESHAGENT_KEY_ID must be set. You can find this value in Meshagent Studio under API keys.');
   }
 
@@ -92,8 +91,8 @@ WebSocketClientProtocol websocketProtocol({required String participantName, requ
   final url = websocketRoomUrl(roomName: roomName);
   final token = participantToken(participantName: participantName, roomName: roomName, role: role);
 
-  final secret = Platform.environment['MESHAGENT_SECRET'];
-  if (secret == null) {
+  final secret = String.fromEnvironment('MESHAGENT_SECRET', defaultValue: "");
+  if (secret.isEmpty) {
     throw Exception('MESHAGENT_SECRET must be set in the environment.');
   }
 

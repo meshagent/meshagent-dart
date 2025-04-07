@@ -1,3 +1,6 @@
+## [0.0.10]
+- Updated exports
+
 ## [0.0.9]
 - Stability
 
