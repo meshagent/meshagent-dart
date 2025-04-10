@@ -12,8 +12,8 @@ class LivekitClient {
 
   RoomClient room;
 
-  Future<LivekitConnectionInfo> getConnectionInfo() async {
-    final response = (await room.sendRequest("livekit.connect", {}) as JsonResponse).json;
+  Future<LivekitConnectionInfo> getConnectionInfo({String? breakoutRoom}) async {
+    final response = (await room.sendRequest("livekit.connect", {"breakout_room": breakoutRoom}) as JsonResponse).json;
 
     return LivekitConnectionInfo(token: response["token"], url: response["url"]);
   }
