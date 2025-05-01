@@ -650,7 +650,12 @@ class StorageClient extends ChangeEmitter {
   Future<List<StorageEntry>> list(String path) async {
     final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
     return (response.json["files"] as List).map((f) {
-        return StorageEntry(name: f["name"], isFolder: f["is_folder"]);
+        return StorageEntry(
+          name: f["name"],
+          isFolder: f["is_folder"],
+          createdAt: DateTime.parse(f["created_at"]),
+          updatedAt: DateTime.parse(f["updated_at"]),
+        );
       }).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
@@ -951,10 +956,12 @@ class FileHandle {
 }
 
 class StorageEntry {
-  StorageEntry({required this.name, required this.isFolder});
+  StorageEntry({required this.name, required this.isFolder, required this.createdAt, required this.updatedAt});
 
   final String name;
   final bool isFolder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   String get nameWithoutExtension {
     return path.basenameWithoutExtension(name);
