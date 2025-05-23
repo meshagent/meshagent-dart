@@ -34,7 +34,7 @@ dependencies:
   dart_jsonwebtoken: ^2.14.2
   flutter:
     sdk: flutter
-  flutter_js: ^0.8.2
+  flutter_js: 0.8.1
   http: ^1.2.2
   json_schema: ^5.2.0
   livekit_client: ^2.4.0
