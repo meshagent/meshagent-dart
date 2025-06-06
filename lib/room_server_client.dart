@@ -77,6 +77,17 @@ String splitMessageHeader(Uint8List packet) {
   return utf8.decode(subList);
 }
 
+class Message {
+  Message(this.header, this.payload);
+
+  Map<String, dynamic> header;
+  Uint8List payload;
+}
+
+Message unpackMessage(Uint8List message) {
+  return Message(jsonDecode(splitMessageHeader(message)), splitMessagePayload(message));
+}
+
 Uint8List packMessage(Map<String, dynamic> header, [Uint8List? data]) {
   final jsonMessage = utf8.encode(jsonEncode(header));
 

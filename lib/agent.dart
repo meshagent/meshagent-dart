@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:meshagent/room_server_client.dart';
 import 'package:meshagent/protocol.dart';
@@ -182,8 +183,8 @@ abstract class RemoteToolkit extends Toolkit {
     await client.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
   }
 
-  Future<void> _toolCall(Protocol protocol, int messageId, String type, List<int> data) async {
-    var message = jsonDecode(utf8.decode(data)) as Map<String, dynamic>;
+  Future<void> _toolCall(Protocol protocol, int messageId, String type, Uint8List data) async {
+    var message = unpackMessage(data).header;
     var toolName = message["name"];
     var args = message["arguments"] as Map<String, dynamic>;
 
@@ -253,8 +254,8 @@ abstract class RemoteTaskRunner {
 
   Future<Map<String, dynamic>> ask(AgentCallContext context, Map<String, dynamic> arguments);
 
-  Future<void> _ask(Protocol protocol, int messageId, String msgType, List<int> data) async {
-    var message = jsonDecode(utf8.decode(data)) as Map<String, dynamic>;
+  Future<void> _ask(Protocol protocol, int messageId, String msgType, Uint8List data) async {
+    var message = unpackMessage(data).header;
     Logger.root.info("got message $message");
 
     var jwt = message["jwt"] as String;
@@ -268,9 +269,9 @@ abstract class RemoteTaskRunner {
       var context = AgentCallContext(chat: chatContext, jwt: jwt, apiUrl: apiUrl);
       var response = await ask(context, args);
 
-      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": taskId, "response": response})));
+      await protocol.send("agent.ask_response", packMessage({"task_id": taskId, "response": response}));
     } catch (e) {
-      await protocol.send("agent.ask_response", utf8.encode(jsonEncode({"task_id": taskId, "error": e.toString()})));
+      await protocol.send("agent.ask_response", packMessage({"task_id": taskId, "error": e.toString()}));
     }
   }
 }
