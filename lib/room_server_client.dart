@@ -56,7 +56,7 @@ class LocalParticipant extends Participant {
 
   void setAttribute(String name, dynamic value) async {
     _attributes[name] = value;
-    client.protocol.send("set_attributes", utf8.encode(jsonEncode({name: value}))).catchError((err) {
+    client.protocol.send("set_attributes", packMessage({name: value})).catchError((err) {
       Logger.root.log(Level.WARNING, "Unable to send attribute changes", err);
     });
   }
@@ -379,7 +379,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final init = json.decode(utf8.decode(bytes));
+    final init = unpackMessage(bytes).header;
 
     _roomName = init["room_name"];
     _roomUrl = init["room_url"];
@@ -423,7 +423,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleParticipant(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final message = jsonDecode(utf8.decode(bytes));
+    final message = unpackMessage(bytes).header;
     final type = message["type"];
 
     switch (type) {
@@ -649,12 +649,12 @@ class StorageClient extends ChangeEmitter {
   RoomClient room;
 
   Future<void> _handleFileUpdated(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final data = jsonDecode(utf8.decode(bytes));
+    final data = unpackMessage(bytes).header;
     room._eventsController.add(FileUpdatedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final data = jsonDecode(utf8.decode(bytes));
+    final data = unpackMessage(bytes).header;
     room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
@@ -715,7 +715,7 @@ class DeveloperClient extends ChangeEmitter {
 
   RoomClient room;
   Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final rawJson = jsonDecode(utf8.decode(bytes));
+    final rawJson = unpackMessage(bytes).header;
     final type = rawJson["type"];
     final data = rawJson["data"];
 
