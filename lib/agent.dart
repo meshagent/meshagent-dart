@@ -99,7 +99,7 @@ abstract class Tool {
   final Map<String, dynamic> inputSchema;
   final bool supportsContext;
 
-  Future<Response> execute(Map<String, dynamic> arguments);
+  Future<Response> execute(ToolContext context, Map<String, dynamic> arguments);
 }
 
 abstract class Toolkit {
@@ -131,30 +131,36 @@ abstract class Toolkit {
     return json;
   }
 
-  Future<Response> execute(String name, Map<String, dynamic> arguments) async {
-    return await getTool(name).execute(arguments);
+  Future<Response> execute(ToolContext context, String name, Map<String, dynamic> arguments) async {
+    return await getTool(name).execute(context, arguments);
   }
 }
 
+class ToolContext {
+  const ToolContext({required this.room});
+
+  final RoomClient room;
+}
+
 abstract class RemoteToolkit extends Toolkit {
-  final RoomClient client;
+  final RoomClient room;
   final String name;
-  final String title;
-  final String description;
+  final String? title;
+  final String? description;
   final String? thumbnailUrl;
 
   RemoteToolkit({
     required this.name,
-    required this.title,
-    required this.description,
+    this.title,
+    this.description,
     this.thumbnailUrl,
-    required RoomClient room,
+    required this.room,
     required super.tools,
     super.rules = const [],
-  }) : client = room;
+  });
 
   Future<void> start({bool public = false}) async {
-    client.protocol.addHandler("agent.tool_call.$name", _toolCall);
+    room.protocol.addHandler("agent.tool_call.$name", _toolCall);
 
     await _register(public: public);
   }
@@ -162,13 +168,13 @@ abstract class RemoteToolkit extends Toolkit {
   Future<void> stop() async {
     await _unregister();
 
-    client.protocol.removeHandler("agent.tool_call.$name", _toolCall);
+    room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
   }
 
   String? _registrationId;
 
   Future<void> _register({bool public = false}) async {
-    final response = await client.sendRequest("agent.register_toolkit", {
+    final response = await room.sendRequest("agent.register_toolkit", {
       "name": name,
       "title": title,
       "description": description,
@@ -180,7 +186,7 @@ abstract class RemoteToolkit extends Toolkit {
   }
 
   Future<void> _unregister() async {
-    await client.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+    await room.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
   }
 
   Future<void> _toolCall(Protocol protocol, int messageId, String type, Uint8List data) async {
@@ -189,10 +195,10 @@ abstract class RemoteToolkit extends Toolkit {
     var args = message["arguments"] as Map<String, dynamic>;
 
     try {
-      var response = await execute(toolName, args);
-      await client.protocol.send(id: messageId, "agent.tool_call_response", response.pack());
+      var response = await execute(ToolContext(room: room), toolName, args);
+      await room.protocol.send(id: messageId, "agent.tool_call_response", response.pack());
     } catch (e) {
-      await client.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "$e").pack());
+      await room.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "$e").pack());
     }
   }
 }
