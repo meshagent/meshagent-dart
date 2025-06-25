@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:meshagent/room_server_client.dart';
 import 'package:meshagent/protocol.dart';
