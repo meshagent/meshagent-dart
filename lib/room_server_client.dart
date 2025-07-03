@@ -418,6 +418,10 @@ class RoomClient extends ChangeEmitter {
 
   final _eventsController = StreamController<RoomEvent>.broadcast();
 
+  Stream<RoomEvent> get events {
+    return _eventsController.stream;
+  }
+
   StreamSubscription<RoomEvent> listen(void Function(RoomEvent event) handler) {
     return _eventsController.stream.listen(handler);
   }
