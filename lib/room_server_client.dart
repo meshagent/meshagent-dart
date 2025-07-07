@@ -280,6 +280,12 @@ class RoomLogEvent extends RoomEvent {
 
   @override
   String get description => jsonEncode(data);
+
+  static RoomLogEvent fromJson(Map<String, dynamic> json) {
+    final type = json["type"];
+    final data = json["data"];
+    return RoomLogEvent(type: type, data: data);
+  }
 }
 
 class _RefCount<T> {
@@ -720,10 +726,8 @@ class DeveloperClient extends ChangeEmitter {
   RoomClient room;
   Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final rawJson = unpackMessage(bytes).header;
-    final type = rawJson["type"];
-    final data = rawJson["data"];
 
-    room._eventsController.add(RoomLogEvent(type: type, data: data));
+    room._eventsController.add(RoomLogEvent.fromJson(rawJson));
   }
 
   Future<void> log(String type, Map<String, dynamic> data) async {
