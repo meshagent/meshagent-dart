@@ -1,5 +1,6 @@
 import "dart:async";
 import "dart:convert";
+import "dart:io";
 import "dart:typed_data";
 
 import "package:meshagent/agents_client.dart";
@@ -15,6 +16,8 @@ import "document.dart";
 import "runtime.dart";
 import "database_client.dart";
 import "livekit_client.dart";
+
+import "package:http/http.dart";
 
 class RoomServerException implements Exception {
   RoomServerException(this.message);
@@ -332,6 +335,33 @@ class RoomClient extends ChangeEmitter {
   final _pendingRequests = <int, _PendingRequest>{};
 
   final Protocol protocol;
+
+  Future<Map<String, dynamic>> exec({
+    required String name,
+    required String image,
+    required String? command,
+    Map<String, String>? env,
+  }) async {
+    final ws = (protocol.channel as WebSocketProtocolChannel);
+    final baseUrl = ws.url.toString();
+
+    final uri = Uri.parse('$baseUrl/exec').replace(scheme: ws.url.scheme.replaceAll("ws", "http"));
+
+    final response = await post(
+      uri,
+      headers: {"Authorization": "Bearer ${ws.jwt}"},
+      body: jsonEncode({"image": image, "name": name, "command": command, "env": env}),
+    );
+
+    if (response.statusCode >= 400) {
+      throw Exception(
+        'Failed to execute. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
 
   Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
     protocol.start(onDone: onDone, onError: onError);
