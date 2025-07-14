@@ -220,22 +220,23 @@ abstract class RoomEvent {
 }
 
 class RoomStatusEvent extends RoomEvent {
-  RoomStatusEvent({required this.status});
+  RoomStatusEvent({required this.status, required this.message});
 
   @override
   String get name {
-    return "room.status";
+    return status;
   }
 
   @override
   String get description {
-    return "the room status changed to: $status";
+    return message;
   }
 
+  final String message;
   final String status;
 
   static RoomStatusEvent fromJson(Map<String, dynamic> json) {
-    return RoomStatusEvent(status: json["status"]);
+    return RoomStatusEvent(status: json["status"], message: json["message"]);
   }
 }
 
