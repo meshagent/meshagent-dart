@@ -363,6 +363,7 @@ class RoomClient extends ChangeEmitter {
     required String image,
     required String? command,
     Map<String, String>? env,
+    String? roomStoragePath,
   }) async {
     final ws = (protocol.channel as WebSocketProtocolChannel);
     final baseUrl = ws.url.toString();
@@ -372,7 +373,7 @@ class RoomClient extends ChangeEmitter {
     final response = await post(
       uri,
       headers: {"Authorization": "Bearer ${ws.jwt}"},
-      body: jsonEncode({"image": image, "name": name, "command": command, "env": env}),
+      body: jsonEncode({"image": image, "name": name, "command": command, "env": env, "room_storage_path": roomStoragePath}),
     );
 
     if (response.statusCode >= 400) {
