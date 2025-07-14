@@ -219,6 +219,26 @@ abstract class RoomEvent {
   String get description;
 }
 
+class RoomStatusEvent extends RoomEvent {
+  RoomStatusEvent({required this.status});
+
+  @override
+  String get name {
+    return "room.status";
+  }
+
+  @override
+  String get description {
+    return "the room status changed to: $status";
+  }
+
+  final String status;
+
+  static RoomStatusEvent fromJson(Map<String, dynamic> json) {
+    return RoomStatusEvent(status: json["status"]);
+  }
+}
+
 class RoomMessage {
   RoomMessage({required this.fromParticipantId, required this.type, required this.message, this.local = false, this.attachment});
 
@@ -304,6 +324,8 @@ class RoomClient extends ChangeEmitter {
     protocol.addHandler("connected", _handleParticipant);
 
     protocol.addHandler("room_ready", _handleRoomReady);
+
+    protocol.addHandler("room.status", _handleRoomStatus);
 
     sync = SyncClient(room: this);
     storage = StorageClient(room: this);
@@ -411,6 +433,12 @@ class RoomClient extends ChangeEmitter {
       Logger.root.log(Level.WARNING, "received a response for a request that is not pending $requestId");
     }
     return;
+  }
+
+  Future<void> _handleRoomStatus(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final payload = unpackMessage(bytes).header;
+
+    _eventsController.add(RoomStatusEvent.fromJson(payload));
   }
 
   Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
