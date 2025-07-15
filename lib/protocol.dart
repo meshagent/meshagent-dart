@@ -148,7 +148,7 @@ class Protocol<T extends ProtocolChannel> {
 
     () async {
       await for (final message in _send.stream) {
-        debugPrint("message recv on protocol ${message.id} ${message.type}");
+        //debugPrint("message recv on protocol ${message.id} ${message.type}");
 
         final packets = (message.data.length / 1024).ceil();
 
@@ -178,9 +178,9 @@ class Protocol<T extends ProtocolChannel> {
         }
         message.sent.complete();
 
-        debugPrint("message sent on protocol ${message.id} ${message.type}");
+        //debugPrint("message sent on protocol ${message.id} ${message.type}");
       }
-      debugPrint("protocol done");
+      //debugPrint("protocol done");
     }();
   }
 
@@ -204,7 +204,7 @@ class Protocol<T extends ProtocolChannel> {
 
     if (packet != recvPacketId) {
       recvState = "error";
-      debugPrint("received out of order packet got $packet expected $recvPacketId, total $recvPacketTotal message ID: $messageId");
+      //debugPrint("received out of order packet got $packet expected $recvPacketId, total $recvPacketTotal message ID: $messageId");
     }
 
     if (packet == 0) {
@@ -212,13 +212,13 @@ class Protocol<T extends ProtocolChannel> {
         recvPacketTotal = data.getInt32(12);
         recvMessageId = messageId;
         recvType = utf8.decode(dataPacket.sublist(16));
-        debugPrint("received packet $recvType");
+        //debugPrint("received packet $recvType");
 
         if (recvPacketTotal == 0) {
           try {
             handleMessage(messageId, recvType, recvPackets.takeBytes());
           } finally {
-            debugPrint("expecting packet reset to 0");
+            //debugPrint("expecting packet reset to 0");
             recvState = "ready";
             recvPacketId = 0;
             recvType = "";
@@ -226,23 +226,23 @@ class Protocol<T extends ProtocolChannel> {
           }
         } else {
           recvPacketId += 1;
-          debugPrint("expecting packet $recvPacketId");
+          //debugPrint("expecting packet $recvPacketId");
           recvState = "processing";
         }
       } else {
         recvState = "error";
         recvPacketId = 0;
-        debugPrint("received packet 0 in invalid state");
+        //debugPrint("received packet 0 in invalid state");
       }
     } else if (recvState != "processing") {
       recvState = "error";
       recvPacketId = 0;
-      debugPrint("received datapacket in invalid state");
+      //debugPrint("received datapacket in invalid state");
     } else {
       if (messageId != recvMessageId) {
         recvState = "error";
         recvPacketId = 0;
-        debugPrint("received packet from incorrect message");
+        //debugPrint("received packet from incorrect message");
       }
 
       recvPackets.add(dataPacket.sublist(12));
