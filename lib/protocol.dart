@@ -3,6 +3,7 @@ import "dart:async";
 import "dart:math";
 import "dart:convert";
 import "package:flutter/material.dart";
+import "package:meshagent/version.dart";
 
 import "package:web_socket_channel/web_socket_channel.dart";
 import "package:web_socket_channel/status.dart" as status;
@@ -74,7 +75,7 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
 
-    webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt}));
+    webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt, "version": version}));
     sub = webSocket!.stream.listen(onData, onDone: onDone, onError: onError);
   }
 
