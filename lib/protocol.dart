@@ -2,7 +2,6 @@ import "dart:typed_data";
 import "dart:async";
 import "dart:math";
 import "dart:convert";
-import "package:flutter/material.dart";
 import "package:meshagent/version.dart";
 
 import "package:web_socket_channel/web_socket_channel.dart";
