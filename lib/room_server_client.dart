@@ -362,6 +362,7 @@ class RoomClient extends ChangeEmitter {
     required String name,
     required String image,
     required String? command,
+    required String? pullSecret,
     Map<String, String>? env,
     String? roomStoragePath,
   }) async {
@@ -373,7 +374,14 @@ class RoomClient extends ChangeEmitter {
     final response = await post(
       uri,
       headers: {"Authorization": "Bearer ${ws.jwt}"},
-      body: jsonEncode({"image": image, "name": name, "command": command, "env": env, "room_storage_path": roomStoragePath}),
+      body: jsonEncode({
+        "image": image,
+        "name": name,
+        "command": command,
+        "pull_secret": pullSecret,
+        "env": env,
+        "room_storage_path": roomStoragePath,
+      }),
     );
 
     if (response.statusCode >= 400) {
