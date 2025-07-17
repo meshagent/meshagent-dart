@@ -363,6 +363,8 @@ class RoomClient extends ChangeEmitter {
     required String image,
     required String? command,
     required String? pullSecret,
+    String? participantName,
+    String? role,
     Map<String, String>? env,
     String? roomStoragePath,
   }) async {
@@ -381,6 +383,8 @@ class RoomClient extends ChangeEmitter {
         "pull_secret": pullSecret,
         "env": env,
         "room_storage_path": roomStoragePath,
+        "participant_name": participantName,
+        "role": role,
       }),
     );
 
