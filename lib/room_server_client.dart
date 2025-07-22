@@ -336,6 +336,7 @@ class RoomClient extends ChangeEmitter {
     livekit = LivekitClient(room: this);
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
+    containers = ContainersClient(room: this);
   }
 
   late final LivekitClient livekit;
@@ -347,6 +348,7 @@ class RoomClient extends ChangeEmitter {
   late final MessagingClient messaging;
   late final AgentsClient agents;
   late final DatabaseClient database;
+  late final ContainersClient containers;
 
   final _ready = Completer();
 
@@ -513,6 +515,187 @@ class RoomClient extends ChangeEmitter {
         final attributes = message["attributes"];
         _onParticipantInit(participantId, attributes);
     }
+  }
+}
+
+class LogStream<T> {
+  LogStream._(this._completer, this.stream);
+
+  final Stream<String> stream;
+  final Completer<T> _completer;
+  Future<T> get result {
+    return _completer.future;
+  }
+}
+
+class ContainerRunResult {
+  ContainerRunResult({required this.logs, required this.status});
+
+  final List<String> logs;
+  final int status;
+}
+
+enum ContextEncoding { gzip }
+
+class ContainersClient extends ChangeEmitter {
+  ContainersClient({required this.room}) {
+    room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
+  }
+
+  Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final chunk = unpackMessage(bytes).header;
+    _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
+  }
+
+  final Map<String, StreamController<String>> _loggers = {};
+
+  RoomClient room;
+
+  LogStream<void> build({required Uint8List context, required String tag, ContextEncoding encoding = ContextEncoding.gzip}) {
+    final requestId = Uuid().v4().toString();
+    final controller = StreamController<String>();
+    final completer = Completer();
+    final stream = LogStream._(completer, controller.stream);
+    _loggers[requestId] = controller;
+
+    final String enc = switch (encoding) {
+      ContextEncoding.gzip => "gzip",
+    };
+
+    room
+        .sendRequest("containers.build", {"request_id": requestId, "tag": tag, "encoding": enc}, data: context)
+        .then(
+          (_) {
+            controller.close();
+            completer.complete();
+            _loggers.remove(requestId);
+          },
+          onError: (error) {
+            controller.close();
+            completer.completeError(error);
+            _loggers.remove(requestId);
+          },
+        );
+
+    return stream;
+  }
+
+  LogStream<ContainerRunResult> run({
+    required String image,
+    required String command,
+    Map<String, String> env = const {},
+    String? mountPath,
+    String? mountSubpath,
+    String? role,
+    String? participantName,
+    Map<int, int> ports = const {},
+  }) {
+    final requestId = Uuid().v4().toString();
+    final controller = StreamController<String>();
+    final completer = Completer<ContainerRunResult>();
+    final stream = LogStream<ContainerRunResult>._(completer, controller.stream);
+    _loggers[requestId] = controller;
+
+    room
+        .sendRequest("containers.run", {
+          "request_id": requestId,
+          "image": image,
+          "command": command,
+          "env": env,
+          "mount_path": mountPath,
+          "mount_subpath": mountSubpath,
+          "role": role,
+          "participant_name": participantName,
+          "ports": {for (final entry in ports.entries) entry.key.toString(): entry.value.toString()},
+        })
+        .then(
+          (result) {
+            final json = result as JsonResponse;
+
+            controller.close();
+            completer.complete(
+              ContainerRunResult(status: json.json["status"], logs: (result.json["logs"] as List).map((l) => l as String).toList()),
+            );
+            _loggers.remove(requestId);
+          },
+          onError: (error) {
+            controller.close();
+            completer.completeError(error);
+            _loggers.remove(requestId);
+          },
+        );
+
+    return stream;
+  }
+
+  Future<void> stop({required String containerId}) async {
+    await room.sendRequest("containers.stop", {"id": containerId});
+  }
+
+  LogStream<void> logs({required String containerId, bool follow = false}) {
+    final requestId = Uuid().v4().toString();
+    final controller = StreamController<String>();
+    final completer = Completer();
+    final stream = LogStream._(completer, controller.stream);
+    _loggers[requestId] = controller;
+
+    room
+        .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
+        .then(
+          (_) {
+            controller.close();
+            completer.complete();
+            _loggers.remove(requestId);
+          },
+          onError: (error) {
+            controller.close();
+            completer.completeError(error);
+            _loggers.remove(requestId);
+          },
+        );
+
+    return stream;
+  }
+
+  Future<List<RoomContainer>> list() async {
+    final res = await room.sendRequest("containers.list", {}) as JsonResponse;
+
+    return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
+  }
+}
+
+class ParticipantInfo {
+  ParticipantInfo({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+class RoomContainer {
+  RoomContainer({
+    required this.id,
+    required this.image,
+    required this.command,
+    required this.entrypoint,
+    required this.environment,
+    required this.startedBy,
+  });
+  final String id;
+  final String image;
+  final List<String> command;
+  final List<String>? entrypoint;
+  final Map<String, String> environment;
+  final ParticipantInfo startedBy;
+
+  static RoomContainer fromJson(Map<String, dynamic> json) {
+    return RoomContainer(
+      id: json["id"],
+      image: json["image"],
+      command: (json["command"] as List).map((e) => e as String).toList(),
+      entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
+      environment: {for (final entry in (json["env"] as Map).entries) entry.key: entry.value},
+      startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
+    );
   }
 }
 
