@@ -532,7 +532,7 @@ class ContainerRunResult {
   ContainerRunResult({required this.logs, required this.status});
 
   final List<String> logs;
-  final int status;
+  final int? status;
 }
 
 enum ContextEncoding { gzip }
@@ -613,6 +613,7 @@ class _RunRequest {
     this.ports = const {},
     this.credentials = const [],
     this.requestId,
+    this.detach,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? requestId;
@@ -625,6 +626,7 @@ class _RunRequest {
   final String? participantName;
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
+  final bool? detach;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -636,6 +638,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    if (detach != null) 'detach': detach,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
@@ -788,6 +791,7 @@ class ContainersClient extends ChangeEmitter {
     String? participantName,
     Map<int, int> ports = const {},
     List<DockerSecret> credentials = const [],
+    bool detach = true,
   }) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -806,6 +810,7 @@ class ContainersClient extends ChangeEmitter {
       participantName: participantName,
       ports: ports,
       credentials: credentials,
+      detach: detach,
     );
 
     room
