@@ -686,19 +686,21 @@ class BuildInfo {
 
 /// Lightweight image description (from `containers.list_images`)
 class DockerImage {
-  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels});
+  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels, this.manifest});
 
   final String id;
   final List<String> tags;
   final int? size; // bytes
   final int? created; // seconds since epoch
   final Map<String, dynamic> labels;
+  final Map<String, dynamic>? manifest;
 
   factory DockerImage.fromJson(Map<String, dynamic> json) => DockerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
     created: json['created'] as int?,
+    manifest: json['manifest'],
     labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
   );
 }
@@ -706,6 +708,15 @@ class DockerImage {
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
     room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
+    room.protocol.addHandler("containers.approve_manifest", _handleApproveManifest);
+  }
+
+  Future<void> _handleApproveManifest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final req = unpackMessage(bytes).header;
+    //final manifest = req["manifest"];
+    final requestID = req["request_id"];
+
+    await room.sendRequest("containers.approve_manifest_response", {"approved": true, "request_id": requestID});
   }
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -886,6 +897,7 @@ class RoomContainer {
     required this.entrypoint,
     required this.environment,
     required this.startedBy,
+    this.manifest,
   });
   final String id;
   final String image;
@@ -893,11 +905,13 @@ class RoomContainer {
   final List<String>? entrypoint;
   final Map<String, String> environment;
   final ParticipantInfo startedBy;
+  final Map<String, dynamic>? manifest;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
       id: json["id"],
       image: json["image"],
+      manifest: json["manifest"],
       command: (json["command"] as List).map((e) => e as String).toList(),
       entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
       environment: {for (final entry in (json["env"] as Map).entries) entry.key: entry.value},
