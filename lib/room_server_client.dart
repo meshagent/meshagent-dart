@@ -618,7 +618,7 @@ class _RunRequest {
 
   final String? requestId;
   final String image;
-  final String command;
+  final String? command;
   final Map<String, String> env;
   final String? mountPath;
   final String? mountSubpath;
@@ -794,7 +794,7 @@ class ContainersClient extends ChangeEmitter {
 
   LogStream<ContainerRunResult> run({
     required String image,
-    required String command,
+    String? command,
     Map<String, String> env = const {},
     String? mountPath,
     String? mountSubpath,
@@ -847,7 +847,7 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<void> stop({required String containerId}) async {
-    await room.sendRequest("containers.stop", {"id": containerId});
+    await room.sendRequest("containers.stop_container", {"id": containerId});
   }
 
   LogStream<void> logs({required String containerId, bool follow = false}) {
