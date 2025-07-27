@@ -518,9 +518,18 @@ class RoomClient extends ChangeEmitter {
   }
 }
 
-class LogStream<T> {
-  LogStream._(this._completer, this.stream);
+class LogProgress {
+  LogProgress({required this.message, required this.current, required this.total});
 
+  String message;
+  int? current;
+  int? total;
+}
+
+class LogStream<T> {
+  LogStream._(this._completer, this.stream, this.progress);
+
+  final Stream<LogProgress> progress;
   final Stream<String> stream;
   final Completer<T> _completer;
   Future<T> get result {
@@ -535,6 +544,12 @@ class ContainerRunResult {
   final int? status;
 }
 
+class ImagePullResult {
+  ImagePullResult({required this.logs});
+
+  final List<String> logs;
+}
+
 enum ContextEncoding { gzip }
 
 /// ------------------------------
@@ -546,10 +561,12 @@ class BuildSource {}
 class BuildSourceGit extends BuildSource {
   final String url;
   final String? ref;
+  final String? username;
+  final String? password;
 
-  BuildSourceGit({required this.url, this.ref});
+  BuildSourceGit({required this.url, this.ref, this.username, this.password});
 
-  Map<String, dynamic> toJson() => {'url': url, 'ref': ref};
+  Map<String, dynamic> toJson() => {'url': url, 'ref': ref, 'username': username, 'password': password};
 }
 
 /// ------------------------------
@@ -597,6 +614,20 @@ class _BuildRequest {
     if (git != null) 'git': git!.toJson(),
     if (context != null) 'context': context!.toJson(),
     if (room != null) 'room': room!.toJson(),
+    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
+  };
+}
+
+class _ImagePullRequest {
+  _ImagePullRequest({required this.tag, this.credentials = const [], this.requestId});
+
+  final String? requestId;
+  final String tag;
+  final List<DockerSecret> credentials;
+
+  Map<String, dynamic> toJson() => {
+    if (requestId != null) 'request_id': requestId,
+    'tag': tag,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
@@ -708,15 +739,7 @@ class DockerImage {
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
     room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
-    room.protocol.addHandler("containers.approve_manifest", _handleApproveManifest);
-  }
-
-  Future<void> _handleApproveManifest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final req = unpackMessage(bytes).header;
-    //final manifest = req["manifest"];
-    final requestID = req["request_id"];
-
-    await room.sendRequest("containers.approve_manifest_response", {"approved": true, "request_id": requestID});
+    room.protocol.addHandler("containers.progress", _handleProgress);
   }
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -724,8 +747,20 @@ class ContainersClient extends ChangeEmitter {
     _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
   }
 
-  final Map<String, StreamController<String>> _loggers = {};
+  Future<void> _handleProgress(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final chunk = unpackMessage(bytes).header;
+    final detail = chunk["detail"] as Map<String, dynamic>?;
+    if (detail != null) {
+      final total = detail["total"] as num?;
+      final current = detail["current"] as num?;
+      final message = chunk["message"] as String;
 
+      _progress[chunk["request_id"]]!.sink.add(LogProgress(message: message, current: current?.toInt(), total: total?.toInt()));
+    }
+  }
+
+  final Map<String, StreamController<String>> _loggers = {};
+  final Map<String, StreamController<LogProgress>> _progress = {};
   RoomClient room;
 
   /// Fetch the *in‑memory* list of builds tracked by the server.
@@ -762,9 +797,11 @@ class ContainersClient extends ChangeEmitter {
   LogStream<void> build({required String tag, required BuildSource source, List<DockerSecret> credentials = const []}) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
+    final progress = StreamController<LogProgress>();
     final completer = Completer();
-    final stream = LogStream._(completer, controller.stream);
+    final stream = LogStream._(completer, controller.stream, progress.stream);
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     final req = _BuildRequest(
       tag: tag,
@@ -792,6 +829,38 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
+  LogStream<ImagePullResult> pullImage({required String tag, List<DockerSecret> credentials = const []}) {
+    final requestId = Uuid().v4().toString();
+    final controller = StreamController<String>();
+    final completer = Completer<ImagePullResult>();
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream<ImagePullResult>._(completer, controller.stream, progress.stream);
+    _loggers[requestId] = controller;
+    _progress[requestId] = progress;
+
+    final req = _ImagePullRequest(requestId: requestId, tag: tag, credentials: credentials);
+
+    room
+        .sendRequest("containers.pull_image", req.toJson())
+        .then(
+          (result) {
+            final json = result as JsonResponse;
+
+            controller.close();
+            completer.complete(ImagePullResult(logs: (json.json["logs"] as List).map((l) => l as String).toList()));
+            _loggers.remove(requestId);
+          },
+          onError: (error) {
+            controller.close();
+            completer.completeError(error);
+            _loggers.remove(requestId);
+          },
+        );
+
+    return stream;
+  }
+
   LogStream<ContainerRunResult> run({
     required String image,
     String? command,
@@ -807,11 +876,14 @@ class ContainersClient extends ChangeEmitter {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
     final completer = Completer<ContainerRunResult>();
-    final stream = LogStream<ContainerRunResult>._(completer, controller.stream);
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream<ContainerRunResult>._(completer, controller.stream, progress.stream);
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     final req = _RunRequest(
-      requestId: const Uuid().v4().toString(),
+      requestId: requestId,
       image: image,
       command: command,
       env: env,
@@ -854,8 +926,11 @@ class ContainersClient extends ChangeEmitter {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
     final completer = Completer();
-    final stream = LogStream._(completer, controller.stream);
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream._(completer, controller.stream, progress.stream);
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     room
         .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
