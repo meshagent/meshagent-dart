@@ -693,14 +693,14 @@ class DockerImage {
   final int? size; // bytes
   final int? created; // seconds since epoch
   final Map<String, dynamic> labels;
-  final Map<String, dynamic>? manifest;
+  final ServiceTemplateSpec? manifest;
 
   factory DockerImage.fromJson(Map<String, dynamic> json) => DockerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
     created: json['created'] as int?,
-    manifest: json['manifest'],
+    manifest: json['manifest'] == null ? null : ServiceTemplateSpec.fromJson(json['manifest']),
     labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
   );
 }
@@ -1626,4 +1626,174 @@ Response unpackResponse(Uint8List data) {
 
   // Delegate to the correct `unpack` function
   return _responseTypes[typeKey]!(header, payload);
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  Helpers
+/// ─────────────────────────────────────────────────────────────────────────────
+
+/// Represents the `num` field of `ServicePortSpec`, which can be `'*'` or a
+/// positive integer.
+class PortNum {
+  final int? value; // null ⇒ '*'
+
+  PortNum._(this.value);
+
+  factory PortNum.star() => PortNum._(null);
+
+  factory PortNum.fromInt(int v) {
+    if (v <= 0) {
+      throw ArgumentError('Port number must be > 0');
+    }
+    return PortNum._(v);
+  }
+
+  factory PortNum.fromJson(dynamic json) {
+    if (json == '*' || json == null) return PortNum.star();
+    if (json is int) return PortNum.fromInt(json);
+    throw ArgumentError('Invalid PortNum value: $json');
+  }
+
+  dynamic toJson() => value ?? '*';
+
+  @override
+  String toString() => value?.toString() ?? '*';
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServicePortEndpointSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServicePortEndpointSpec {
+  final String path;
+  final String identity;
+  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+
+  ServicePortEndpointSpec({required this.path, required this.identity, this.type});
+
+  factory ServicePortEndpointSpec.fromJson(Map<String, dynamic> json) {
+    return ServicePortEndpointSpec(path: json['path'] as String, identity: json['identity'] as String, type: json['type'] as String?);
+  }
+
+  Map<String, dynamic> toJson() => {'path': path, 'identity': identity, if (type != null) 'type': type};
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServicePortSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServicePortSpec {
+  final PortNum num;
+  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+  final List<ServicePortEndpointSpec> endpoints;
+  final String? liveness;
+
+  ServicePortSpec({required this.num, this.type, List<ServicePortEndpointSpec>? endpoints, this.liveness})
+    : endpoints = endpoints ?? const [];
+
+  factory ServicePortSpec.fromJson(Map<String, dynamic> json) {
+    return ServicePortSpec(
+      num: PortNum.fromJson(json['num']),
+      type: json['type'] as String?,
+      endpoints:
+          (json['endpoints'] as List<dynamic>? ?? []).map((e) => ServicePortEndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      liveness: json['liveness'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'num': num.toJson(),
+    if (type != null) 'type': type,
+    if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
+    if (liveness != null) 'liveness': liveness,
+  };
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServiceTemplateVariable
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServiceTemplateVariable {
+  final String name;
+  final String? description;
+
+  ServiceTemplateVariable({required this.name, this.description});
+
+  factory ServiceTemplateVariable.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateVariable(name: json['name'] as String, description: json['description'] as String?);
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, if (description != null) 'description': description};
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServiceTemplateSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServiceTemplateSpec {
+  final String version; // default "v1"
+  final String kind; // default "ServiceTemplate"
+  final List<ServiceTemplateVariable>? variables;
+  final Map<String, String> environment;
+  final String name;
+  final String? image;
+  final String? description;
+  final List<ServicePortSpec> ports;
+  final String? command;
+  final String role; // default "agent"
+  final List<String> secrets;
+  final String? roomStoragePath;
+  final String? roomStorageSubpath;
+
+  ServiceTemplateSpec({
+    this.version = 'v1',
+    this.kind = 'ServiceTemplate',
+    this.variables,
+    Map<String, String>? environment,
+    required this.name,
+    this.image,
+    this.description,
+    List<ServicePortSpec>? ports,
+    this.command,
+    this.role = 'agent',
+    List<String>? secrets,
+    this.roomStoragePath,
+    this.roomStorageSubpath,
+  }) : environment = environment ?? const {},
+       ports = ports ?? const [],
+       secrets = secrets ?? const [];
+
+  factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateSpec(
+      version: json['version'] as String? ?? 'v1',
+      kind: json['kind'] as String? ?? 'ServiceTemplate',
+      variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
+      environment: (json['environment'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as String)),
+      name: json['name'] as String,
+      image: json['image'] as String?,
+      description: json['description'] as String?,
+      ports: (json['ports'] as List<dynamic>? ?? []).map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      command: json['command'] as String?,
+      role: json['role'] as String? ?? 'agent',
+      secrets: (json['secrets'] as List<dynamic>? ?? []).cast<String>(),
+      roomStoragePath: json['room_storage_path'] as String?,
+      roomStorageSubpath: json['room_storage_subpath'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'version': version,
+    'kind': kind,
+    if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
+    if (environment.isNotEmpty) 'environment': environment,
+    'name': name,
+    if (image != null) 'image': image,
+    if (description != null) 'description': description,
+    if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
+    if (command != null) 'command': command,
+    'role': role,
+    if (secrets.isNotEmpty) 'secrets': secrets,
+    if (roomStoragePath != null) 'room_storage_path': roomStoragePath,
+    if (roomStorageSubpath != null) 'room_storage_subpath': roomStorageSubpath,
+  };
 }
