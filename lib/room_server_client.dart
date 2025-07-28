@@ -1796,14 +1796,29 @@ class ServicePortSpec {
 class ServiceTemplateVariable {
   final String name;
   final String? description;
+  final bool obscure;
+  final bool optional;
+  final List<String>? enumValues;
 
-  ServiceTemplateVariable({required this.name, this.description});
+  ServiceTemplateVariable({required this.name, this.description, this.obscure = false, this.optional = false, this.enumValues});
 
   factory ServiceTemplateVariable.fromJson(Map<String, dynamic> json) {
-    return ServiceTemplateVariable(name: json['name'] as String, description: json['description'] as String?);
+    return ServiceTemplateVariable(
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      obscure: json["obscure"] ?? false,
+      optional: json["optional"] ?? false,
+      enumValues: json["enum"] == null ? null : (json["enum"] as List).map((e) => e.toString()).toList(),
+    );
   }
 
-  Map<String, dynamic> toJson() => {'name': name, if (description != null) 'description': description};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (description != null) 'description': description,
+    "obscure": obscure,
+    "optional": optional,
+    "enumValues": enumValues,
+  };
 }
 
 class ServiceTemplateEnvironmentVariable {
