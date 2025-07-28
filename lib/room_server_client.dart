@@ -953,9 +953,6 @@ class ContainersClient extends ChangeEmitter {
 
     room
         .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
-        .then((logs) {
-          print((logs as JsonResponse).json);
-        })
         .then(
           (_) {
             controller.close();
