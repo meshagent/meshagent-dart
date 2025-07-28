@@ -645,6 +645,7 @@ class _RunRequest {
     this.credentials = const [],
     this.requestId,
     this.detach,
+    this.variables = const {},
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? requestId;
@@ -658,6 +659,7 @@ class _RunRequest {
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
   final bool? detach;
+  final Map<String, String> variables;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -669,6 +671,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    'variables': variables,
     if (detach != null) 'detach': detach,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
@@ -870,6 +873,7 @@ class ContainersClient extends ChangeEmitter {
     String? role,
     String? participantName,
     Map<int, int> ports = const {},
+    Map<String, String> variables = const {},
     List<DockerSecret> credentials = const [],
     bool detach = true,
   }) {
@@ -894,6 +898,7 @@ class ContainersClient extends ChangeEmitter {
       ports: ports,
       credentials: credentials,
       detach: detach,
+      variables: variables,
     );
 
     room
@@ -1801,6 +1806,19 @@ class ServiceTemplateVariable {
   Map<String, dynamic> toJson() => {'name': name, if (description != null) 'description': description};
 }
 
+class ServiceTemplateEnvironmentVariable {
+  final String name;
+  final String value;
+
+  ServiceTemplateEnvironmentVariable({required this.name, required this.value});
+
+  factory ServiceTemplateEnvironmentVariable.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateEnvironmentVariable(name: json['name'] as String, value: json['value'] as String);
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'value': value};
+}
+
 /// ─────────────────────────────────────────────────────────────────────────────
 ///  ServiceTemplateSpec
 /// ─────────────────────────────────────────────────────────────────────────────
@@ -1809,7 +1827,7 @@ class ServiceTemplateSpec {
   final String version; // default "v1"
   final String kind; // default "ServiceTemplate"
   final List<ServiceTemplateVariable>? variables;
-  final Map<String, String> environment;
+  final List<ServiceTemplateEnvironmentVariable>? environment;
   final String name;
   final String? image;
   final String? description;
@@ -1824,7 +1842,7 @@ class ServiceTemplateSpec {
     this.version = 'v1',
     this.kind = 'ServiceTemplate',
     this.variables,
-    Map<String, String>? environment,
+    this.environment,
     required this.name,
     this.image,
     this.description,
@@ -1834,8 +1852,7 @@ class ServiceTemplateSpec {
     List<String>? secrets,
     this.roomStoragePath,
     this.roomStorageSubpath,
-  }) : environment = environment ?? const {},
-       ports = ports ?? const [],
+  }) : ports = ports ?? const [],
        secrets = secrets ?? const [];
 
   factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
@@ -1843,7 +1860,10 @@ class ServiceTemplateSpec {
       version: json['version'] as String? ?? 'v1',
       kind: json['kind'] as String? ?? 'ServiceTemplate',
       variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
-      environment: (json['environment'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as String)),
+      environment:
+          (json['environment'] as List<dynamic>?)
+              ?.map((e) => ServiceTemplateEnvironmentVariable.fromJson(e as Map<String, dynamic>))
+              .toList(),
       name: json['name'] as String,
       image: json['image'] as String?,
       description: json['description'] as String?,
@@ -1860,7 +1880,8 @@ class ServiceTemplateSpec {
     'version': version,
     'kind': kind,
     if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
-    if (environment.isNotEmpty) 'environment': environment,
+    if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
+
     'name': name,
     if (image != null) 'image': image,
     if (description != null) 'description': description,
