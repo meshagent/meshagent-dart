@@ -532,10 +532,176 @@ class ContainerRunResult {
   ContainerRunResult({required this.logs, required this.status});
 
   final List<String> logs;
-  final int status;
+  final int? status;
 }
 
 enum ContextEncoding { gzip }
+
+/// ------------------------------
+/// BuildSourceGit
+/// ------------------------------
+///
+class BuildSource {}
+
+class BuildSourceGit extends BuildSource {
+  final String url;
+  final String? ref;
+
+  BuildSourceGit({required this.url, this.ref});
+
+  Map<String, dynamic> toJson() => {'url': url, 'ref': ref};
+}
+
+/// ------------------------------
+/// BuildSourceContext
+/// ------------------------------
+class BuildSourceContext extends BuildSource {
+  final String encoding;
+  final Uint8List context;
+
+  BuildSourceContext({this.encoding = 'gzip', required this.context});
+
+  Map<String, dynamic> toJson() => {'encoding': encoding};
+}
+
+/// ------------------------------
+/// BuildSourceRoom
+/// ------------------------------
+class BuildSourceRoom extends BuildSource {
+  final String path;
+
+  BuildSourceRoom({required this.path});
+
+  Map<String, dynamic> toJson() => {'path': path};
+}
+
+/// ------------------------------
+/// BuildRequest
+/// ------------------------------
+class _BuildRequest {
+  _BuildRequest({this.requestId, required this.tag, this.git, this.context, this.room, this.credentials = const []});
+
+  final String? requestId;
+  final String tag;
+  final BuildSourceGit? git;
+  final BuildSourceContext? context;
+  final BuildSourceRoom? room;
+
+  /// One or more registry secrets: passed straight to the server so the
+  /// backend can authenticate before `docker pull` / `push`.
+  final List<DockerSecret> credentials;
+
+  Map<String, dynamic> toJson() => {
+    if (requestId != null) 'request_id': requestId,
+    'tag': tag,
+    if (git != null) 'git': git!.toJson(),
+    if (context != null) 'context': context!.toJson(),
+    if (room != null) 'room': room!.toJson(),
+    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
+  };
+}
+
+class _RunRequest {
+  _RunRequest({
+    required this.image,
+    required this.command,
+    this.env = const {},
+    this.mountPath,
+    this.mountSubpath,
+    this.role,
+    this.participantName,
+    this.ports = const {},
+    this.credentials = const [],
+    this.requestId,
+    this.detach,
+  }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
+
+  final String? requestId;
+  final String image;
+  final String command;
+  final Map<String, String> env;
+  final String? mountPath;
+  final String? mountSubpath;
+  final String? role;
+  final String? participantName;
+  final Map<int, int> ports;
+  final List<DockerSecret> credentials;
+  final bool? detach;
+
+  Map<String, dynamic> toJson() => {
+    if (requestId != null) 'request_id': requestId,
+    'image': image,
+    'command': command,
+    'env': env,
+    'mount_path': mountPath,
+    'mount_subpath': mountSubpath,
+    'role': role,
+    'participant_name': participantName,
+    'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    if (detach != null) 'detach': detach,
+    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
+  };
+}
+
+class DockerSecret {
+  const DockerSecret({required this.username, required this.password, required this.registry, required this.email});
+
+  final String username;
+  final String password;
+  final String registry;
+  final String email;
+
+  factory DockerSecret.fromJson(Map<String, dynamic> json) => DockerSecret(
+    username: json['username'] as String,
+    password: json['password'] as String,
+    registry: json['registry'] as String,
+    email: json['email'] as String,
+  );
+
+  Map<String, String> toJson() => {'username': username, 'password': password, 'registry': registry, 'email': email};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data‑transfer objects
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Single build (as returned by `containers.list_builds`)
+class BuildInfo {
+  BuildInfo({required this.requestId, required this.tag, required this.status, this.error, this.result});
+
+  final String requestId;
+  final String tag;
+  final String status; // "running" | "finished" | "errored"
+  final String? error; // present when status == "errored"
+  final dynamic result; // whatever `aux` object the backend returned
+
+  factory BuildInfo.fromJson(Map<String, dynamic> json) => BuildInfo(
+    requestId: json['request_id'] as String,
+    tag: json['tag'] as String,
+    status: json['status'] as String,
+    error: json['error'] as String?,
+    result: json['result'],
+  );
+}
+
+/// Lightweight image description (from `containers.list_images`)
+class DockerImage {
+  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels});
+
+  final String id;
+  final List<String> tags;
+  final int? size; // bytes
+  final int? created; // seconds since epoch
+  final Map<String, dynamic> labels;
+
+  factory DockerImage.fromJson(Map<String, dynamic> json) => DockerImage(
+    id: json['id'] as String,
+    tags: (json['tags'] as List?)?.cast<String>() ?? const [],
+    size: json['size'] as int?,
+    created: json['created'] as int?,
+    labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
+  );
+}
 
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
@@ -551,19 +717,55 @@ class ContainersClient extends ChangeEmitter {
 
   RoomClient room;
 
-  LogStream<void> build({required Uint8List context, required String tag, ContextEncoding encoding = ContextEncoding.gzip}) {
+  /// Fetch the *in‑memory* list of builds tracked by the server.
+  ///
+  /// Each [BuildInfo] entry reports current status (`running`, `finished`,
+  /// `errored`) together with any error / result payload.
+  Future<List<BuildInfo>> listBuilds() async {
+    final res = await room.sendRequest('containers.list_builds', {}) as JsonResponse;
+
+    return (res.json['builds'] as List).map((b) => BuildInfo.fromJson(b as Map<String, dynamic>)).toList();
+  }
+
+  /// Attempt to cancel a running build (`containers.stop_build`).
+  Future<void> stopBuild({required String requestId}) async {
+    await room.sendRequest('containers.stop_build', {'request_id': requestId});
+  }
+
+  /// ------------------------------------------------------------------------
+  /// Images
+  /// ------------------------------------------------------------------------
+
+  /// Return *all* local images (similar to `docker images`).
+  Future<List<DockerImage>> listImages() async {
+    final res = await room.sendRequest('containers.list_images', {}) as JsonResponse;
+
+    return (res.json['images'] as List).map((i) => DockerImage.fromJson(i as Map<String, dynamic>)).toList();
+  }
+
+  /// Delete an image by tag or ID (force = true on the server).
+  Future<void> deleteImage({required String image}) async {
+    await room.sendRequest('containers.delete_image', {'image': image});
+  }
+
+  LogStream<void> build({required String tag, required BuildSource source, List<DockerSecret> credentials = const []}) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
     final completer = Completer();
     final stream = LogStream._(completer, controller.stream);
     _loggers[requestId] = controller;
 
-    final String enc = switch (encoding) {
-      ContextEncoding.gzip => "gzip",
-    };
+    final req = _BuildRequest(
+      tag: tag,
+      requestId: requestId,
+      git: source is BuildSourceGit ? source : null,
+      room: source is BuildSourceRoom ? source : null,
+      context: source is BuildSourceContext ? source : null,
+      credentials: credentials,
+    );
 
     room
-        .sendRequest("containers.build", {"request_id": requestId, "tag": tag, "encoding": enc}, data: context)
+        .sendRequest("containers.build", req.toJson(), data: source is BuildSourceContext ? source.context : null)
         .then(
           (_) {
             controller.close();
@@ -571,7 +773,6 @@ class ContainersClient extends ChangeEmitter {
             _loggers.remove(requestId);
           },
           onError: (error) {
-            controller.close();
             completer.completeError(error);
             _loggers.remove(requestId);
           },
@@ -589,6 +790,8 @@ class ContainersClient extends ChangeEmitter {
     String? role,
     String? participantName,
     Map<int, int> ports = const {},
+    List<DockerSecret> credentials = const [],
+    bool detach = true,
   }) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -596,18 +799,22 @@ class ContainersClient extends ChangeEmitter {
     final stream = LogStream<ContainerRunResult>._(completer, controller.stream);
     _loggers[requestId] = controller;
 
+    final req = _RunRequest(
+      requestId: const Uuid().v4().toString(),
+      image: image,
+      command: command,
+      env: env,
+      mountPath: mountPath,
+      mountSubpath: mountSubpath,
+      role: role,
+      participantName: participantName,
+      ports: ports,
+      credentials: credentials,
+      detach: detach,
+    );
+
     room
-        .sendRequest("containers.run", {
-          "request_id": requestId,
-          "image": image,
-          "command": command,
-          "env": env,
-          "mount_path": mountPath,
-          "mount_subpath": mountSubpath,
-          "role": role,
-          "participant_name": participantName,
-          "ports": {for (final entry in ports.entries) entry.key.toString(): entry.value.toString()},
-        })
+        .sendRequest("containers.run", req.toJson())
         .then(
           (result) {
             final json = result as JsonResponse;
@@ -658,7 +865,7 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<List<RoomContainer>> list() async {
-    final res = await room.sendRequest("containers.list", {}) as JsonResponse;
+    final res = await room.sendRequest("containers.list_containers", {}) as JsonResponse;
 
     return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
