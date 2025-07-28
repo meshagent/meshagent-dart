@@ -651,7 +651,7 @@ class _RunRequest {
     this.credentials = const [],
     this.requestId,
     this.detach,
-    this.variables = const {},
+    this.variables,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? requestId;
@@ -665,7 +665,7 @@ class _RunRequest {
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
   final bool? detach;
-  final Map<String, String> variables;
+  final Map<String, String>? variables;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -883,7 +883,7 @@ class ContainersClient extends ChangeEmitter {
     String? role,
     String? participantName,
     Map<int, int> ports = const {},
-    Map<String, String> variables = const {},
+    Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     bool detach = true,
   }) {
