@@ -527,13 +527,19 @@ class LogProgress {
 }
 
 class LogStream<T> {
-  LogStream._(this._completer, this.stream, this.progress);
+  LogStream._(this._completer, this.stream, this.progress, this._cancel);
 
   final Stream<LogProgress> progress;
   final Stream<String> stream;
   final Completer<T> _completer;
+  final Future<void> Function() _cancel;
+
   Future<T> get result {
     return _completer.future;
+  }
+
+  Future<void> cancel() async {
+    await _cancel();
   }
 }
 
@@ -802,7 +808,9 @@ class ContainersClient extends ChangeEmitter {
     final controller = StreamController<String>();
     final progress = StreamController<LogProgress>();
     final completer = Completer();
-    final stream = LogStream._(completer, controller.stream, progress.stream);
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_build', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
@@ -838,7 +846,9 @@ class ContainersClient extends ChangeEmitter {
     final completer = Completer<ImagePullResult>();
     final progress = StreamController<LogProgress>();
 
-    final stream = LogStream<ImagePullResult>._(completer, controller.stream, progress.stream);
+    final stream = LogStream<ImagePullResult>._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
@@ -882,7 +892,9 @@ class ContainersClient extends ChangeEmitter {
     final completer = Completer<ContainerRunResult>();
     final progress = StreamController<LogProgress>();
 
-    final stream = LogStream<ContainerRunResult>._(completer, controller.stream, progress.stream);
+    final stream = LogStream<ContainerRunResult>._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_container', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
@@ -933,12 +945,17 @@ class ContainersClient extends ChangeEmitter {
     final completer = Completer();
     final progress = StreamController<LogProgress>();
 
-    final stream = LogStream._(completer, controller.stream, progress.stream);
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
     room
         .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
+        .then((logs) {
+          print((logs as JsonResponse).json);
+        })
         .then(
           (_) {
             controller.close();
