@@ -518,13 +518,28 @@ class RoomClient extends ChangeEmitter {
   }
 }
 
-class LogStream<T> {
-  LogStream._(this._completer, this.stream);
+class LogProgress {
+  LogProgress({required this.message, required this.current, required this.total});
 
+  String message;
+  int? current;
+  int? total;
+}
+
+class LogStream<T> {
+  LogStream._(this._completer, this.stream, this.progress, this._cancel);
+
+  final Stream<LogProgress> progress;
   final Stream<String> stream;
   final Completer<T> _completer;
+  final Future<void> Function() _cancel;
+
   Future<T> get result {
     return _completer.future;
+  }
+
+  Future<void> cancel() async {
+    await _cancel();
   }
 }
 
@@ -533,6 +548,12 @@ class ContainerRunResult {
 
   final List<String> logs;
   final int? status;
+}
+
+class ImagePullResult {
+  ImagePullResult({required this.logs});
+
+  final List<String> logs;
 }
 
 enum ContextEncoding { gzip }
@@ -546,10 +567,12 @@ class BuildSource {}
 class BuildSourceGit extends BuildSource {
   final String url;
   final String? ref;
+  final String? username;
+  final String? password;
 
-  BuildSourceGit({required this.url, this.ref});
+  BuildSourceGit({required this.url, this.ref, this.username, this.password});
 
-  Map<String, dynamic> toJson() => {'url': url, 'ref': ref};
+  Map<String, dynamic> toJson() => {'url': url, 'ref': ref, 'username': username, 'password': password};
 }
 
 /// ------------------------------
@@ -601,6 +624,20 @@ class _BuildRequest {
   };
 }
 
+class _ImagePullRequest {
+  _ImagePullRequest({required this.tag, this.credentials = const [], this.requestId});
+
+  final String? requestId;
+  final String tag;
+  final List<DockerSecret> credentials;
+
+  Map<String, dynamic> toJson() => {
+    if (requestId != null) 'request_id': requestId,
+    'tag': tag,
+    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
+  };
+}
+
 class _RunRequest {
   _RunRequest({
     required this.image,
@@ -614,11 +651,12 @@ class _RunRequest {
     this.credentials = const [],
     this.requestId,
     this.detach,
+    this.variables,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? requestId;
   final String image;
-  final String command;
+  final String? command;
   final Map<String, String> env;
   final String? mountPath;
   final String? mountSubpath;
@@ -627,6 +665,7 @@ class _RunRequest {
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
   final bool? detach;
+  final Map<String, String>? variables;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -638,6 +677,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    'variables': variables,
     if (detach != null) 'detach': detach,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
@@ -686,19 +726,21 @@ class BuildInfo {
 
 /// Lightweight image description (from `containers.list_images`)
 class DockerImage {
-  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels});
+  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels, this.manifest});
 
   final String id;
   final List<String> tags;
   final int? size; // bytes
   final int? created; // seconds since epoch
   final Map<String, dynamic> labels;
+  final ServiceTemplateSpec? manifest;
 
   factory DockerImage.fromJson(Map<String, dynamic> json) => DockerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
     created: json['created'] as int?,
+    manifest: json['manifest'] == null ? null : ServiceTemplateSpec.fromJson(json['manifest']),
     labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
   );
 }
@@ -706,6 +748,7 @@ class DockerImage {
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
     room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
+    room.protocol.addHandler("containers.progress", _handleProgress);
   }
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -713,8 +756,20 @@ class ContainersClient extends ChangeEmitter {
     _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
   }
 
-  final Map<String, StreamController<String>> _loggers = {};
+  Future<void> _handleProgress(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final chunk = unpackMessage(bytes).header;
+    final detail = chunk["detail"] as Map<String, dynamic>?;
+    if (detail != null) {
+      final total = detail["total"] as num?;
+      final current = detail["current"] as num?;
+      final message = chunk["message"] as String;
 
+      _progress[chunk["request_id"]]!.sink.add(LogProgress(message: message, current: current?.toInt(), total: total?.toInt()));
+    }
+  }
+
+  final Map<String, StreamController<String>> _loggers = {};
+  final Map<String, StreamController<LogProgress>> _progress = {};
   RoomClient room;
 
   /// Fetch the *in‑memory* list of builds tracked by the server.
@@ -751,9 +806,13 @@ class ContainersClient extends ChangeEmitter {
   LogStream<void> build({required String tag, required BuildSource source, List<DockerSecret> credentials = const []}) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
+    final progress = StreamController<LogProgress>();
     final completer = Completer();
-    final stream = LogStream._(completer, controller.stream);
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_build', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     final req = _BuildRequest(
       tag: tag,
@@ -781,26 +840,66 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
+  LogStream<ImagePullResult> pullImage({required String tag, List<DockerSecret> credentials = const []}) {
+    final requestId = Uuid().v4().toString();
+    final controller = StreamController<String>();
+    final completer = Completer<ImagePullResult>();
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream<ImagePullResult>._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+    });
+    _loggers[requestId] = controller;
+    _progress[requestId] = progress;
+
+    final req = _ImagePullRequest(requestId: requestId, tag: tag, credentials: credentials);
+
+    room
+        .sendRequest("containers.pull_image", req.toJson())
+        .then(
+          (result) {
+            final json = result as JsonResponse;
+
+            controller.close();
+            completer.complete(ImagePullResult(logs: (json.json["logs"] as List).map((l) => l as String).toList()));
+            _loggers.remove(requestId);
+          },
+          onError: (error) {
+            controller.close();
+            completer.completeError(error);
+            _loggers.remove(requestId);
+          },
+        );
+
+    return stream;
+  }
+
   LogStream<ContainerRunResult> run({
     required String image,
-    required String command,
+    String? command,
     Map<String, String> env = const {},
     String? mountPath,
     String? mountSubpath,
     String? role,
     String? participantName,
     Map<int, int> ports = const {},
+    Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     bool detach = true,
   }) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
     final completer = Completer<ContainerRunResult>();
-    final stream = LogStream<ContainerRunResult>._(completer, controller.stream);
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream<ContainerRunResult>._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_container', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     final req = _RunRequest(
-      requestId: const Uuid().v4().toString(),
+      requestId: requestId,
       image: image,
       command: command,
       env: env,
@@ -811,6 +910,7 @@ class ContainersClient extends ChangeEmitter {
       ports: ports,
       credentials: credentials,
       detach: detach,
+      variables: variables,
     );
 
     room
@@ -836,15 +936,20 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<void> stop({required String containerId}) async {
-    await room.sendRequest("containers.stop", {"id": containerId});
+    await room.sendRequest("containers.stop_container", {"id": containerId});
   }
 
   LogStream<void> logs({required String containerId, bool follow = false}) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
     final completer = Completer();
-    final stream = LogStream._(completer, controller.stream);
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
+    _progress[requestId] = progress;
 
     room
         .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
@@ -886,6 +991,7 @@ class RoomContainer {
     required this.entrypoint,
     required this.environment,
     required this.startedBy,
+    this.manifest,
   });
   final String id;
   final String image;
@@ -893,11 +999,13 @@ class RoomContainer {
   final List<String>? entrypoint;
   final Map<String, String> environment;
   final ParticipantInfo startedBy;
+  final Map<String, dynamic>? manifest;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
       id: json["id"],
       image: json["image"],
+      manifest: json["manifest"],
       command: (json["command"] as List).map((e) => e as String).toList(),
       entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
       environment: {for (final entry in (json["env"] as Map).entries) entry.key: entry.value},
@@ -1612,4 +1720,205 @@ Response unpackResponse(Uint8List data) {
 
   // Delegate to the correct `unpack` function
   return _responseTypes[typeKey]!(header, payload);
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  Helpers
+/// ─────────────────────────────────────────────────────────────────────────────
+
+/// Represents the `num` field of `ServicePortSpec`, which can be `'*'` or a
+/// positive integer.
+class PortNum {
+  final int? value; // null ⇒ '*'
+
+  PortNum._(this.value);
+
+  factory PortNum.star() => PortNum._(null);
+
+  factory PortNum.fromInt(int v) {
+    if (v <= 0) {
+      throw ArgumentError('Port number must be > 0');
+    }
+    return PortNum._(v);
+  }
+
+  factory PortNum.fromJson(dynamic json) {
+    if (json == '*' || json == null) return PortNum.star();
+    if (json is int) return PortNum.fromInt(json);
+    throw ArgumentError('Invalid PortNum value: $json');
+  }
+
+  dynamic toJson() => value ?? '*';
+
+  @override
+  String toString() => value?.toString() ?? '*';
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServicePortEndpointSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServicePortEndpointSpec {
+  final String path;
+  final String identity;
+  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+
+  ServicePortEndpointSpec({required this.path, required this.identity, this.type});
+
+  factory ServicePortEndpointSpec.fromJson(Map<String, dynamic> json) {
+    return ServicePortEndpointSpec(path: json['path'] as String, identity: json['identity'] as String, type: json['type'] as String?);
+  }
+
+  Map<String, dynamic> toJson() => {'path': path, 'identity': identity, if (type != null) 'type': type};
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServicePortSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServicePortSpec {
+  final PortNum num;
+  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+  final List<ServicePortEndpointSpec> endpoints;
+  final String? liveness;
+
+  ServicePortSpec({required this.num, this.type, List<ServicePortEndpointSpec>? endpoints, this.liveness})
+    : endpoints = endpoints ?? const [];
+
+  factory ServicePortSpec.fromJson(Map<String, dynamic> json) {
+    return ServicePortSpec(
+      num: PortNum.fromJson(json['num']),
+      type: json['type'] as String?,
+      endpoints:
+          (json['endpoints'] as List<dynamic>? ?? []).map((e) => ServicePortEndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      liveness: json['liveness'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'num': num.toJson(),
+    if (type != null) 'type': type,
+    if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
+    if (liveness != null) 'liveness': liveness,
+  };
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServiceTemplateVariable
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServiceTemplateVariable {
+  final String name;
+  final String? description;
+  final bool obscure;
+  final bool optional;
+  final List<String>? enumValues;
+
+  ServiceTemplateVariable({required this.name, this.description, this.obscure = false, this.optional = false, this.enumValues});
+
+  factory ServiceTemplateVariable.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateVariable(
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      obscure: json["obscure"] ?? false,
+      optional: json["optional"] ?? false,
+      enumValues: json["enum"] == null ? null : (json["enum"] as List).map((e) => e.toString()).toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (description != null) 'description': description,
+    "obscure": obscure,
+    "optional": optional,
+    "enumValues": enumValues,
+  };
+}
+
+class ServiceTemplateEnvironmentVariable {
+  final String name;
+  final String value;
+
+  ServiceTemplateEnvironmentVariable({required this.name, required this.value});
+
+  factory ServiceTemplateEnvironmentVariable.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateEnvironmentVariable(name: json['name'] as String, value: json['value'] as String);
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'value': value};
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ServiceTemplateSpec
+/// ─────────────────────────────────────────────────────────────────────────────
+
+class ServiceTemplateSpec {
+  final String version; // default "v1"
+  final String kind; // default "ServiceTemplate"
+  final List<ServiceTemplateVariable>? variables;
+  final List<ServiceTemplateEnvironmentVariable>? environment;
+  final String name;
+  final String? image;
+  final String? description;
+  final List<ServicePortSpec> ports;
+  final String? command;
+  final String role; // default "agent"
+  final List<String> secrets;
+  final String? roomStoragePath;
+  final String? roomStorageSubpath;
+
+  ServiceTemplateSpec({
+    this.version = 'v1',
+    this.kind = 'ServiceTemplate',
+    this.variables,
+    this.environment,
+    required this.name,
+    this.image,
+    this.description,
+    List<ServicePortSpec>? ports,
+    this.command,
+    this.role = 'agent',
+    List<String>? secrets,
+    this.roomStoragePath,
+    this.roomStorageSubpath,
+  }) : ports = ports ?? const [],
+       secrets = secrets ?? const [];
+
+  factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateSpec(
+      version: json['version'] as String? ?? 'v1',
+      kind: json['kind'] as String? ?? 'ServiceTemplate',
+      variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
+      environment:
+          (json['environment'] as List<dynamic>?)
+              ?.map((e) => ServiceTemplateEnvironmentVariable.fromJson(e as Map<String, dynamic>))
+              .toList(),
+      name: json['name'] as String,
+      image: json['image'] as String?,
+      description: json['description'] as String?,
+      ports: (json['ports'] as List<dynamic>? ?? []).map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      command: json['command'] as String?,
+      role: json['role'] as String? ?? 'agent',
+      secrets: (json['secrets'] as List<dynamic>? ?? []).cast<String>(),
+      roomStoragePath: json['room_storage_path'] as String?,
+      roomStorageSubpath: json['room_storage_subpath'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'version': version,
+    'kind': kind,
+    if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
+    if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
+
+    'name': name,
+    if (image != null) 'image': image,
+    if (description != null) 'description': description,
+    if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
+    if (command != null) 'command': command,
+    'role': role,
+    if (secrets.isNotEmpty) 'secrets': secrets,
+    if (roomStoragePath != null) 'room_storage_path': roomStoragePath,
+    if (roomStorageSubpath != null) 'room_storage_subpath': roomStorageSubpath,
+  };
 }
