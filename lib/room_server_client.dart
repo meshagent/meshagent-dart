@@ -652,6 +652,7 @@ class _RunRequest {
     this.requestId,
     this.detach,
     this.variables,
+    this.tty,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? requestId;
@@ -665,6 +666,7 @@ class _RunRequest {
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
   final bool? detach;
+  final bool? tty;
   final Map<String, String>? variables;
 
   Map<String, dynamic> toJson() => {
@@ -679,6 +681,7 @@ class _RunRequest {
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
     'variables': variables,
     if (detach != null) 'detach': detach,
+    if (tty != null) 'tty': tty,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
@@ -745,15 +748,75 @@ class DockerImage {
   );
 }
 
+class ContainerTTY {
+  ContainerTTY._(this._client, this._requestId);
+
+  final RoomClient _client;
+  final String _requestId;
+
+  final _result = Completer<int>();
+
+  Future<void> write(Uint8List data) async {
+    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 0}, data: data);
+  }
+
+  Future<void> resize({required int width, required int height}) async {
+    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
+  }
+
+  final _stdoutController = StreamController<Uint8List>();
+  final _stderrController = StreamController<Uint8List>();
+
+  Stream<Uint8List> get stdout {
+    return _stdoutController.stream;
+  }
+
+  Stream<Uint8List> get stderr {
+    return _stderrController.stream;
+  }
+
+  void _close(int code) {
+    _result.complete(code);
+    _stderrController.close();
+    _stdoutController.close();
+  }
+
+  void _closeError(Object error) {
+    _result.completeError(error);
+    _stderrController.close();
+    _stdoutController.close();
+  }
+}
+
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
     room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
+    room.protocol.addHandler("containers.tty.chunk", _handleTTYChunk);
     room.protocol.addHandler("containers.progress", _handleProgress);
   }
+
+  final Map<String, ContainerTTY> _ttys = {};
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final chunk = unpackMessage(bytes).header;
     _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
+  }
+
+  Future<void> _handleTTYChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final message = unpackMessage(bytes);
+    String requestId = message.header["request_id"];
+    num channel = message.header["channel"];
+    final tty = _ttys[requestId];
+    if (tty == null) {
+      // tty has been closed
+      return;
+    }
+    if (channel == 0) {
+      tty._stderrController.add(message.payload);
+    }
+    if (channel == 1) {
+      tty._stdoutController.add(message.payload);
+    }
   }
 
   Future<void> _handleProgress(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -935,6 +998,56 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
+  ContainerTTY tty({
+    required String image,
+    String? command,
+    Map<String, String> env = const {},
+    String? mountPath,
+    String? mountSubpath,
+    String? role,
+    String? participantName,
+    Map<int, int> ports = const {},
+    Map<String, String>? variables,
+    List<DockerSecret> credentials = const [],
+  }) {
+    final requestId = Uuid().v4().toString();
+
+    final req = _RunRequest(
+      requestId: requestId,
+      image: image,
+      command: command,
+      env: env,
+      mountPath: mountPath,
+      mountSubpath: mountSubpath,
+      role: role,
+      participantName: participantName,
+      ports: ports,
+      credentials: credentials,
+      tty: true,
+      detach: false,
+      variables: variables,
+    );
+
+    final tty = ContainerTTY._(room, requestId);
+    _ttys[requestId] = tty;
+
+    room
+        .sendRequest("containers.run", req.toJson())
+        .then(
+          (result) {
+            _ttys.remove(requestId);
+            final json = result as JsonResponse;
+            tty._close(json.json["status"]);
+          },
+          onError: (error) {
+            _ttys.remove(requestId);
+            tty._closeError(error);
+          },
+        );
+
+    return tty;
+  }
+
   Future<void> stop({required String containerId}) async {
     await room.sendRequest("containers.stop_container", {"id": containerId});
   }
@@ -995,7 +1108,7 @@ class RoomContainer {
   });
   final String id;
   final String image;
-  final List<String> command;
+  final List<String>? command;
   final List<String>? entrypoint;
   final Map<String, String> environment;
   final ParticipantInfo startedBy;
@@ -1006,7 +1119,7 @@ class RoomContainer {
       id: json["id"],
       image: json["image"],
       manifest: json["manifest"],
-      command: (json["command"] as List).map((e) => e as String).toList(),
+      command: (json["command"] as List?)?.map((e) => e as String).toList(),
       entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
       environment: {for (final entry in (json["env"] as Map).entries) entry.key: entry.value},
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
