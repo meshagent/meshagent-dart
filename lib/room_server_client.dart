@@ -756,8 +756,12 @@ class ContainerTTY {
 
   final _result = Completer<int>();
 
+  Future<int> get result {
+    return _result.future;
+  }
+
   Future<void> write(Uint8List data) async {
-    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 0}, data: data);
+    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 1}, data: data);
   }
 
   Future<void> resize({required int width, required int height}) async {
@@ -811,11 +815,13 @@ class ContainersClient extends ChangeEmitter {
       // tty has been closed
       return;
     }
+
     if (channel == 0) {
-      tty._stderrController.add(message.payload);
-    }
-    if (channel == 1) {
       tty._stdoutController.add(message.payload);
+    }
+
+    if (channel == 1) {
+      tty._stderrController.add(message.payload);
     }
   }
 
