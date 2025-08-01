@@ -519,8 +519,9 @@ class RoomClient extends ChangeEmitter {
 }
 
 class LogProgress {
-  LogProgress({required this.message, required this.current, required this.total});
+  LogProgress({required this.message, required this.current, required this.total, this.layer});
 
+  String? layer;
   String message;
   int? current;
   int? total;
@@ -832,8 +833,11 @@ class ContainersClient extends ChangeEmitter {
       final total = detail["total"] as num?;
       final current = detail["current"] as num?;
       final message = chunk["message"] as String;
+      final layer = chunk["layer"] as String;
 
-      _progress[chunk["request_id"]]!.sink.add(LogProgress(message: message, current: current?.toInt(), total: total?.toInt()));
+      _progress[chunk["request_id"]]!.sink.add(
+        LogProgress(layer: layer, message: message, current: current?.toInt(), total: total?.toInt()),
+      );
     }
   }
 
