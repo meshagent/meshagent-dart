@@ -570,10 +570,11 @@ class BuildSourceGit extends BuildSource {
   final String? ref;
   final String? username;
   final String? password;
+  final String? path;
 
-  BuildSourceGit({required this.url, this.ref, this.username, this.password});
+  BuildSourceGit({required this.url, this.ref, this.username, this.password, this.path});
 
-  Map<String, dynamic> toJson() => {'url': url, 'ref': ref, 'username': username, 'password': password};
+  Map<String, dynamic> toJson() => {'url': url, 'ref': ref, 'username': username, 'password': password, 'path': path};
 }
 
 /// ------------------------------
