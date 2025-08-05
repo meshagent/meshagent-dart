@@ -2016,14 +2016,29 @@ class ServiceTemplateMountSpec {
 ///  ServiceTemplateSpec
 /// ---------------------------------------------------------------------------
 
+class ServiceTemplateMetadata {
+  ServiceTemplateMetadata({required this.name, this.description, this.icon, this.repo});
+
+  final String name;
+  final String? description;
+  final String? icon;
+  final String? repo;
+
+  Map<String, dynamic> toJson() => {'name': name, 'description': description, 'icon': icon, 'repo': repo};
+
+  static ServiceTemplateMetadata fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateMetadata(name: json["name"], description: json["description"], icon: json["icon"], repo: json["repo"]);
+  }
+}
+
 class ServiceTemplateSpec {
   final String version; // default "v1"
   final String kind; // default "ServiceTemplate"
   final List<ServiceTemplateVariable>? variables;
   final List<ServiceTemplateEnvironmentVariable>? environment;
-  final String name;
+  final ServiceTemplateMetadata metadata;
   final String? image;
-  final String? description;
+
   final List<ServicePortSpec> ports;
   final String? command;
   final String? role; // "user" | "tool" | "agent"
@@ -2034,9 +2049,8 @@ class ServiceTemplateSpec {
     this.kind = 'ServiceTemplate',
     this.variables,
     this.environment,
-    required this.name,
+    required this.metadata,
     this.image,
-    this.description,
     List<ServicePortSpec>? ports,
     this.command,
     this.role,
@@ -2052,9 +2066,8 @@ class ServiceTemplateSpec {
           (json['environment'] as List<dynamic>?)
               ?.map((e) => ServiceTemplateEnvironmentVariable.fromJson(e as Map<String, dynamic>))
               .toList(),
-      name: json['name'] as String,
+      metadata: ServiceTemplateMetadata.fromJson(json['metadata']),
       image: json['image'] as String?,
-      description: json['description'] as String?,
       ports: (json['ports'] as List<dynamic>? ?? []).map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList(),
       command: json['command'] as String?,
       role: json['role'] as String?,
@@ -2067,9 +2080,8 @@ class ServiceTemplateSpec {
     'kind': kind,
     if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
     if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
-    'name': name,
     if (image != null) 'image': image,
-    if (description != null) 'description': description,
+    "metadata": metadata.toJson(),
     if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
     if (command != null) 'command': command,
     if (role != null) 'role': role,
