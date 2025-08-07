@@ -1367,8 +1367,8 @@ class StorageClient extends ChangeEmitter {
         return StorageEntry(
           name: f["name"],
           isFolder: f["is_folder"],
-          createdAt: DateTime.parse(f["created_at"]),
-          updatedAt: DateTime.parse(f["updated_at"]),
+          createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
+          updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
         );
       }).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
@@ -1672,8 +1672,8 @@ class StorageEntry {
 
   final String name;
   final bool isFolder;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   String get nameWithoutExtension {
     return path.basenameWithoutExtension(name);
