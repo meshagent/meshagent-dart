@@ -750,8 +750,8 @@ class DockerImage {
   );
 }
 
-class ContainerTTY {
-  ContainerTTY._(this._client, this._requestId);
+class ContainerRun {
+  ContainerRun._(this._client, this._requestId);
 
   final RoomClient _client;
   final String _requestId;
@@ -763,33 +763,26 @@ class ContainerTTY {
   }
 
   Future<void> write(Uint8List data) async {
-    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 1}, data: data);
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 1}, data: data);
   }
 
   Future<void> resize({required int width, required int height}) async {
-    await _client.sendRequest("containers.write_tty", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
   }
 
   final _stdoutController = StreamController<Uint8List>();
-  final _stderrController = StreamController<Uint8List>();
 
-  Stream<Uint8List> get stdout {
+  Stream<Uint8List> get output {
     return _stdoutController.stream;
-  }
-
-  Stream<Uint8List> get stderr {
-    return _stderrController.stream;
   }
 
   void _close(int code) {
     _result.complete(code);
-    _stderrController.close();
     _stdoutController.close();
   }
 
   void _closeError(Object error) {
     _result.completeError(error);
-    _stderrController.close();
     _stdoutController.close();
   }
 }
@@ -797,18 +790,18 @@ class ContainerTTY {
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room}) {
     room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
-    room.protocol.addHandler("containers.tty.chunk", _handleTTYChunk);
+    room.protocol.addHandler("containers.run.output", _handleContainerOutput);
     room.protocol.addHandler("containers.progress", _handleProgress);
   }
 
-  final Map<String, ContainerTTY> _ttys = {};
+  final Map<String, ContainerRun> _ttys = {};
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final chunk = unpackMessage(bytes).header;
     _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
   }
 
-  Future<void> _handleTTYChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+  Future<void> _handleContainerOutput(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final message = unpackMessage(bytes);
     String requestId = message.header["request_id"];
     num channel = message.header["channel"];
@@ -820,10 +813,6 @@ class ContainersClient extends ChangeEmitter {
 
     if (channel == 0) {
       tty._stdoutController.add(message.payload);
-    }
-
-    if (channel == 1) {
-      tty._stderrController.add(message.payload);
     }
   }
 
@@ -900,7 +889,7 @@ class ContainersClient extends ChangeEmitter {
     room
         .sendRequest("containers.build", req.toJson(), data: source is BuildSourceContext ? source.context : null)
         .then(
-          (_) {
+          (result) {
             controller.close();
             completer.complete();
             _loggers.remove(requestId);
@@ -1009,7 +998,7 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
-  ContainerTTY tty({
+  ContainerRun runAttached({
     required String image,
     String? command,
     Map<String, String> env = const {},
@@ -1020,6 +1009,7 @@ class ContainersClient extends ChangeEmitter {
     Map<int, int> ports = const {},
     Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
+    bool tty = false,
   }) {
     final requestId = Uuid().v4().toString();
 
@@ -1034,13 +1024,13 @@ class ContainersClient extends ChangeEmitter {
       participantName: participantName,
       ports: ports,
       credentials: credentials,
-      tty: true,
+      tty: tty,
       detach: false,
       variables: variables,
     );
 
-    final tty = ContainerTTY._(room, requestId);
-    _ttys[requestId] = tty;
+    final container = ContainerRun._(room, requestId);
+    _ttys[requestId] = container;
 
     room
         .sendRequest("containers.run", req.toJson())
@@ -1048,15 +1038,15 @@ class ContainersClient extends ChangeEmitter {
           (result) {
             _ttys.remove(requestId);
             final json = result as JsonResponse;
-            tty._close(json.json["status"]);
+            container._close(json.json["status"]);
           },
           onError: (error) {
             _ttys.remove(requestId);
-            tty._closeError(error);
+            container._closeError(error);
           },
         );
 
-    return tty;
+    return container;
   }
 
   Future<void> stop({required String containerId}) async {
