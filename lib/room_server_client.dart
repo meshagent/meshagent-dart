@@ -319,7 +319,7 @@ class _RefCount<T> {
 }
 
 class RoomClient extends ChangeEmitter {
-  RoomClient({required this.protocol}) {
+  RoomClient({required this.protocol, OAuthTokenRequestHandler? oauthTokenRequestHandler}) {
     protocol.addHandler("__response__", _handleResponse);
 
     protocol.addHandler("connected", _handleParticipant);
@@ -337,6 +337,7 @@ class RoomClient extends ChangeEmitter {
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
     containers = ContainersClient(room: this);
+    secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler);
   }
 
   late final LivekitClient livekit;
@@ -349,6 +350,7 @@ class RoomClient extends ChangeEmitter {
   late final AgentsClient agents;
   late final DatabaseClient database;
   late final ContainersClient containers;
+  late final SecretsClient secrets;
 
   final _ready = Completer();
 
@@ -2077,4 +2079,140 @@ class ServiceTemplateSpec {
     if (role != null) 'role': role,
     if (storage != null) 'storage': storage!.toJson(),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SecretsClient  (mirrors the Python version you shared)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class OAuthCredentials {
+  OAuthCredentials({required this.accessToken, this.refreshToken, this.expiration, this.scopes});
+
+  final String accessToken;
+  final String? refreshToken;
+  final DateTime? expiration;
+  final List<String>? scopes;
+
+  factory OAuthCredentials.fromJson(Map<String, dynamic> json) {
+    return OAuthCredentials(
+      accessToken: json['access_token'] as String,
+      refreshToken: json['refresh_token'] as String?,
+      expiration: json['expiration'] == null ? null : DateTime.parse(json['expiration'] as String),
+      scopes: (json['scopes'] as List?)?.whereType<String>().toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'access_token': accessToken,
+    if (refreshToken != null) 'refresh_token': refreshToken,
+    if (expiration != null) 'expiration': expiration!.toUtc().toIso8601String(),
+    if (scopes != null) 'scopes': scopes,
+  };
+}
+
+class OAuthTokenRequest {
+  OAuthTokenRequest({
+    required this.clientId,
+    required this.requestId,
+    required this.authorizationEndpoint,
+    required this.tokenEndpoint,
+    this.scopes,
+  });
+
+  final String clientId;
+  final String requestId;
+  final String authorizationEndpoint;
+  final String tokenEndpoint;
+  final List<String>? scopes;
+}
+
+/// Optional: if you want a typedef for clarity
+typedef OAuthTokenRequestHandler = void Function(OAuthTokenRequest request);
+
+class SecretsClient extends ChangeEmitter {
+  SecretsClient({required this.room, this.oauthTokenRequestHandler}) {
+    // Server -> client: another participant (or the server) requests us to obtain an OAuth token.
+    room.protocol.addHandler("secrets.request_oauth_token", _handleClientOAuthTokenRequest);
+  }
+
+  final RoomClient room;
+
+  final OAuthTokenRequestHandler? oauthTokenRequestHandler;
+
+  // Server sent us a request asking the local user/client to authorize and supply a token.
+  Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final header = unpackMessage(bytes).header;
+
+    // Expected shape (matches Python):
+    // {
+    //   "request_id": "...",
+    //   "request": {
+    //      "authorization_endpoint": "...",
+    //      "token_endpoint": "...",
+    //      "participant_id": "...",
+    //      "scopes": ["..."],
+    //      "timeout": 300
+    //   }
+    // }
+    final String requestId = header["request_id"] as String;
+    final req = header["request"] as Map<String, dynamic>;
+    final String clientId = req["client_id"] as String;
+
+    if (oauthTokenRequestHandler == null) {
+      // Mirror Python behavior (raise if no handler).
+      throw RoomServerException("No oauth token handler registered");
+    }
+
+    final authReq = OAuthTokenRequest(
+      clientId: clientId,
+      requestId: requestId,
+      authorizationEndpoint: req["authorization_endpoint"] as String,
+      tokenEndpoint: req["token_endpoint"] as String,
+      scopes: (req["scopes"] as List?)?.whereType<String>().toList(),
+    );
+
+    // Fire and forget, just like the Python version creates a task.
+    // Your handler should eventually call `provideOAuthToken(...)`.
+    () async {
+      try {
+        oauthTokenRequestHandler!(authReq);
+      } catch (e, st) {
+        Logger.root.warning("OAuth token request handler threw", e, st);
+      }
+    }();
+  }
+
+  /// Client -> server: Provide the OAuth token in response to a prior inbound request.
+  Future<void> provideOAuthToken({required String requestId, required OAuthCredentials credentials}) async {
+    final payload = {"request_id": requestId, "credentials": credentials.toJson()};
+    await room.sendRequest("secrets.provide_oauth_token", payload);
+  }
+
+  /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
+  /// Returns the `access_token` string.
+  ///
+  /// This matches the Python signature:
+  ///   request_oauth_token(authorization_endpoint, token_endpoint, scopes, timeout, from_participant_id)
+  Future<String> requestOAuthToken({
+    required String authorizationEndpoint,
+    required String tokenEndpoint,
+    required String fromParticipantId,
+    List<String>? scopes,
+    int timeout = 60 * 5,
+  }) async {
+    final req = {
+      "authorization_endpoint": authorizationEndpoint,
+      "token_endpoint": tokenEndpoint,
+      "scopes": scopes,
+      "timeout": timeout,
+      "participant_id": fromParticipantId,
+    };
+
+    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonResponse;
+    final accessToken = (res.json["access_token"] as String?) ?? "";
+    if (accessToken.isEmpty) {
+      throw RoomServerException("Invalid response: missing access_token");
+    }
+    return accessToken;
+  }
 }
