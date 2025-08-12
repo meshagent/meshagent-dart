@@ -2183,9 +2183,9 @@ class SecretsClient extends ChangeEmitter {
   }
 
   /// Client -> server: Provide the OAuth token in response to a prior inbound request.
-  Future<void> provideOAuthToken({required String requestId, required OAuthCredentials credentials}) async {
-    final payload = {"request_id": requestId, "credentials": credentials.toJson()};
-    await room.sendRequest("secrets.provide_oauth_token", payload);
+  Future<void> provideOAuthAuthorization({required String requestId, required String code}) async {
+    final payload = {"request_id": requestId, "code": code};
+    await room.sendRequest("secrets.provide_oauth_authorization", payload);
   }
 
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
@@ -2197,6 +2197,9 @@ class SecretsClient extends ChangeEmitter {
     required String authorizationEndpoint,
     required String tokenEndpoint,
     required String fromParticipantId,
+    required String clientId,
+    required String clientSecret,
+    required Uri redirectUri,
     List<String>? scopes,
     int timeout = 60 * 5,
   }) async {
@@ -2206,6 +2209,9 @@ class SecretsClient extends ChangeEmitter {
       "scopes": scopes,
       "timeout": timeout,
       "participant_id": fromParticipantId,
+      "client_id": clientId,
+      "client_secret": clientSecret,
+      "redirect_uri": redirectUri.toString(),
     };
 
     final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonResponse;
