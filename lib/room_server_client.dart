@@ -2117,8 +2117,10 @@ class OAuthTokenRequest {
     required this.authorizationEndpoint,
     required this.tokenEndpoint,
     this.scopes,
+    required this.challenge,
   });
 
+  final String challenge;
   final String clientId;
   final String requestId;
   final String authorizationEndpoint;
@@ -2169,6 +2171,7 @@ class SecretsClient extends ChangeEmitter {
       authorizationEndpoint: req["authorization_endpoint"] as String,
       tokenEndpoint: req["token_endpoint"] as String,
       scopes: (req["scopes"] as List?)?.whereType<String>().toList(),
+      challenge: header["challenge"] as String,
     );
 
     // Fire and forget, just like the Python version creates a task.
