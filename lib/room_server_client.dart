@@ -2191,6 +2191,12 @@ class SecretsClient extends ChangeEmitter {
     await room.sendRequest("secrets.provide_oauth_authorization", payload);
   }
 
+  /// Client -> server: reject an OAuth token request in response to a prior inbound request.
+  Future<void> rejectOAuthAuthorization({required String requestId, required String error}) async {
+    final payload = {"request_id": requestId, "error": error};
+    await room.sendRequest("secrets.provide_oauth_authorization", payload);
+  }
+
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
   /// Returns the `access_token` string.
   ///
