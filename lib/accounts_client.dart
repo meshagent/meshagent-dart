@@ -44,6 +44,24 @@ class RoomShareConnectionInfo extends RoomConnectionInfo {
   }
 }
 
+class RoomSession {
+  final String id;
+  final String roomName;
+  final DateTime createdAt;
+  final bool isActive;
+
+  RoomSession({required this.id, required this.roomName, required this.createdAt, required this.isActive});
+
+  factory RoomSession.fromJson(Map<String, dynamic> json) => RoomSession(
+    id: json["id"],
+    roomName: json['room_name'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    isActive: json['is_active'] as bool? ?? false,
+  );
+
+  Map<String, dynamic> toJson() => {'id': id, 'room_name': roomName, 'started_at': createdAt.toIso8601String(), 'is_active': isActive};
+}
+
 class Balance {
   Balance({required this.balance, required this.autoRechargeAmount, required this.autoRechargeThreshhold, required this.lastRecharge});
 
@@ -838,9 +856,28 @@ abstract class AccountsClient {
     return (jsonDecode(response.body) as Map<String, dynamic>)["token"];
   }
 
+  // In AccountsClient
+  /// GET /accounts/projects/{project_id}/sessions
+  /// Returns JSON: { "sessions": [ { "room_name", "started_at", "is_active" }, ... ] }
+  Future<List<RoomSession>> listActiveSessions(String projectId) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/active');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to list active sessions. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['sessions'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
+  }
+
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions
   /// Returns a JSON dict: { "sessions": [...] }
-  Future<List<Map<String, dynamic>>> listRecentSessions(String projectId) async {
+  Future<List<RoomSession>> listRecentSessions(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -850,7 +887,9 @@ abstract class AccountsClient {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["sessions"] as List).whereType<Map<String, dynamic>>().toList();
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['sessions'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
   }
 
   Future<String> getCreditsCheckoutUrl(String projectId, String successUrl, String cancelUrl, double quantity) async {
