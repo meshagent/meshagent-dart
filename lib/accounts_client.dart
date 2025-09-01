@@ -199,7 +199,7 @@ abstract class AccountsClient {
 
   /// Corresponds to: POST /accounts/projects/{project_id}/secrets
   /// Body: { "name": "...", "type": "...", "data": ... }
-  /// Returns JSON like { "id": "<new_secret_id>" } on success.
+  /// Returns JSON like { "id": "new_secret_id" } on success.
   Future<Map<String, dynamic>> createProjectSecret({
     required String projectId,
     required String name,
@@ -238,7 +238,6 @@ abstract class AccountsClient {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/secrets
   /// Returns JSON like { "secrets": [ { "id": ..., "name": ..., "type": ..., "data": ... } ] }.
-  /// We’ll return the inner list as a List<Map<String, dynamic>>.
   Future<List<Map<String, dynamic>>> listProjectSecrets(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets');
     final response = await http.get(uri, headers: _getHeaders());
@@ -774,7 +773,7 @@ abstract class AccountsClient {
   }
 
   /// Corresponds to: POST /accounts/projects/{project_id}/participant-tokens
-  /// Body: { "room_name": "<>" }
+  /// Body: { "room_name": "" }
   /// Returns a JSON dict with { "token" }.
   Future<Map<String, dynamic>> createProjectParticipantToken(String projectId, String roomName) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/participant-tokens');
@@ -793,7 +792,7 @@ abstract class AccountsClient {
   }
 
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
-  /// Body: { "name": "<>", "description": "<>" }
+  /// Body: { "name": "", "description": "" }
   /// Returns a JSON dict with { "id", "name", "description", "token" }.
   Future<Map<String, dynamic>> createProjectApiKey(String projectId, String name, String description) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
@@ -1205,7 +1204,6 @@ abstract class AccountsClient {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants?limit=&offset=&order_by=
-  /// Returns List<ProjectRoomGrant>.
   Future<List<ProjectRoomGrant>> listRoomGrants(String projectId, {int limit = 50, int offset = 0, String orderBy = 'room_name'}) async {
     var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants');
     uri = uri.replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
@@ -1225,7 +1223,6 @@ abstract class AccountsClient {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-user/{user_id}?limit=&offset=&order_by=
-  /// Returns List<ProjectRoomGrant>.
   Future<List<ProjectRoomGrant>> listRoomGrantsByUser({
     required String projectId,
     required String userId,
@@ -1253,7 +1250,6 @@ abstract class AccountsClient {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-room/{room_name}?limit=&offset=&order_by=
-  /// Returns List<ProjectRoomGrant>.
   Future<List<ProjectRoomGrant>> listRoomGrantsByRoom({
     required String projectId,
     required String roomName,
@@ -1281,7 +1277,6 @@ abstract class AccountsClient {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-room?limit=&offset=
-  /// Returns List<ProjectRoomGrantCount>.
   Future<List<ProjectRoomGrantCount>> listUniqueRoomsWithGrants({required String projectId, int limit = 50, int offset = 0}) async {
     var uri = Uri.parse(
       '$baseUrl/accounts/projects/$projectId/room-grants/by-room',
@@ -1302,7 +1297,6 @@ abstract class AccountsClient {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-user?limit=&offset=
-  /// Returns List<ProjectUserGrantCount>.
   Future<List<ProjectUserGrantCount>> listUniqueUsersWithGrants({required String projectId, int limit = 50, int offset = 0}) async {
     var uri = Uri.parse(
       '$baseUrl/accounts/projects/$projectId/room-grants/by-user',
@@ -1327,7 +1321,7 @@ abstract class AccountsClient {
   /// --------------------------------
 
   /// POST /accounts/projects/{project_id}/rooms
-  /// Body: { "name": "<name>", "if_not_exists": bool }
+  /// Body: { "name": "name", "if_not_exists": bool }
   /// Returns a Room on success.
   Future<Room> createRoom({required String projectId, required String name, bool ifNotExists = false}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
@@ -1365,7 +1359,7 @@ abstract class AccountsClient {
   }
 
   /// PUT /accounts/projects/{project_id}/rooms/{room_id}
-  /// Body: { "name": "<new name>" }
+  /// Body: { "name": "new name" }
   Future<void> updateRoom({required String projectId, required String roomId, required String name}) async {
     final rid = Uri.encodeComponent(roomId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$rid');
