@@ -326,7 +326,6 @@ abstract class AccountsClient {
   /// Corresponds to: POST /projects/:project_id/storage/download
   Future<Uint8List> download({required String projectId, required String path}) async {
     final uri = Uri.parse('$baseUrl/projects/$projectId/storage/download').replace(queryParameters: {"path": path});
-    ;
 
     final response = await http.get(uri, headers: _getHeaders());
 
