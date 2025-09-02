@@ -1203,8 +1203,32 @@ abstract class AccountsClient {
     return ProjectRoomGrant.fromJson(data);
   }
 
+  /// GET /accounts/projects/{project_id}/rooms?limit=&offset=&order_by=
+  Future<List<Room>> listRooms({required String projectId, int limit = 50, int offset = 0, String orderBy = 'room_name'}) async {
+    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
+    uri = uri.replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to list rooms. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['rooms'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Room.fromJson).toList();
+  }
+
   /// GET /accounts/projects/{project_id}/room-grants?limit=&offset=&order_by=
-  Future<List<ProjectRoomGrant>> listRoomGrants(String projectId, {int limit = 50, int offset = 0, String orderBy = 'room_name'}) async {
+  Future<List<ProjectRoomGrant>> listRoomGrants({
+    required String projectId,
+    int limit = 50,
+    int offset = 0,
+    String orderBy = 'room_name',
+  }) async {
     var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants');
     uri = uri.replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
 
@@ -1327,7 +1351,9 @@ abstract class AccountsClient {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'name': name, 'if_not_exists': ifNotExists}));
 
-    if (response.statusCode >= 400) {
+    if (response.statusCode == 409) {
+      throw NameInUseException("The room name is already in use");
+    } else if (response.statusCode >= 400) {
       throw AccountsClientException(
         'Failed to create room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
@@ -1539,6 +1565,10 @@ class AccountsClientException implements Exception {
 
 class NotFoundException extends AccountsClientException {
   NotFoundException(super.message);
+}
+
+class NameInUseException extends AccountsClientException {
+  NameInUseException(super.message);
 }
 
 class Endpoint {
