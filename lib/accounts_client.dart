@@ -772,25 +772,6 @@ abstract class AccountsClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Corresponds to: POST /accounts/projects/{project_id}/participant-tokens
-  /// Body: { "room_name": "" }
-  /// Returns a JSON dict with { "token" }.
-  Future<Map<String, dynamic>> createProjectParticipantToken(String projectId, String roomName) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/participant-tokens');
-    final body = {'room_name': roomName};
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw AccountsClientException(
-        'Failed to create participant token'
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  }
-
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
   /// Body: { "name": "", "description": "" }
   /// Returns a JSON dict with { "id", "name", "description", "token" }.
