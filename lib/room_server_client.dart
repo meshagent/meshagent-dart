@@ -3,6 +3,7 @@ import "dart:convert";
 import "dart:typed_data";
 
 import "package:meshagent/agents_client.dart";
+import "package:meshagent/meshagent.dart";
 import "package:meshagent/queues_client.dart";
 import "package:meshagent/schema.dart";
 import "package:logging/logging.dart";
@@ -1880,8 +1881,9 @@ class ServicePortEndpointSpec {
   final String identity;
   final String? role; // "user" | "tool" | "agent"
   final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+  final ApiScope? api;
 
-  ServicePortEndpointSpec({required this.path, required this.identity, this.role, this.type});
+  ServicePortEndpointSpec({required this.path, required this.identity, this.role, this.type, this.api});
 
   factory ServicePortEndpointSpec.fromJson(Map<String, dynamic> json) {
     return ServicePortEndpointSpec(
@@ -1889,10 +1891,17 @@ class ServicePortEndpointSpec {
       identity: json['identity'] as String,
       role: json['role'] as String?,
       type: json['type'] as String?,
+      api: json["api"] == null ? null : ApiScope.fromJson(json["api"]),
     );
   }
 
-  Map<String, dynamic> toJson() => {'path': path, 'identity': identity, if (role != null) 'role': role, if (type != null) 'type': type};
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'identity': identity,
+    if (role != null) 'role': role,
+    if (type != null) 'type': type,
+    if (api != null) 'api': api,
+  };
 }
 
 /// ---------------------------------------------------------------------------
