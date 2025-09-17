@@ -1442,6 +1442,169 @@ abstract class AccountsClient {
 
     return Service.fromJson(json);
   }
+
+  /// POST /accounts/projects/{project_id}/oauth/clients
+  /// Body: { grant_types, response_types, redirect_uris, scope, metadata? }
+  /// Returns the newly created OAuthClient (often includes client_secret).
+  Future<OAuthClient> createOAuthClient(
+    String projectId, {
+    required List<String> grantTypes,
+    required List<String> responseTypes,
+    required List<String> redirectUris,
+    required String scope,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients');
+    final body = <String, dynamic>{
+      'grant_types': grantTypes,
+      'response_types': responseTypes,
+      'redirect_uris': redirectUris,
+      'scope': scope,
+      'metadata': metadata ?? <String, dynamic>{},
+    };
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to create OAuth client. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return OAuthClient.fromJson(jsonDecode(response.body)["client"]);
+  }
+
+  /// PUT /accounts/projects/{project_id}/oauth/clients/{client_id}
+  /// Body: any subset of { grant_types, response_types, redirect_uris, scope, metadata }
+  /// Returns a small status JSON (e.g., { "ok": true }).
+  Future<Map<String, dynamic>> updateOAuthClient(
+    String projectId,
+    String clientId, {
+    List<String>? grantTypes,
+    List<String>? responseTypes,
+    List<String>? redirectUris,
+    String? scope,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final cid = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
+
+    final body = <String, dynamic>{};
+    if (grantTypes != null) body['grant_types'] = grantTypes;
+    if (responseTypes != null) body['response_types'] = responseTypes;
+    if (redirectUris != null) body['redirect_uris'] = redirectUris;
+    if (scope != null) body['scope'] = scope;
+    if (metadata != null) body['metadata'] = metadata;
+
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to update OAuth client. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// GET /accounts/projects/{project_id}/oauth/clients
+  /// Returns a list of OAuthClient (no secrets).
+  Future<List<OAuthClient>> listOAuthClients(String projectId) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to list OAuth clients. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = decoded['clients'] as List<dynamic>? ?? const [];
+    return list.whereType<Map<String, dynamic>>().map(OAuthClient.fromJson).toList();
+  }
+
+  /// GET /accounts/projects/{project_id}/oauth/clients/{client_id}
+  /// Returns one OAuthClient (no secret). 404 -> NotFoundException.
+  Future<OAuthClient> getOAuthClient(String projectId, String clientId) async {
+    final cid = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
+
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('oauth client not found');
+    }
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to get OAuth client. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return OAuthClient.fromJson(jsonDecode(response.body));
+  }
+
+  /// DELETE /accounts/projects/{project_id}/oauth/clients/{client_id}
+  /// Returns 204 No Content on success.
+  Future<void> deleteOAuthClient(String projectId, String clientId) async {
+    final cid = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
+
+    final response = await http.delete(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw AccountsClientException(
+        'Failed to delete OAuth client. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+}
+
+class OAuthClient {
+  final String clientId;
+  final String? clientSecret; // present on create responses
+  final List<String> grantTypes;
+  final List<String> responseTypes;
+  final List<String> redirectUris;
+  final String scope;
+  final String projectId;
+  final Map<String, dynamic> metadata;
+
+  OAuthClient({
+    required this.clientId,
+    this.clientSecret,
+    required this.grantTypes,
+    required this.responseTypes,
+    required this.redirectUris,
+    required this.scope,
+    required this.projectId,
+    required this.metadata,
+  });
+
+  factory OAuthClient.fromJson(Map<String, dynamic> json) => OAuthClient(
+    clientId: json['client_id'] as String,
+    clientSecret: json['client_secret'] as String?, // may be absent
+    grantTypes: (json['grant_types'] as List?)?.cast<String>() ?? const [],
+    responseTypes: (json['response_types'] as List?)?.cast<String>() ?? const [],
+    redirectUris: (json['redirect_uris'] as List?)?.cast<String>() ?? const [],
+    scope: (json['scope'] as String?) ?? '',
+    projectId: (json['project_id'] as String?) ?? '',
+    metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ?? const {},
+  );
+
+  Map<String, dynamic> toJson() => {
+    'client_id': clientId,
+    if (clientSecret != null) 'client_secret': clientSecret,
+    'grant_types': grantTypes,
+    'response_types': responseTypes,
+    'redirect_uris': redirectUris,
+    'scope': scope,
+    'project_id': projectId,
+    'metadata': metadata,
+  };
 }
 
 class Room {
