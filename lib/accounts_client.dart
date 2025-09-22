@@ -49,14 +49,16 @@ class RoomSession {
   final String roomName;
   final DateTime createdAt;
   final bool isActive;
+  final Map<String, num>? participants;
 
-  RoomSession({required this.id, required this.roomName, required this.createdAt, required this.isActive});
+  RoomSession({required this.id, required this.roomName, required this.createdAt, required this.isActive, required this.participants});
 
   factory RoomSession.fromJson(Map<String, dynamic> json) => RoomSession(
     id: json["id"],
     roomName: json['room_name'] as String,
     createdAt: DateTime.parse(json['created_at'] as String),
     isActive: json['is_active'] as bool? ?? false,
+    participants: json["participants"] == null ? null : {for (final k in (json["participants"] as Map).keys) k: json["participants"][k]},
   );
 
   Map<String, dynamic> toJson() => {'id': id, 'room_name': roomName, 'started_at': createdAt.toIso8601String(), 'is_active': isActive};
