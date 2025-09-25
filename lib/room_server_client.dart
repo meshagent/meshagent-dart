@@ -1349,7 +1349,7 @@ class ToolDescription {
     required this.inputSchema,
     required this.defs,
     required this.pricing,
-    required this.supportsContext,
+    this.supportsContext = false,
     this.thumbnailUrl,
   });
 
