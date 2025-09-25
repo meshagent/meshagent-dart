@@ -1335,12 +1335,13 @@ abstract class AccountsClient {
     required String name,
     bool ifNotExists = false,
     Map<String, dynamic>? metadata,
+    Map<String, ApiScope>? permissions,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
     final response = await http.post(
       uri,
       headers: _getHeaders(),
-      body: jsonEncode({'name': name, 'if_not_exists': ifNotExists, "metadata": metadata}),
+      body: jsonEncode({'name': name, 'if_not_exists': ifNotExists, "metadata": metadata, "permissions": permissions}),
     );
 
     if (response.statusCode == 409) {

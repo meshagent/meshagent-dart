@@ -289,30 +289,11 @@ class DeveloperGrant {
 }
 
 class AdminGrant {
-  final List<StoragePathGrant>? paths;
+  AdminGrant();
 
-  AdminGrant({this.paths});
+  Map<String, dynamic> toJson() => {};
 
-  bool canRead(String path) {
-    if (paths == null) return true;
-    for (final t in paths!) {
-      if (path.startsWith(t.path)) return true;
-    }
-    return false;
-  }
-
-  bool canWrite(String path) {
-    if (paths == null) return true;
-    for (final t in paths!) {
-      if (path.startsWith(t.path)) return !t.readOnly;
-    }
-    return false;
-  }
-
-  Map<String, dynamic> toJson() => {if (paths != null) 'paths': paths!.map((e) => e.toJson()).toList()};
-
-  factory AdminGrant.fromJson(Map<String, dynamic> j) =>
-      AdminGrant(paths: (j['paths'] as List?)?.map((e) => StoragePathGrant.fromJson(e as Map<String, dynamic>)).toList());
+  factory AdminGrant.fromJson(Map<String, dynamic> j) => AdminGrant();
 }
 
 class OAuthEndpoint {
