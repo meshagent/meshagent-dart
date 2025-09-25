@@ -141,16 +141,15 @@ abstract class Requirement {
 }
 
 class RequiredSchema extends Requirement {
-  // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredSchema({required super.name});
 
   @override
   Map<String, dynamic> toJson() {
-    return {"toolkit": name};
+    return {"schema": name};
   }
 
   static RequiredSchema fromJson(Map<String, dynamic> json) {
-    return RequiredSchema(name: "toolkit");
+    return RequiredSchema(name: "schema");
   }
 }
 
