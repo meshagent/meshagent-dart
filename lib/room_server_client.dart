@@ -1278,6 +1278,30 @@ class ToolkitDescription {
     return _byName[name];
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "description": description,
+      "title": title,
+      "thumbnail_url": thumbnailUrl,
+      "tools":
+          tools
+              .map(
+                (tool) => {
+                  "name": tool.name,
+                  "title": tool.title,
+                  "description": tool.description,
+                  "input_schema": tool.inputSchema,
+                  "thumbnail_url": tool.thumbnailUrl,
+                  "defs": tool.defs,
+                  "pricing": tool.pricing,
+                  "supports_context": tool.supportsContext,
+                },
+              )
+              .toList(),
+    };
+  }
+
   static ToolkitDescription fromJson(Map<String, dynamic> json, {String? name}) {
     return ToolkitDescription(
       title: json["title"],
