@@ -655,8 +655,10 @@ class _RunRequest {
     this.detach,
     this.variables,
     this.tty,
+    this.name,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
+  final String? name;
   final String? requestId;
   final String image;
   final String? command;
@@ -673,6 +675,7 @@ class _RunRequest {
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
+    'name': name,
     'image': image,
     'command': command,
     'env': env,
@@ -949,6 +952,7 @@ class ContainersClient extends ChangeEmitter {
     Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     bool detach = true,
+    String? name,
   }) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -962,6 +966,7 @@ class ContainersClient extends ChangeEmitter {
     _progress[requestId] = progress;
 
     final req = _RunRequest(
+      name: name,
       requestId: requestId,
       image: image,
       command: command,
@@ -1010,10 +1015,12 @@ class ContainersClient extends ChangeEmitter {
     Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     bool tty = false,
+    String? name,
   }) {
     final requestId = Uuid().v4().toString();
 
     final req = _RunRequest(
+      name: name,
       requestId: requestId,
       image: image,
       command: command,

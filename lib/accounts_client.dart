@@ -1330,9 +1330,18 @@ abstract class AccountsClient {
   /// POST /accounts/projects/{project_id}/rooms
   /// Body: { "name": "name", "if_not_exists": bool }
   /// Returns a Room on success.
-  Future<Room> createRoom({required String projectId, required String name, bool ifNotExists = false}) async {
+  Future<Room> createRoom({
+    required String projectId,
+    required String name,
+    bool ifNotExists = false,
+    Map<String, dynamic>? metadata,
+  }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'name': name, 'if_not_exists': ifNotExists}));
+    final response = await http.post(
+      uri,
+      headers: _getHeaders(),
+      body: jsonEncode({'name': name, 'if_not_exists': ifNotExists, "metadata": metadata}),
+    );
 
     if (response.statusCode == 409) {
       throw NameInUseException("The room name is already in use");
@@ -1369,11 +1378,11 @@ abstract class AccountsClient {
 
   /// PUT /accounts/projects/{project_id}/rooms/{room_id}
   /// Body: { "name": "new name" }
-  Future<void> updateRoom({required String projectId, required String roomId, required String name}) async {
+  Future<void> updateRoom({required String projectId, required String roomId, required String name, Map<String, dynamic>? metadata}) async {
     final rid = Uri.encodeComponent(roomId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$rid');
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'name': name}));
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'name': name, 'metadata': metadata}));
 
     if (response.statusCode >= 400) {
       throw AccountsClientException(
@@ -1610,16 +1619,17 @@ class OAuthClient {
 }
 
 class Room {
-  const Room({required this.name, required this.id});
+  const Room({required this.name, required this.id, required this.metadata});
 
   final String name;
   final String id;
+  final Map<String, dynamic> metadata;
 
   static Room fromJson(Map<String, dynamic> json) {
-    return Room(id: json["id"], name: json["name"]);
+    return Room(id: json["id"], name: json["name"], metadata: json["metadata"]);
   }
 
-  Map<String, dynamic> toJson() => {"name": name, "id": id};
+  Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata};
 }
 
 class ProjectRoomGrant {
