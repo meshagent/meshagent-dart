@@ -172,6 +172,13 @@ class DatabaseClient {
     await room.sendRequest("database.restore", {"table": table, "version": version});
   }
 
+  /// Restore a previous version of a table
+  Future<Map<String, DataType>> inspect(String table) async {
+    final json = (await room.sendRequest("database.inspect", {"table": table}) as JsonResponse);
+    final schema = json.json["schema"] as Map;
+    return {for (final k in schema.keys) k: DataType.fromJson(schema[k])};
+  }
+
   /// Checkout a version of a table (will put the table in a read only mode)
   Future<void> checkout({required String table, required int version}) async {
     await room.sendRequest("database.checkout", {"table": table, "version": version});
