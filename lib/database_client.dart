@@ -60,17 +60,12 @@ class DatabaseClient {
   }
 
   /// Create a new table with a specific schema.
-  Future<void> createTableWithSchema({
-    required String name,
-    Map<String, DataType>? schema,
-    List<Map<String, dynamic>>? data,
-    CreateMode mode = CreateMode.create,
-  }) {
-    return _createTable(name: name, schema: schema, data: data, mode: mode);
+  Future<void> createTableWithSchema({required String name, required Map<String, DataType> schema, CreateMode mode = CreateMode.create}) {
+    return _createTable(name: name, schema: schema, mode: mode);
   }
 
   /// Create a table from initial data, optionally specifying a mode.
-  Future<void> createTableFromData({required String name, List<Map<String, dynamic>>? data, CreateMode mode = CreateMode.create}) {
+  Future<void> createTableFromData({required String name, required List<Map<String, dynamic>> data, CreateMode mode = CreateMode.create}) {
     return _createTable(name: name, data: data, mode: mode);
   }
 
