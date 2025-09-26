@@ -111,6 +111,7 @@ class DatabaseClient {
     String? text,
     List<double>? vector,
     dynamic where, // String or Map<String, dynamic>
+    int? offset,
     int? limit,
     List<String>? select,
   }) async {
@@ -128,6 +129,9 @@ class DatabaseClient {
 
     final payload = <String, dynamic>{"table": table, "where": whereClause, "text": text};
 
+    if (offset != null) {
+      payload["offset"] = offset;
+    }
     if (limit != null) {
       payload["limit"] = limit;
     }
