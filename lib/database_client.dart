@@ -84,6 +84,11 @@ class DatabaseClient {
     await room.sendRequest("database.drop_columns", {"table": table, "columns": columns});
   }
 
+  /// Drop columns from an existing table.
+  Future<void> dropIndex({required String table, required String name}) async {
+    await room.sendRequest("database.drop_index", {"table": table, "name": name});
+  }
+
   /// Insert new records into a table.
   Future<void> insert({required String table, required List<Map<String, dynamic>> records}) async {
     await room.sendRequest("database.insert", {"table": table, "records": records});
@@ -206,17 +211,29 @@ class DatabaseClient {
   }
 
   /// List all indexes on a table.
-  Future<Map<String, dynamic>> listIndexes({required String table}) async {
-    final response = await room.sendRequest("database.list_indexes", {"table": table}) as Map<String, dynamic>?;
-    final json = response?["json"] as Map<String, dynamic>?;
+  Future<List<TableIndex>> listIndexes(String table) async {
+    final response = await room.sendRequest("database.list_indexes", {"table": table}) as JsonResponse;
+    final indexes = response.json["indexes"] as List;
 
-    return json ?? {};
+    return [...indexes.map((m) => TableIndex.fromJson(m))];
   }
 }
 
 class TableVersion {
-  TableVersion({required this.version, required this.timestamp});
+  const TableVersion({required this.version, required this.timestamp});
 
   final int version;
   final DateTime timestamp;
+}
+
+class TableIndex {
+  const TableIndex({required this.columns, required this.type, required this.name});
+
+  final List<String> columns;
+  final String name;
+
+  final String type;
+  static TableIndex fromJson(Map<String, dynamic> json) {
+    return TableIndex(columns: [...json["columns"]], type: json["type"], name: json["name"]);
+  }
 }
