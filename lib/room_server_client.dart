@@ -141,16 +141,15 @@ abstract class Requirement {
 }
 
 class RequiredSchema extends Requirement {
-  // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredSchema({required super.name});
 
   @override
   Map<String, dynamic> toJson() {
-    return {"toolkit": name};
+    return {"schema": name};
   }
 
   static RequiredSchema fromJson(Map<String, dynamic> json) {
-    return RequiredSchema(name: "toolkit");
+    return RequiredSchema(name: "schema");
   }
 }
 
@@ -1279,6 +1278,30 @@ class ToolkitDescription {
     return _byName[name];
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "description": description,
+      "title": title,
+      "thumbnail_url": thumbnailUrl,
+      "tools":
+          tools
+              .map(
+                (tool) => {
+                  "name": tool.name,
+                  "title": tool.title,
+                  "description": tool.description,
+                  "input_schema": tool.inputSchema,
+                  "thumbnail_url": tool.thumbnailUrl,
+                  "defs": tool.defs,
+                  "pricing": tool.pricing,
+                  "supports_context": tool.supportsContext,
+                },
+              )
+              .toList(),
+    };
+  }
+
   static ToolkitDescription fromJson(Map<String, dynamic> json, {String? name}) {
     return ToolkitDescription(
       title: json["title"],
@@ -1326,7 +1349,7 @@ class ToolDescription {
     required this.inputSchema,
     required this.defs,
     required this.pricing,
-    required this.supportsContext,
+    this.supportsContext = false,
     this.thumbnailUrl,
   });
 
