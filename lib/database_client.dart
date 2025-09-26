@@ -163,8 +163,24 @@ class DatabaseClient {
   }
 
   /// Optimize (compact/prune) a table.
-  Future<void> optimize(String table) async {
+  Future<void> optimize({required String table}) async {
     await room.sendRequest("database.optimize", {"table": table});
+  }
+
+  /// Restore a previous version of a table
+  Future<void> restore({required String table, required int version}) async {
+    await room.sendRequest("database.restore", {"table": table, "version": version});
+  }
+
+  /// Checkout a version of a table (will put the table in a read only mode)
+  Future<void> checkout({required String table, required int version}) async {
+    await room.sendRequest("database.checkout", {"table": table, "version": version});
+  }
+
+  /// List versions of a table
+  Future<List<TableVersion>> listVersions(String table) async {
+    final versions = (await room.sendRequest("database.list_versions", {"table": table}) as JsonResponse).json["versions"] as List;
+    return versions.map((v) => TableVersion(version: (v["version"] as num).toInt(), timestamp: DateTime.parse(v["timestamp"]))).toList();
   }
 
   /// Create a vector index on a given column.
@@ -189,4 +205,11 @@ class DatabaseClient {
 
     return json ?? {};
   }
+}
+
+class TableVersion {
+  TableVersion({required this.version, required this.timestamp});
+
+  final int version;
+  final DateTime timestamp;
 }
