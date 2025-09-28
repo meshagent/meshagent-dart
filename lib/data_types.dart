@@ -12,6 +12,7 @@ final Map<String, DataTypeConstructor> _dataTypes = {
   "vector": (data) => VectorDataType.fromJson(data),
   "float": (data) => FloatDataType.fromJson(data),
   "timestamp": (data) => TimestampDataType.fromJson(data),
+  "binary": (data) => BinaryDataType.fromJson(data),
 };
 
 /// Abstract base class for data types.
@@ -160,6 +161,28 @@ class TextDataType extends DataType {
   @override
   Map<String, dynamic> toJson() {
     return {'type': 'text'};
+  }
+
+  @override
+  String toString() {
+    return "text";
+  }
+}
+
+/// BinaryDataType
+class BinaryDataType extends DataType {
+  BinaryDataType() : super();
+
+  static BinaryDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'binary') {
+      throw Exception("Expected type 'binary', got '${data['binary']}'");
+    }
+    return BinaryDataType();
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': 'binary'};
   }
 
   @override
