@@ -2,6 +2,9 @@
 import 'room_server_client.dart';
 import 'data_types.dart';
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 /// A literal type for controlling table creation mode.
 /// In TypeScript: type CreateMode = "create" | "overwrite" | "create_if_not_exists";
 /// In Dart, we can use an enum or string constants. Here we'll use an enum.
@@ -91,7 +94,7 @@ class DatabaseClient {
 
   /// Insert new records into a table.
   Future<void> insert({required String table, required List<Map<String, dynamic>> records}) async {
-    await room.sendRequest("database.insert", {"table": table, "records": records});
+    await room.sendRequest("database.insert", {"table": table, "records": encodeRecords(records)});
   }
 
   /// Update existing records in a table.
@@ -151,13 +154,8 @@ class DatabaseClient {
 
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
     // Then parse it accordingly:
-    final results = response.json["results"];
-
-    if (results is List) {
-      return results.map((e) => e as Map<String, dynamic>).toList();
-    }
-
-    return [];
+    final results = decodeRecords((response.json["results"] as List).cast<Map<String, dynamic>>());
+    return results.toList();
   }
 
   /// A helper to safely convert values to SQL strings (very naive).
@@ -236,4 +234,46 @@ class TableIndex {
   static TableIndex fromJson(Map<String, dynamic> json) {
     return TableIndex(columns: [...json["columns"]], type: json["type"], name: json["name"]);
   }
+}
+
+/// Decodes any base64-encoded fields in the list of record maps.
+/// If a value is a map with {"encoding": "base64", "data": ...},
+/// it will be replaced with a `Uint8List` containing the decoded bytes.
+List<Map<String, dynamic>> decodeRecords(List<Map<String, dynamic>> records) {
+  for (final r in records) {
+    for (final k in r.keys.toList()) {
+      final v = r[k];
+      if (v is Map<String, dynamic>) {
+        final encoding = v["encoding"];
+        if (encoding == "base64") {
+          final data = v["data"] as String;
+          r[k] = base64Decode(data);
+        } else {
+          throw ArgumentError("Invalid encoding type $encoding");
+        }
+      }
+    }
+  }
+  return records;
+}
+
+/// Encodes any `Uint8List` (or raw bytes) in the record maps
+/// into a {"encoding": "base64", "data": "..."} wrapper.
+List<Map<String, dynamic>> encodeRecords(List<Map<String, dynamic>> records) {
+  final transformedRecords = <Map<String, dynamic>>[];
+
+  for (final r in records) {
+    final c = <String, dynamic>{};
+    for (final k in r.keys) {
+      final v = r[k];
+      if (v is Uint8List) {
+        c[k] = {"encoding": "base64", "data": base64Encode(v)};
+      } else {
+        c[k] = v;
+      }
+    }
+    transformedRecords.add(c);
+  }
+
+  return transformedRecords;
 }
