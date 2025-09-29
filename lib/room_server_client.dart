@@ -173,22 +173,37 @@ class AgentDescription {
   AgentDescription({
     required this.name,
     required this.inputSchema,
-    required this.outputSchema,
+    this.outputSchema,
     required this.description,
     required this.title,
-    required this.requires,
-    required this.supportsTools,
-    required this.labels,
-  });
+    List<Requirement>? requires,
+    bool? supportsTools,
+    List<String>? labels,
+  }) : requires = List<Requirement>.of(requires ?? const <Requirement>[]),
+       supportsTools = supportsTools ?? false,
+       labels = List<String>.of(labels ?? const <String>[]);
 
   final String name;
   final String title;
   final String description;
   final Map<String, dynamic>? outputSchema;
   final Map<String, dynamic>? inputSchema;
-  final List<Requirement> requires;
-  final List<String> labels;
+  final List<Requirement>? requires;
+  final List<String>? labels;
   final bool supportsTools;
+
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "title": title,
+      "description": description,
+      "input_schema": inputSchema,
+      "output_schema": outputSchema,
+      "labels": labels,
+      "supports_tools": supportsTools,
+      "requires": requires?.map((requirement) => requirement.toJson()).toList(),
+    };
+  }
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
     final requires =
@@ -204,7 +219,7 @@ class AgentDescription {
       outputSchema: a["output_schema"],
       requires: requires,
       supportsTools: a["supports_tools"] == true,
-      labels: a["labels"]?.whereType<String>().toList() ?? [],
+      labels: a["labels"]?.whereType<String>().toList(),
     );
   }
 }
