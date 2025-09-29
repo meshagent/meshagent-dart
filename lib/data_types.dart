@@ -187,6 +187,6 @@ class BinaryDataType extends DataType {
 
   @override
   String toString() {
-    return "text";
+    return "binary";
   }
 }
