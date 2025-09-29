@@ -78,8 +78,16 @@ class DatabaseClient {
   }
 
   /// Add new columns to an existing table.
-  Future<void> addColumns({required String table, required Map<String, String> newColumns}) async {
+  Future<void> addColumnWithExpression({required String table, required Map<String, String> newColumns}) async {
     await room.sendRequest("database.add_columns", {"table": table, "new_columns": newColumns});
+  }
+
+  /// Add new columns to an existing table.
+  Future<void> addColumnsOfType({required String table, required Map<String, DataType> newColumns}) async {
+    await room.sendRequest("database.add_columns", {
+      "table": table,
+      "new_columns": {for (final entry in newColumns.entries) entry.key: entry.value.toJson()},
+    });
   }
 
   /// Drop columns from an existing table.
