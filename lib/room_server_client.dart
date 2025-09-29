@@ -141,16 +141,15 @@ abstract class Requirement {
 }
 
 class RequiredSchema extends Requirement {
-  // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredSchema({required super.name});
 
   @override
   Map<String, dynamic> toJson() {
-    return {"toolkit": name};
+    return {"schema": name};
   }
 
   static RequiredSchema fromJson(Map<String, dynamic> json) {
-    return RequiredSchema(name: "toolkit");
+    return RequiredSchema(name: "schema");
   }
 }
 
@@ -174,22 +173,36 @@ class AgentDescription {
   AgentDescription({
     required this.name,
     required this.inputSchema,
-    required this.outputSchema,
+    this.outputSchema,
     required this.description,
     required this.title,
-    required this.requires,
+    List<Requirement>? requires,
     required this.supportsTools,
-    required this.labels,
-  });
+    List<String>? labels,
+  }) : requires = List<Requirement>.of(requires ?? const <Requirement>[]),
+       labels = List<String>.of(labels ?? const <String>[]);
 
   final String name;
   final String title;
   final String description;
   final Map<String, dynamic>? outputSchema;
   final Map<String, dynamic>? inputSchema;
-  final List<Requirement> requires;
-  final List<String> labels;
+  final List<Requirement>? requires;
+  final List<String>? labels;
   final bool supportsTools;
+
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "title": title,
+      "description": description,
+      "input_schema": inputSchema,
+      "output_schema": outputSchema,
+      "labels": labels,
+      "supports_tools": supportsTools,
+      "requires": requires?.map((requirement) => requirement.toJson()).toList(),
+    };
+  }
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
     final requires =
@@ -205,7 +218,7 @@ class AgentDescription {
       outputSchema: a["output_schema"],
       requires: requires,
       supportsTools: a["supports_tools"] == true,
-      labels: a["labels"]?.whereType<String>().toList() ?? [],
+      labels: a["labels"]?.whereType<String>().toList(),
     );
   }
 }
@@ -1279,6 +1292,30 @@ class ToolkitDescription {
     return _byName[name];
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "description": description,
+      "title": title,
+      "thumbnail_url": thumbnailUrl,
+      "tools":
+          tools
+              .map(
+                (tool) => {
+                  "name": tool.name,
+                  "title": tool.title,
+                  "description": tool.description,
+                  "input_schema": tool.inputSchema,
+                  "thumbnail_url": tool.thumbnailUrl,
+                  "defs": tool.defs,
+                  "pricing": tool.pricing,
+                  "supports_context": tool.supportsContext,
+                },
+              )
+              .toList(),
+    };
+  }
+
   static ToolkitDescription fromJson(Map<String, dynamic> json, {String? name}) {
     return ToolkitDescription(
       title: json["title"],
@@ -1326,7 +1363,7 @@ class ToolDescription {
     required this.inputSchema,
     required this.defs,
     required this.pricing,
-    required this.supportsContext,
+    this.supportsContext = false,
     this.thumbnailUrl,
   });
 
