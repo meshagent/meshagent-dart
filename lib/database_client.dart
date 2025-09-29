@@ -2,6 +2,9 @@
 import 'room_server_client.dart';
 import 'data_types.dart';
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 /// A literal type for controlling table creation mode.
 /// In TypeScript: type CreateMode = "create" | "overwrite" | "create_if_not_exists";
 /// In Dart, we can use an enum or string constants. Here we'll use an enum.
@@ -84,9 +87,14 @@ class DatabaseClient {
     await room.sendRequest("database.drop_columns", {"table": table, "columns": columns});
   }
 
+  /// Drop columns from an existing table.
+  Future<void> dropIndex({required String table, required String name}) async {
+    await room.sendRequest("database.drop_index", {"table": table, "name": name});
+  }
+
   /// Insert new records into a table.
   Future<void> insert({required String table, required List<Map<String, dynamic>> records}) async {
-    await room.sendRequest("database.insert", {"table": table, "records": records});
+    await room.sendRequest("database.insert", {"table": table, "records": encodeRecords(records)});
   }
 
   /// Update existing records in a table.
@@ -146,13 +154,8 @@ class DatabaseClient {
 
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
     // Then parse it accordingly:
-    final results = response.json["results"];
-
-    if (results is List) {
-      return results.map((e) => e as Map<String, dynamic>).toList();
-    }
-
-    return [];
+    final results = decodeRecords((response.json["results"] as List).cast<Map<String, dynamic>>());
+    return results.toList();
   }
 
   /// A helper to safely convert values to SQL strings (very naive).
@@ -170,6 +173,13 @@ class DatabaseClient {
   /// Restore a previous version of a table
   Future<void> restore({required String table, required int version}) async {
     await room.sendRequest("database.restore", {"table": table, "version": version});
+  }
+
+  /// Restore a previous version of a table
+  Future<Map<String, DataType>> inspect(String table) async {
+    final json = (await room.sendRequest("database.inspect", {"table": table}) as JsonResponse);
+    final schema = json.json["schema"] as Map;
+    return {for (final k in schema.keys) k: DataType.fromJson(schema[k])};
   }
 
   /// Checkout a version of a table (will put the table in a read only mode)
@@ -199,17 +209,71 @@ class DatabaseClient {
   }
 
   /// List all indexes on a table.
-  Future<Map<String, dynamic>> listIndexes({required String table}) async {
-    final response = await room.sendRequest("database.list_indexes", {"table": table}) as Map<String, dynamic>?;
-    final json = response?["json"] as Map<String, dynamic>?;
+  Future<List<TableIndex>> listIndexes(String table) async {
+    final response = await room.sendRequest("database.list_indexes", {"table": table}) as JsonResponse;
+    final indexes = response.json["indexes"] as List;
 
-    return json ?? {};
+    return [...indexes.map((m) => TableIndex.fromJson(m))];
   }
 }
 
 class TableVersion {
-  TableVersion({required this.version, required this.timestamp});
+  const TableVersion({required this.version, required this.timestamp});
 
   final int version;
   final DateTime timestamp;
+}
+
+class TableIndex {
+  const TableIndex({required this.columns, required this.type, required this.name});
+
+  final List<String> columns;
+  final String name;
+
+  final String type;
+  static TableIndex fromJson(Map<String, dynamic> json) {
+    return TableIndex(columns: [...json["columns"]], type: json["type"], name: json["name"]);
+  }
+}
+
+/// Decodes any base64-encoded fields in the list of record maps.
+/// If a value is a map with {"encoding": "base64", "data": ...},
+/// it will be replaced with a `Uint8List` containing the decoded bytes.
+List<Map<String, dynamic>> decodeRecords(List<Map<String, dynamic>> records) {
+  for (final r in records) {
+    for (final k in r.keys.toList()) {
+      final v = r[k];
+      if (v is Map<String, dynamic>) {
+        final encoding = v["encoding"];
+        if (encoding == "base64") {
+          final data = v["data"] as String;
+          r[k] = base64Decode(data);
+        } else {
+          throw ArgumentError("Invalid encoding type $encoding");
+        }
+      }
+    }
+  }
+  return records;
+}
+
+/// Encodes any `Uint8List` (or raw bytes) in the record maps
+/// into a {"encoding": "base64", "data": "..."} wrapper.
+List<Map<String, dynamic>> encodeRecords(List<Map<String, dynamic>> records) {
+  final transformedRecords = <Map<String, dynamic>>[];
+
+  for (final r in records) {
+    final c = <String, dynamic>{};
+    for (final k in r.keys) {
+      final v = r[k];
+      if (v is Uint8List) {
+        c[k] = {"encoding": "base64", "data": base64Encode(v)};
+      } else {
+        c[k] = v;
+      }
+    }
+    transformedRecords.add(c);
+  }
+
+  return transformedRecords;
 }

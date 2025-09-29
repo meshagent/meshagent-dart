@@ -6,7 +6,7 @@ void main() {
     AgentDescription createAgent({
       Map<String, dynamic>? outputSchema,
       List<Requirement>? requires,
-      bool? supportsTools,
+      bool supportsTools = false,
       List<String>? labels,
     }) {
       return AgentDescription(

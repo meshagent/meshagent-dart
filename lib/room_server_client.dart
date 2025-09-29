@@ -177,10 +177,9 @@ class AgentDescription {
     required this.description,
     required this.title,
     List<Requirement>? requires,
-    bool? supportsTools,
+    required this.supportsTools,
     List<String>? labels,
   }) : requires = List<Requirement>.of(requires ?? const <Requirement>[]),
-       supportsTools = supportsTools ?? false,
        labels = List<String>.of(labels ?? const <String>[]);
 
   final String name;
