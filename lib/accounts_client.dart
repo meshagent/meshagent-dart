@@ -776,8 +776,8 @@ abstract class AccountsClient {
 
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
   /// Body: { "name": "", "description": "" }
-  /// Returns a JSON dict with { "id", "name", "description", "token" }.
-  Future<Map<String, dynamic>> createProjectApiKey(String projectId, String name, String description) async {
+  /// Returns an Api Key.
+  Future<ApiKey> createProjectApiKey(String projectId, String name, String description) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
     final body = {'name': name, 'description': description};
 
@@ -790,7 +790,7 @@ abstract class AccountsClient {
       );
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return ApiKey.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/api-keys/{token_id}
@@ -1904,4 +1904,17 @@ class Services {
       Services(services: (json['services'] as List).map((e) => Service.fromJson(e as Map<String, dynamic>)).toList());
 
   Map<String, dynamic> toJson() => {'services': services.map((e) => e.toJson()).toList()};
+}
+
+class ApiKey {
+  ApiKey({required this.id, required this.name, this.description, required this.value});
+
+  final String id;
+  final String name;
+  final String? description;
+  final String value;
+
+  static ApiKey fromJson(Map<String, dynamic> json) {
+    return ApiKey(id: json["id"], name: json["name"], description: json["description"], value: json["value"]);
+  }
 }
