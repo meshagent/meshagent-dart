@@ -202,7 +202,7 @@ abstract class AccountsClient {
   /// Corresponds to: POST /accounts/projects/{project_id}/secrets
   /// Body: { "name": "...", "type": "...", "data": ... }
   /// Returns JSON like { "id": "new_secret_id" } on success.
-  Future<Map<String, dynamic>> createProjectSecret({
+  Future<Map<String, dynamic>> createSecret({
     required String projectId,
     required String name,
     required String type,
@@ -777,7 +777,7 @@ abstract class AccountsClient {
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
   /// Body: { "name": "", "description": "" }
   /// Returns an Api Key.
-  Future<ApiKey> createProjectApiKey(String projectId, String name, String description) async {
+  Future<ApiKey> createApiKey(String projectId, String name, String description) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
     final body = {'name': name, 'description': description};
 
@@ -995,7 +995,7 @@ abstract class AccountsClient {
   /// Corresponds to: POST /accounts/projects/{project_id}/webhooks
   /// Body: { "name", "description", "url", "events" }
   /// Returns the JSON object the server responds with (could be empty or the new resource data).
-  Future<Map<String, dynamic>> createProjectWebhook(
+  Future<Map<String, dynamic>> createWebhook(
     String projectId, {
     required String name,
     required String url,
