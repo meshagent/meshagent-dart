@@ -105,18 +105,16 @@ class Mailbox {
 }
 
 /// A client to interact with the accounts routes.
-abstract class AccountsClient {
+class Meshagent {
   final String baseUrl;
 
-  /// Creates an instance of [AccountsClient].
+  /// Creates an instance of [Meshagent].
   ///
   /// [baseUrl] is the root URL of your server, e.g. 'http://localhost:8080'.
   /// [token] is your Bearer token for authorization.
-  AccountsClient({required this.baseUrl});
+  Meshagent({required this.baseUrl, required this.token});
 
-  String get token {
-    throw Exception("Not implemented");
-  }
+  final String token;
 
   /// Returns the default headers including Bearer Authorization.
   Map<String, String> _getHeaders() {
@@ -133,14 +131,14 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode == 409) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create mailbox. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create mailbox. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -158,7 +156,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update mailbox. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -172,7 +170,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list mailboxes. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -192,7 +190,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete mailbox. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -214,7 +212,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create secret. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -229,7 +227,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get pricing data. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -245,7 +243,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list secrets. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -262,7 +260,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(settings));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update secret. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -285,7 +283,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update secret. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -301,7 +299,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete secret. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -319,7 +317,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -335,7 +333,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: data);
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -352,7 +350,7 @@ abstract class AccountsClient {
       throw NotFoundException("file was not found");
     }
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -370,7 +368,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -384,7 +382,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list project services keys. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -399,7 +397,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list project services keys. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -414,7 +412,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete project service'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -432,7 +430,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'settings': settings ?? {}}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -448,7 +446,7 @@ abstract class AccountsClient {
 
     final response = await http.delete(uri, headers: _getHeaders());
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -465,7 +463,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'settings': settings ?? {}}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -480,7 +478,7 @@ abstract class AccountsClient {
 
     final response = await http.get(uri, headers: _getHeaders());
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list shares. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -501,7 +499,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to connect share. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -518,7 +516,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'name': name}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to create project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to create project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -533,7 +531,7 @@ abstract class AccountsClient {
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
     }
   }
 
@@ -547,7 +545,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -656,7 +654,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
     }
   }
 
@@ -670,7 +668,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -687,7 +685,7 @@ abstract class AccountsClient {
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -699,7 +697,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to get users in project. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to get users in project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return (jsonDecode(response.body)["users"] as List).whereType<Map<String, dynamic>>().toList();
   }
@@ -712,7 +710,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to get user profile. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to get user profile. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -727,7 +725,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to update user profile. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to update user profile. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -739,7 +737,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return (jsonDecode(response.body)["projects"] as List).whereType<Map<String, dynamic>>().toList();
   }
@@ -751,7 +749,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
     }
     final role = (jsonDecode(response.body) as Map<String, dynamic>)["role"];
 
@@ -769,7 +767,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -784,7 +782,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create project API key. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -800,7 +798,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete project API key. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -816,7 +814,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list project API keys. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -830,7 +828,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to decrypt project API key. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -838,7 +836,7 @@ abstract class AccountsClient {
     return (jsonDecode(response.body) as Map<String, dynamic>)["token"];
   }
 
-  // In AccountsClient
+  // In Meshagent
   /// GET /accounts/projects/{project_id}/sessions
   /// Returns JSON: { "sessions": [ { "room_name", "started_at", "is_active" }, ... ] }
   Future<List<RoomSession>> listActiveSessions(String projectId) async {
@@ -846,7 +844,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list active sessions. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -864,7 +862,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list recent sessions. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -883,7 +881,7 @@ abstract class AccountsClient {
     );
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get session. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -896,7 +894,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"success_url": successUrl, "cancel_url": cancelUrl}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get session. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -911,7 +909,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get session. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -925,7 +923,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to terminate session. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -939,7 +937,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get session. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -954,7 +952,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list session events. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -969,7 +967,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list session spans. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -984,7 +982,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list session metrics. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1010,7 +1008,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create project webhook. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1037,7 +1035,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update project webhook. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1052,7 +1050,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list project webhooks. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1067,7 +1065,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete project webhook. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1095,7 +1093,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create room grant. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1117,7 +1115,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create room grant. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1142,7 +1140,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update room grant. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1159,7 +1157,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete room grant. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1176,7 +1174,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get room grant. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1194,7 +1192,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list rooms. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1218,7 +1216,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list room grants. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1245,7 +1243,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list room grants by user. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1272,7 +1270,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list room grants by room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1292,7 +1290,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list unique rooms with grants. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1312,7 +1310,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list unique users with grants. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1347,7 +1345,7 @@ abstract class AccountsClient {
     if (response.statusCode == 409) {
       throw NameInUseException("The room name is already in use");
     } else if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1368,7 +1366,7 @@ abstract class AccountsClient {
       throw NotFoundException('room not found');
     }
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1386,7 +1384,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'name': name, 'metadata': metadata}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1401,7 +1399,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1418,7 +1416,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({}));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to connect room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1443,7 +1441,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get service. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1478,7 +1476,7 @@ abstract class AccountsClient {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to create OAuth client. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1511,7 +1509,7 @@ abstract class AccountsClient {
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to update OAuth client. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1526,7 +1524,7 @@ abstract class AccountsClient {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to list OAuth clients. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1549,7 +1547,7 @@ abstract class AccountsClient {
       throw NotFoundException('oauth client not found');
     }
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to get OAuth client. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1567,7 +1565,7 @@ abstract class AccountsClient {
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw AccountsClientException(
+      throw MeshagentException(
         'Failed to delete OAuth client. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
@@ -1712,19 +1710,19 @@ class ProjectUserGrantCount {
 }
 
 /// A simple custom exception to denote HTTP errors.
-class AccountsClientException implements Exception {
+class MeshagentException implements Exception {
   final String message;
-  AccountsClientException(this.message);
+  MeshagentException(this.message);
 
   @override
   String toString() => 'HttpException: $message';
 }
 
-class NotFoundException extends AccountsClientException {
+class NotFoundException extends MeshagentException {
   NotFoundException(super.message);
 }
 
-class NameInUseException extends AccountsClientException {
+class NameInUseException extends MeshagentException {
   NameInUseException(super.message);
 }
 
