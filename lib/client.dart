@@ -238,7 +238,7 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/secrets
   /// Returns JSON like { "secrets": [ { "id": ..., "name": ..., "type": ..., "data": ... } ] }.
-  Future<List<Map<String, dynamic>>> listProjectSecrets(String projectId) async {
+  Future<List<Map<String, dynamic>>> listSecrets(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -270,7 +270,7 @@ class Meshagent {
   /// Corresponds to: PUT /accounts/projects/{project_id}/secrets/{secret_id}
   /// Body: { "name": "...", "type": "...", "data": ... }
   /// Returns empty JSON object {} on success.
-  Future<void> updateProjectSecret({
+  Future<void> updateSecret({
     required String projectId,
     required String secretId,
     required String name,
@@ -294,7 +294,7 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/secrets/{secret_id}
   /// Returns {} or 204 No Content on success.
-  Future<void> deleteProjectSecret({required String projectId, required String secretId}) async {
+  Future<void> deleteSecret({required String projectId, required String secretId}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets/$secretId');
     final response = await http.delete(uri, headers: _getHeaders());
 
@@ -392,7 +392,7 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Service>> listProjectServices(String projectId) async {
+  Future<List<Service>> listServices(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -407,7 +407,7 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
   /// Returns 204 No Content on success (no JSON body).
-  Future<void> deleteProjectService({required String projectId, required String serviceId}) async {
+  Future<void> deleteService({required String projectId, required String serviceId}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
     final response = await http.delete(uri, headers: _getHeaders());
 
@@ -793,7 +793,7 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/api-keys/{token_id}
   /// Returns 204 No Content on success (no JSON body).
-  Future<void> deleteProjectApiKey(String projectId, String tokenId) async {
+  Future<void> deleteApiKey(String projectId, String tokenId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys/$tokenId');
     final response = await http.delete(uri, headers: _getHeaders());
 
@@ -809,7 +809,7 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/api-keys
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Map<String, dynamic>>> listProjectApiKeys(String projectId) async {
+  Future<List<Map<String, dynamic>>> listApiKeys(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -820,20 +820,6 @@ class Meshagent {
       );
     }
     return (jsonDecode(response.body)["keys"] as List).whereType<Map<String, dynamic>>().toList();
-  }
-
-  /// Corresponds to: GET /accounts/projects/{project_id}/api-keys/{token_id}/decrypt
-  Future<String> decryptProjectApiKey(String projectId, String tokenId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys/$tokenId/decrypt');
-    final response = await http.get(uri, headers: _getHeaders());
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to decrypt project API key. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-    return (jsonDecode(response.body) as Map<String, dynamic>)["token"];
   }
 
   // In Meshagent
@@ -1019,7 +1005,7 @@ class Meshagent {
   /// Corresponds to: PUT /accounts/projects/{project_id}/webhooks/{webhook_id}
   /// Body: { "name", "description", "url", "events" }
   /// Returns the updated resource JSON or an empty object (depends on your server).
-  Future<Map<String, dynamic>> updateProjectWebhook(
+  Future<Map<String, dynamic>> updateWebhook(
     String projectId,
     String webhookId, {
     required String name,
@@ -1045,7 +1031,7 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/webhooks
   /// Returns a JSON dict like { "webhooks": [ { ... }, ... ] }.
-  Future<List<Map<String, dynamic>>> listProjectWebhooks(String projectId) async {
+  Future<List<Map<String, dynamic>>> listWebhooks(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -1060,7 +1046,7 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/webhooks/{webhook_id}
   /// Typically returns 200 or 204 on success (no JSON body).
-  Future<void> deleteProjectWebhook(String projectId, String webhookId) async {
+  Future<void> deleteWebhook(String projectId, String webhookId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks/$webhookId');
     final response = await http.delete(uri, headers: _getHeaders());
 
