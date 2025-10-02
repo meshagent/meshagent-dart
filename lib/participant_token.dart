@@ -1,4 +1,5 @@
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
+import 'api_keys.dart';
 
 /// ---------------------------
 /// Helpers
@@ -555,9 +556,22 @@ class ParticipantToken {
   /// Encodes as JWT (HS256).
   /// If [token] is null, tries compile-time env ('MESHAGENT_SECRET').
   /// [expiration] adds 'exp' (seconds since epoch) to the payload.
-  String toJwt({String? token, DateTime? expiration}) {
-    final usingDefaultSecret = token == null;
-    token ??= const String.fromEnvironment('MESHAGENT_SECRET');
+  /// If [apiKey] is provided (or set via `MESHAGENT_API_KEY`), it determines
+  /// the signing secret and ensures the payload contains the API key metadata.
+  String toJwt({String? token, String? apiKey, DateTime? expiration}) {
+    ApiKey? resolvedApiKey;
+
+    var resolvedSecret = token;
+    var providedApiKey = apiKey;
+    providedApiKey ??= const String.fromEnvironment('MESHAGENT_API_KEY');
+
+    if (providedApiKey.isNotEmpty) {
+      resolvedApiKey = parseApiKey(providedApiKey);
+      resolvedSecret = resolvedApiKey.secret;
+    }
+
+    final usingDefaultSecret = resolvedSecret == null;
+    resolvedSecret ??= const String.fromEnvironment('MESHAGENT_SECRET');
 
     // Warn if missing ApiScope on newer versions (mirrors Python logger.warning)
     final hasApi = grants.any((g) => g.name == 'api');
@@ -569,6 +583,11 @@ class ParticipantToken {
     }
 
     final payload = Map<String, dynamic>.from(toJson());
+
+    if (resolvedApiKey != null) {
+      payload['kid'] = resolvedApiKey.id;
+      payload['sub'] = resolvedApiKey.projectId;
+    }
 
     // Match Python behavior: if exporting with default secret, drop kid.
     if (usingDefaultSecret && payload.containsKey('kid')) {
@@ -584,7 +603,7 @@ class ParticipantToken {
     }
 
     final jwt = JWT(merged);
-    return jwt.sign(SecretKey(token), algorithm: JWTAlgorithm.HS256);
+    return jwt.sign(SecretKey(resolvedSecret), algorithm: JWTAlgorithm.HS256);
   }
 
   factory ParticipantToken.fromJson(Map<String, dynamic> json) {

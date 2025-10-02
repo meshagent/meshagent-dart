@@ -91,10 +91,13 @@ WebSocketClientProtocol websocketProtocol({required String participantName, requ
   final url = websocketRoomUrl(roomName: roomName);
   final token = participantToken(participantName: participantName, roomName: roomName, role: role);
 
+  final apiKey = String.fromEnvironment('MESHAGENT_API_KEY', defaultValue: "");
   final secret = String.fromEnvironment('MESHAGENT_SECRET', defaultValue: "");
-  if (secret.isEmpty) {
-    throw Exception('MESHAGENT_SECRET must be set in the environment.');
+  if (apiKey.isEmpty && secret.isEmpty) {
+    throw Exception('Either MESHAGENT_API_KEY or MESHAGENT_SECRET must be set in the environment.');
   }
-
-  return WebSocketClientProtocol(url: url, token: token.toJwt(token: secret));
+  return WebSocketClientProtocol(
+    url: url,
+    token: token.toJwt(apiKey: apiKey.isEmpty ? null : apiKey, token: secret.isEmpty ? null : secret),
+  );
 }
