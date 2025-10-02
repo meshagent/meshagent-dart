@@ -775,7 +775,7 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
   /// Body: { "name": "", "description": "" }
   /// Returns an Api Key.
-  Future<ApiKey> createApiKey(String projectId, String name, String description) async {
+  Future<ApiKeyInfo> createApiKey(String projectId, String name, String description) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
     final body = {'name': name, 'description': description};
 
@@ -788,7 +788,7 @@ class Meshagent {
       );
     }
 
-    return ApiKey.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return ApiKeyInfo.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/api-keys/{token_id}
@@ -1904,15 +1904,15 @@ class Services {
   Map<String, dynamic> toJson() => {'services': services.map((e) => e.toJson()).toList()};
 }
 
-class ApiKey {
-  ApiKey({required this.id, required this.name, this.description, required this.value});
+class ApiKeyInfo {
+  ApiKeyInfo({required this.id, required this.name, this.description, required this.value});
 
   final String id;
   final String name;
   final String? description;
   final String value;
 
-  static ApiKey fromJson(Map<String, dynamic> json) {
-    return ApiKey(id: json["id"], name: json["name"], description: json["description"], value: json["value"]);
+  static ApiKeyInfo fromJson(Map<String, dynamic> json) {
+    return ApiKeyInfo(id: json["id"], name: json["name"], description: json["description"], value: json["value"]);
   }
 }
