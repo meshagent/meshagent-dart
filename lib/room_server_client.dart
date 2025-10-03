@@ -669,6 +669,7 @@ class _RunRequest {
     this.variables,
     this.tty,
     this.name,
+    this.gc,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
@@ -685,6 +686,7 @@ class _RunRequest {
   final bool? detach;
   final bool? tty;
   final Map<String, String>? variables;
+  final bool? gc;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -701,6 +703,7 @@ class _RunRequest {
     if (detach != null) 'detach': detach,
     if (tty != null) 'tty': tty,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
+    if (gc != null) 'gc': gc,
   };
 }
 
@@ -964,8 +967,8 @@ class ContainersClient extends ChangeEmitter {
     Map<int, int> ports = const {},
     Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
-    bool detach = true,
     String? name,
+    bool? gc,
   }) {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -990,8 +993,9 @@ class ContainersClient extends ChangeEmitter {
       participantName: participantName,
       ports: ports,
       credentials: credentials,
-      detach: detach,
+      detach: true,
       variables: variables,
+      gc: gc,
     );
 
     room
@@ -1029,6 +1033,7 @@ class ContainersClient extends ChangeEmitter {
     List<DockerSecret> credentials = const [],
     bool tty = false,
     String? name,
+    bool? gc,
   }) {
     final requestId = Uuid().v4().toString();
 
@@ -1047,6 +1052,7 @@ class ContainersClient extends ChangeEmitter {
       tty: tty,
       detach: false,
       variables: variables,
+      gc: gc,
     );
 
     final container = ContainerRun._(room, requestId);
@@ -1103,8 +1109,8 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
-  Future<List<RoomContainer>> list() async {
-    final res = await room.sendRequest("containers.list_containers", {}) as JsonResponse;
+  Future<List<RoomContainer>> list({bool? all}) async {
+    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonResponse;
 
     return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
