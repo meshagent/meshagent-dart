@@ -842,7 +842,7 @@ class ContainersClient extends ChangeEmitter {
       final total = detail["total"] as num?;
       final current = detail["current"] as num?;
       final message = chunk["message"] as String;
-      final layer = chunk["layer"] as String;
+      final layer = chunk["layer"] as String?;
 
       _progress[chunk["request_id"]]!.sink.add(
         LogProgress(layer: layer, message: message, current: current?.toInt(), total: total?.toInt()),
