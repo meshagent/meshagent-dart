@@ -749,21 +749,19 @@ class BuildInfo {
 }
 
 /// Lightweight image description (from `containers.list_images`)
-class DockerImage {
-  DockerImage({required this.id, required this.tags, required this.size, required this.created, required this.labels, this.manifest});
+class ContainerImage {
+  ContainerImage({required this.id, required this.tags, required this.size, required this.labels, this.manifest});
 
   final String id;
   final List<String> tags;
   final int? size; // bytes
-  final int? created; // seconds since epoch
   final Map<String, dynamic> labels;
   final ServiceTemplateSpec? manifest;
 
-  factory DockerImage.fromJson(Map<String, dynamic> json) => DockerImage(
+  factory ContainerImage.fromJson(Map<String, dynamic> json) => ContainerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
-    created: json['created'] as int?,
     manifest: json['manifest'] == null ? null : ServiceTemplateSpec.fromJson(json['manifest']),
     labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
   );
@@ -874,10 +872,10 @@ class ContainersClient extends ChangeEmitter {
   /// ------------------------------------------------------------------------
 
   /// Return *all* local images (similar to `docker images`).
-  Future<List<DockerImage>> listImages() async {
+  Future<List<ContainerImage>> listImages() async {
     final res = await room.sendRequest('containers.list_images', {}) as JsonResponse;
 
-    return (res.json['images'] as List).map((i) => DockerImage.fromJson(i as Map<String, dynamic>)).toList();
+    return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
   }
 
   /// Delete an image by tag or ID (force = true on the server).
@@ -1129,7 +1127,6 @@ class RoomContainer {
     required this.image,
     required this.command,
     required this.entrypoint,
-    required this.environment,
     required this.startedBy,
     this.manifest,
   });
@@ -1137,7 +1134,6 @@ class RoomContainer {
   final String image;
   final List<String>? command;
   final List<String>? entrypoint;
-  final Map<String, String> environment;
   final ParticipantInfo startedBy;
   final Map<String, dynamic>? manifest;
 
@@ -1148,7 +1144,6 @@ class RoomContainer {
       manifest: json["manifest"],
       command: (json["command"] as List?)?.map((e) => e as String).toList(),
       entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
-      environment: {for (final entry in (json["env"] as Map).entries) entry.key: entry.value},
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
     );
   }
