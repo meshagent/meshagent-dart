@@ -840,9 +840,6 @@ class ContainersClient extends ChangeEmitter {
 
     if (channel == 1) {
       tty._stdoutController.add(message.payload);
-    } else {
-      print(message.header["channel"]);
-      print(message.payload);
     }
   }
 
