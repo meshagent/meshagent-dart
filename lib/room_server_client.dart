@@ -665,11 +665,8 @@ class _RunRequest {
     this.ports = const {},
     this.credentials = const [],
     this.requestId,
-    this.detach,
     this.variables,
-    this.tty,
     this.name,
-    this.gc,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
@@ -683,10 +680,7 @@ class _RunRequest {
   final String? participantName;
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
-  final bool? detach;
-  final bool? tty;
   final Map<String, String>? variables;
-  final bool? gc;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -700,10 +694,23 @@ class _RunRequest {
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
     'variables': variables,
-    if (detach != null) 'detach': detach,
-    if (tty != null) 'tty': tty,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
-    if (gc != null) 'gc': gc,
+  };
+}
+
+class _ExecRequest {
+  _ExecRequest({required this.containerId, required this.command, this.tty = false, this.requestId});
+
+  final String? requestId;
+  final String containerId;
+  final String? command;
+  final bool tty;
+
+  Map<String, dynamic> toJson() => {
+    if (requestId != null) 'request_id': requestId,
+    'container_id': containerId,
+    'command': command,
+    'tty': tty,
   };
 }
 
@@ -768,8 +775,9 @@ class ContainerImage {
 }
 
 class ContainerRun {
-  ContainerRun._(this._client, this._requestId);
+  ContainerRun._(this._client, this._requestId, this.command);
 
+  final String command;
   final RoomClient _client;
   final String _requestId;
 
@@ -787,7 +795,9 @@ class ContainerRun {
     await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
   }
 
-  final _stdoutController = StreamController<Uint8List>();
+  late final _stdoutController = StreamController<Uint8List>.broadcast()..stream.listen((data) => previousOutput.add(data));
+
+  List<Uint8List> previousOutput = [];
 
   Stream<Uint8List> get output {
     return _stdoutController.stream;
@@ -828,7 +838,7 @@ class ContainersClient extends ChangeEmitter {
       return;
     }
 
-    if (channel == 0) {
+    if (channel == 1) {
       tty._stdoutController.add(message.payload);
     }
   }
@@ -954,7 +964,7 @@ class ContainersClient extends ChangeEmitter {
     return stream;
   }
 
-  LogStream<ContainerRunResult> run({
+  Future<String> run({
     required String image,
     String? command,
     Map<String, String> env = const {},
@@ -966,98 +976,48 @@ class ContainersClient extends ChangeEmitter {
     Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     String? name,
-    bool? gc,
-  }) {
+  }) async {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
-    final completer = Completer<ContainerRunResult>();
     final progress = StreamController<LogProgress>();
 
-    final stream = LogStream<ContainerRunResult>._(completer, controller.stream, progress.stream, () async {
-      await room.sendRequest('containers.stop_container', {'request_id': requestId});
-    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
-    final req = _RunRequest(
-      name: name,
-      requestId: requestId,
-      image: image,
-      command: command,
-      env: env,
-      mountPath: mountPath,
-      mountSubpath: mountSubpath,
-      role: role,
-      participantName: participantName,
-      ports: ports,
-      credentials: credentials,
-      detach: true,
-      variables: variables,
-      gc: gc,
-    );
+    try {
+      final req = _RunRequest(
+        name: name,
+        requestId: requestId,
+        image: image,
+        command: command,
+        env: env,
+        mountPath: mountPath,
+        mountSubpath: mountSubpath,
+        role: role,
+        participantName: participantName,
+        ports: ports,
+        credentials: credentials,
+        variables: variables,
+      );
 
-    room
-        .sendRequest("containers.run", req.toJson())
-        .then(
-          (result) {
-            final json = result as JsonResponse;
-
-            controller.close();
-            completer.complete(
-              ContainerRunResult(status: json.json["status"], logs: (result.json["logs"] as List).map((l) => l as String).toList()),
-            );
-            _loggers.remove(requestId);
-          },
-          onError: (error) {
-            controller.close();
-            completer.completeError(error);
-            _loggers.remove(requestId);
-          },
-        );
-
-    return stream;
+      final res = await room.sendRequest("containers.run", req.toJson());
+      return (res as JsonResponse).json["container_id"];
+    } finally {
+      _loggers.remove(requestId);
+      _progress.remove(requestId);
+    }
   }
 
-  ContainerRun runAttached({
-    required String image,
-    String? command,
-    Map<String, String> env = const {},
-    String? mountPath,
-    String? mountSubpath,
-    String? role,
-    String? participantName,
-    Map<int, int> ports = const {},
-    Map<String, String>? variables,
-    List<DockerSecret> credentials = const [],
-    bool tty = false,
-    String? name,
-    bool? gc,
-  }) {
+  ContainerRun exec({required String containerId, required String image, required String command, bool tty = false, String? name}) {
     final requestId = Uuid().v4().toString();
 
-    final req = _RunRequest(
-      name: name,
-      requestId: requestId,
-      image: image,
-      command: command,
-      env: env,
-      mountPath: mountPath,
-      mountSubpath: mountSubpath,
-      role: role,
-      participantName: participantName,
-      ports: ports,
-      credentials: credentials,
-      tty: tty,
-      detach: false,
-      variables: variables,
-      gc: gc,
-    );
+    final req = _ExecRequest(containerId: containerId, requestId: requestId, command: command, tty: tty);
 
-    final container = ContainerRun._(room, requestId);
+    final container = ContainerRun._(room, requestId, command);
     _ttys[requestId] = container;
 
     room
-        .sendRequest("containers.run", req.toJson())
+        .sendRequest("containers.exec", req.toJson())
         .then(
           (result) {
             _ttys.remove(requestId);
