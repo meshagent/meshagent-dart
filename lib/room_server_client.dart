@@ -564,93 +564,15 @@ class ContainerRunResult {
   final int? status;
 }
 
-class ImagePullResult {
-  ImagePullResult({required this.logs});
-
-  final List<String> logs;
-}
-
 enum ContextEncoding { gzip }
 
-/// ------------------------------
-/// BuildSourceGit
-/// ------------------------------
-///
-class BuildSource {}
-
-class BuildSourceGit extends BuildSource {
-  final String url;
-  final String? ref;
-  final String? username;
-  final String? password;
-  final String? path;
-
-  BuildSourceGit({required this.url, this.ref, this.username, this.password, this.path});
-
-  Map<String, dynamic> toJson() => {'url': url, 'ref': ref, 'username': username, 'password': password, 'path': path};
-}
-
-/// ------------------------------
-/// BuildSourceContext
-/// ------------------------------
-class BuildSourceContext extends BuildSource {
-  final String encoding;
-  final Uint8List context;
-
-  BuildSourceContext({this.encoding = 'gzip', required this.context});
-
-  Map<String, dynamic> toJson() => {'encoding': encoding};
-}
-
-/// ------------------------------
-/// BuildSourceRoom
-/// ------------------------------
-class BuildSourceRoom extends BuildSource {
-  final String path;
-
-  BuildSourceRoom({required this.path});
-
-  Map<String, dynamic> toJson() => {'path': path};
-}
-
-/// ------------------------------
-/// BuildRequest
-/// ------------------------------
-class _BuildRequest {
-  _BuildRequest({this.requestId, required this.tag, this.git, this.context, this.room, this.credentials = const []});
-
-  final String? requestId;
-  final String tag;
-  final BuildSourceGit? git;
-  final BuildSourceContext? context;
-  final BuildSourceRoom? room;
-
-  /// One or more registry secrets: passed straight to the server so the
-  /// backend can authenticate before `docker pull` / `push`.
-  final List<DockerSecret> credentials;
-
-  Map<String, dynamic> toJson() => {
-    if (requestId != null) 'request_id': requestId,
-    'tag': tag,
-    if (git != null) 'git': git!.toJson(),
-    if (context != null) 'context': context!.toJson(),
-    if (room != null) 'room': room!.toJson(),
-    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
-  };
-}
-
 class _ImagePullRequest {
-  _ImagePullRequest({required this.tag, this.credentials = const [], this.requestId});
+  _ImagePullRequest({required this.tag, this.credentials = const []});
 
-  final String? requestId;
   final String tag;
   final List<DockerSecret> credentials;
 
-  Map<String, dynamic> toJson() => {
-    if (requestId != null) 'request_id': requestId,
-    'tag': tag,
-    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
-  };
+  Map<String, dynamic> toJson() => {'tag': tag, if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList()};
 }
 
 class _RunRequest {
@@ -862,21 +784,6 @@ class ContainersClient extends ChangeEmitter {
   final Map<String, StreamController<LogProgress>> _progress = {};
   RoomClient room;
 
-  /// Fetch the *in‑memory* list of builds tracked by the server.
-  ///
-  /// Each [BuildInfo] entry reports current status (`running`, `finished`,
-  /// `errored`) together with any error / result payload.
-  Future<List<BuildInfo>> listBuilds() async {
-    final res = await room.sendRequest('containers.list_builds', {}) as JsonResponse;
-
-    return (res.json['builds'] as List).map((b) => BuildInfo.fromJson(b as Map<String, dynamic>)).toList();
-  }
-
-  /// Attempt to cancel a running build (`containers.stop_build`).
-  Future<void> stopBuild({required String requestId}) async {
-    await room.sendRequest('containers.stop_build', {'request_id': requestId});
-  }
-
   /// ------------------------------------------------------------------------
   /// Images
   /// ------------------------------------------------------------------------
@@ -893,75 +800,10 @@ class ContainersClient extends ChangeEmitter {
     await room.sendRequest('containers.delete_image', {'image': image});
   }
 
-  LogStream<void> build({required String tag, required BuildSource source, List<DockerSecret> credentials = const []}) {
-    final requestId = Uuid().v4().toString();
-    final controller = StreamController<String>();
-    final progress = StreamController<LogProgress>();
-    final completer = Completer();
-    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
-      await room.sendRequest('containers.stop_build', {'request_id': requestId});
-    });
-    _loggers[requestId] = controller;
-    _progress[requestId] = progress;
+  Future<void> pullImage({required String tag, List<DockerSecret> credentials = const []}) async {
+    final req = _ImagePullRequest(tag: tag, credentials: credentials);
 
-    final req = _BuildRequest(
-      tag: tag,
-      requestId: requestId,
-      git: source is BuildSourceGit ? source : null,
-      room: source is BuildSourceRoom ? source : null,
-      context: source is BuildSourceContext ? source : null,
-      credentials: credentials,
-    );
-
-    room
-        .sendRequest("containers.build", req.toJson(), data: source is BuildSourceContext ? source.context : null)
-        .then(
-          (result) {
-            controller.close();
-            completer.complete();
-            _loggers.remove(requestId);
-          },
-          onError: (error) {
-            completer.completeError(error);
-            _loggers.remove(requestId);
-          },
-        );
-
-    return stream;
-  }
-
-  LogStream<ImagePullResult> pullImage({required String tag, List<DockerSecret> credentials = const []}) {
-    final requestId = Uuid().v4().toString();
-    final controller = StreamController<String>();
-    final completer = Completer<ImagePullResult>();
-    final progress = StreamController<LogProgress>();
-
-    final stream = LogStream<ImagePullResult>._(completer, controller.stream, progress.stream, () async {
-      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
-    });
-    _loggers[requestId] = controller;
-    _progress[requestId] = progress;
-
-    final req = _ImagePullRequest(requestId: requestId, tag: tag, credentials: credentials);
-
-    room
-        .sendRequest("containers.pull_image", req.toJson())
-        .then(
-          (result) {
-            final json = result as JsonResponse;
-
-            controller.close();
-            completer.complete(ImagePullResult(logs: (json.json["logs"] as List).map((l) => l as String).toList()));
-            _loggers.remove(requestId);
-          },
-          onError: (error) {
-            controller.close();
-            completer.completeError(error);
-            _loggers.remove(requestId);
-          },
-        );
-
-    return stream;
+    await room.sendRequest("containers.pull_image", req.toJson());
   }
 
   Future<String> run({
