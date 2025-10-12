@@ -1082,29 +1082,20 @@ class ParticipantInfo {
 }
 
 class RoomContainer {
-  RoomContainer({
-    required this.id,
-    required this.image,
-    required this.command,
-    required this.entrypoint,
-    required this.startedBy,
-    this.manifest,
-  });
+  RoomContainer({required this.id, required this.image, required this.startedBy, required this.state, this.manifest});
   final String id;
   final String image;
-  final List<String>? command;
-  final List<String>? entrypoint;
   final ParticipantInfo startedBy;
   final Map<String, dynamic>? manifest;
+  final String state;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
       id: json["id"],
       image: json["image"],
       manifest: json["manifest"],
-      command: (json["command"] as List?)?.map((e) => e as String).toList(),
-      entrypoint: (json["entrypoint"] as List?)?.map((e) => e as String).toList(),
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
+      state: json["state"],
     );
   }
 }
