@@ -1354,14 +1354,14 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/room-grants/by-room/{room_name}?limit=&offset=&order_by=
   Future<List<ProjectRoomGrant>> listRoomGrantsByRoom({
     required String projectId,
-    required String roomName,
+    required String roomId,
     int limit = 50,
     int offset = 0,
     String orderBy = 'user_id',
   }) async {
-    final r = Uri.encodeComponent(roomName);
+    final r = Uri.encodeComponent(roomId);
     var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$r',
+      '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$roomId',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
 
     final response = await http.get(uri, headers: _getHeaders());
