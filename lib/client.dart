@@ -1359,7 +1359,6 @@ class Meshagent {
     int offset = 0,
     String orderBy = 'user_id',
   }) async {
-    final r = Uri.encodeComponent(roomId);
     var uri = Uri.parse(
       '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$roomId',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
