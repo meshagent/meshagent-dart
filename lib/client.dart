@@ -308,24 +308,6 @@ class Meshagent {
     // Server might return {} or 204.
   }
 
-  /// Corresponds to: POST /accounts/projects/:project_id/services
-  /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
-  /// Returns JSON like { "id" } on success.
-  Future<String> createService({required String projectId, required Service service}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create share. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return jsonDecode(response.body)["id"];
-  }
-
   /// Corresponds to: POST /projects/:project_id/storage/upload
   Future<void> upload({required String projectId, required String path, required Uint8List data}) async {
     final uri = Uri.parse('$baseUrl/projects/$projectId/storage/upload').replace(queryParameters: {"path": path});
@@ -359,6 +341,24 @@ class Meshagent {
     return response.bodyBytes;
   }
 
+  /// Corresponds to: POST /accounts/projects/:project_id/services
+  /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
+  /// Returns JSON like { "id" } on success.
+  Future<String> createService({required String projectId, required Service service}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create share. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return jsonDecode(response.body)["id"];
+  }
+
   /// Corresponds to: POST /accounts/projects/:project_id/
   /// Body: { "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
@@ -375,19 +375,32 @@ class Meshagent {
     }
   }
 
-  /// Corresponds to: GET /accounts/projects/{project_id}/services
-  /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Service>> getProjectService({required String projectId, required String serviceId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
+  /// --------------------------------
+  /// Services (single fetch)
+  /// --------------------------------
+
+  /// GET /accounts/projects/{project_id}/services/{service_id}
+  /// Returns a single Service.
+  ///
+  /// Note: Some servers may return the JSON as a string payload.
+  /// This method handles both a Map response and a stringified JSON.
+  Future<Service> getService({required String projectId, required String serviceId}) async {
+    final sid = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$sid');
+
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to list project services keys. '
+        'Failed to get service. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return jsonDecode(response.body);
+
+    final decoded = jsonDecode(response.body);
+    final Map<String, dynamic> json = decoded is String ? jsonDecode(decoded) as Map<String, dynamic> : decoded as Map<String, dynamic>;
+
+    return Service.fromJson(json);
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
@@ -409,6 +422,104 @@ class Meshagent {
   /// Returns 204 No Content on success (no JSON body).
   Future<void> deleteService({required String projectId, required String serviceId}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
+    final response = await http.delete(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete project service'
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    // 204 No Content -> no need to parse response body.
+    return;
+  }
+
+  /// Corresponds to: POST /accounts/projects/:project_id/services
+  /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
+  /// Returns JSON like { "id" } on success.
+  Future<String> createRoomService({required String projectId, required Service service, required String roomId}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services');
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create share. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return jsonDecode(response.body)["id"];
+  }
+
+  /// Corresponds to: POST /accounts/projects/:project_id/
+  /// Body: { "environment" : \<settings\> }
+  /// Returns JSON like { "id" } on success.
+  Future<void> updateRoomService({
+    required String projectId,
+    required String serviceId,
+    required Service service,
+    required String roomId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$serviceId');
+
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create share. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  /// --------------------------------
+  /// Services (single fetch)
+  /// --------------------------------
+
+  /// GET /accounts/projects/{project_id}/services/{service_id}
+  /// Returns a single Service.
+  ///
+  /// Note: Some servers may return the JSON as a string payload.
+  /// This method handles both a Map response and a stringified JSON.
+  Future<Service> getRoomService({required String projectId, required String serviceId, required String roomId}) async {
+    final sid = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$sid');
+
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get service. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    final Map<String, dynamic> json = decoded is String ? jsonDecode(decoded) as Map<String, dynamic> : decoded as Map<String, dynamic>;
+
+    return Service.fromJson(json);
+  }
+
+  /// Corresponds to: GET /accounts/projects/{project_id}/services
+  /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
+  Future<List<Service>> listRoomServices({required String projectId, required String roomId}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list project services keys. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => Service.fromJson(a)).toList();
+  }
+
+  /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
+  /// Returns 204 No Content on success (no JSON body).
+  Future<void> deleteRoomService({required String projectId, required String serviceId, String? roomId}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/$serviceId');
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
@@ -1411,34 +1522,6 @@ class Meshagent {
     return RoomConnectionInfo.fromJson(jsonDecode(response.body));
   }
 
-  /// --------------------------------
-  /// Services (single fetch)
-  /// --------------------------------
-
-  /// GET /accounts/projects/{project_id}/services/{service_id}
-  /// Returns a single Service.
-  ///
-  /// Note: Some servers may return the JSON as a string payload.
-  /// This method handles both a Map response and a stringified JSON.
-  Future<Service> getService({required String projectId, required String serviceId}) async {
-    final sid = Uri.encodeComponent(serviceId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$sid');
-
-    final response = await http.get(uri, headers: _getHeaders());
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to get service. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    final Map<String, dynamic> json = decoded is String ? jsonDecode(decoded) as Map<String, dynamic> : decoded as Map<String, dynamic>;
-
-    return Service.fromJson(json);
-  }
-
   /// POST /accounts/projects/{project_id}/oauth/clients
   /// Body: { grant_types, response_types, redirect_uris, scope, metadata? }
   /// Returns the newly created OAuthClient (often includes client_secret).
@@ -1818,7 +1901,7 @@ class Service {
   String? pullSecret;
   Map<String, String>? runtimeSecrets;
   List<String>? environmentSecrets;
-  String? createdAt;
+  DateTime? createdAt;
   Map<String, Port>? ports;
   String? role; // "user", "tool", "agent"
   bool builtin;
@@ -1853,7 +1936,7 @@ class Service {
     pullSecret: json['pull_secret'] as String?,
     runtimeSecrets: (json['runtime_secrets'] as Map?)?.cast<String, String>(),
     environmentSecrets: (json['environment_secrets'] as List?)?.cast<String>(),
-    createdAt: json['created_at'] as String?,
+    createdAt: json['created_at'] is String ? DateTime.parse(json["created_at"]) : null,
     ports: (json['ports'] as Map?)?.map((k, v) => MapEntry(k as String, Port.fromJson(v as Map<String, dynamic>))),
     role: json['role'] as String?,
     builtin: json['builtin'] as bool? ?? false,
