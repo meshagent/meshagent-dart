@@ -875,8 +875,12 @@ class ContainersClient extends ChangeEmitter {
     return container;
   }
 
-  Future<void> stop({required String containerId}) async {
-    await room.sendRequest("containers.stop_container", {"id": containerId});
+  Future<void> stopContainer({required String containerId, bool force = true}) async {
+    await room.sendRequest("containers.stop_container", {"id": containerId, "force": force});
+  }
+
+  Future<void> deleteContainer({required String containerId}) async {
+    await room.sendRequest("containers.delete_container", {"id": containerId});
   }
 
   LogStream<void> logs({required String containerId, bool follow = false}) {

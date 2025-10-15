@@ -519,7 +519,7 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
   /// Returns 204 No Content on success (no JSON body).
   Future<void> deleteRoomService({required String projectId, required String serviceId, String? roomId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/$serviceId');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$serviceId');
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
