@@ -1862,20 +1862,21 @@ class ServiceTemplateMountSpec {
 /// ---------------------------------------------------------------------------
 
 class ServiceTemplateMetadata {
-  ServiceTemplateMetadata({required this.name, this.description, this.icon, this.repo, this.annotations});
+  ServiceTemplateMetadata({required this.name, this.description, this.icon, this.repo, Map<String, String>? annotations})
+    : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final String? icon;
   final String? repo;
-  final Map<String, String>? annotations;
+  final Map<String, String> annotations;
 
   Map<String, dynamic> toJson() => {
     'name': name,
     if (description != null) 'description': description,
     if (repo != null) 'repo': repo,
     if (icon != null) 'icon': icon,
-    if (annotations != null) 'annotations': annotations,
+    'annotations': annotations,
   };
 
   static ServiceTemplateMetadata fromJson(Map<String, dynamic> json) {
@@ -1884,7 +1885,7 @@ class ServiceTemplateMetadata {
       description: json['description'] as String?,
       repo: json['repo'] as String?,
       icon: json['icon'] as String?,
-      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : null,
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
     );
   }
 }
@@ -1945,6 +1946,59 @@ class ServiceTemplateSpec {
     if (role != null) 'role': role,
     if (storage != null) 'storage': storage!.toJson(),
   };
+
+  ServiceSpec toServiceSpec({required Map<String, String> values}) {
+    // Build env map with {var} expansion.
+    final env = <String, String>{};
+    if (environment != null) {
+      for (final e in environment!) {
+        env[e.name] = e.value.formatWith(values);
+      }
+    }
+
+    // Image is required on ServiceSpec; enforce like Pydantic would.
+    final img = image;
+    if (img == null || img.isEmpty) {
+      throw ArgumentError('ServiceTemplateSpec.image is required to build a ServiceSpec');
+    }
+
+    return ServiceSpec(
+      version: Version.v1,
+      kind: Kind.service,
+      metadata: ServiceMetadata(
+        name: metadata.name,
+        description: metadata.description,
+        repo: metadata.repo,
+        icon: metadata.icon,
+        annotations: metadata.annotations,
+      ),
+      command: command,
+      image: img,
+      ports: ports,
+      role: roleFromString(role), // template role is a String? → convert to Role?
+      environment: env,
+      storage:
+          storage == null
+              ? null
+              : ServiceStorageMountsSpec(
+                room: storage!.room,
+                // If you later add `project` to ServiceTemplateMountSpec, map it here:
+                // project: storage!.project,
+              ),
+      // secrets, pullSecret, apiKey are not part of the template → leave defaults
+    );
+  }
+}
+
+extension _StringTemplate on String {
+  /// Replace {var} with values['var']; leaves unknown keys as-is.
+  String formatWith(Map<String, String> values) {
+    final re = RegExp(r'\{([A-Za-z_][A-Za-z0-9_]*)\}');
+    return replaceAllMapped(re, (m) {
+      final k = m.group(1)!;
+      return values[k] ?? m.group(0)!; // keep original token if missing
+    });
+  }
 }
 
 enum Version { v1 }
@@ -2027,15 +2081,16 @@ class ServiceMetadata {
   final String? repo;
   final String? icon;
 
-  final Map<String, String>? annotations;
-  const ServiceMetadata({required this.name, this.description, this.repo, this.icon, this.annotations});
+  final Map<String, String> annotations;
+  ServiceMetadata({required this.name, this.description, this.repo, this.icon, Map<String, String>? annotations})
+    : annotations = annotations ?? {};
 
   Map<String, dynamic> toJson() => {
     'name': name,
     if (description != null) 'description': description,
     if (repo != null) 'repo': repo,
     if (icon != null) 'icon': icon,
-    if (annotations != null) 'annotations': annotations,
+    'annotations': annotations,
   };
 
   static ServiceMetadata fromJson(Map<String, dynamic> json) {
@@ -2044,7 +2099,7 @@ class ServiceMetadata {
       description: json['description'] as String?,
       repo: json['repo'] as String?,
       icon: json['icon'] as String?,
-      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : null,
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
     );
   }
 }
