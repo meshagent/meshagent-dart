@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:meshagent/meshagent.dart';
 import 'package:meshagent/participant_token.dart';
 
 enum ProjectRole { member, developer, admin }
@@ -344,7 +345,7 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<String> createService({required String projectId, required Service service}) async {
+  Future<String> createService({required String projectId, required ServiceSpec service}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
@@ -362,7 +363,7 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/
   /// Body: { "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<void> updateService({required String projectId, required String serviceId, required Service service}) async {
+  Future<void> updateService({required String projectId, required String serviceId, required ServiceSpec service}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
 
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
@@ -384,7 +385,7 @@ class Meshagent {
   ///
   /// Note: Some servers may return the JSON as a string payload.
   /// This method handles both a Map response and a stringified JSON.
-  Future<Service> getService({required String projectId, required String serviceId}) async {
+  Future<ServiceSpec> getService({required String projectId, required String serviceId}) async {
     final sid = Uri.encodeComponent(serviceId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$sid');
 
@@ -400,12 +401,12 @@ class Meshagent {
     final decoded = jsonDecode(response.body);
     final Map<String, dynamic> json = decoded is String ? jsonDecode(decoded) as Map<String, dynamic> : decoded as Map<String, dynamic>;
 
-    return Service.fromJson(json);
+    return ServiceSpec.fromJson(json);
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Service>> listServices(String projectId) async {
+  Future<List<ServiceSpec>> listServices(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -415,7 +416,7 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => Service.fromJson(a)).toList();
+    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => ServiceSpec.fromJson(a)).toList();
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
@@ -437,7 +438,7 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<String> createRoomService({required String projectId, required Service service, required String roomName}) async {
+  Future<String> createRoomService({required String projectId, required ServiceSpec service, required String roomName}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
@@ -458,7 +459,7 @@ class Meshagent {
   Future<void> updateRoomService({
     required String projectId,
     required String serviceId,
-    required Service service,
+    required ServiceSpec service,
     required String roomName,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
@@ -482,7 +483,7 @@ class Meshagent {
   ///
   /// Note: Some servers may return the JSON as a string payload.
   /// This method handles both a Map response and a stringified JSON.
-  Future<Service> getRoomService({required String projectId, required String serviceId, required String roomName}) async {
+  Future<ServiceSpec> getRoomService({required String projectId, required String serviceId, required String roomName}) async {
     final sid = Uri.encodeComponent(serviceId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$sid');
 
@@ -498,12 +499,12 @@ class Meshagent {
     final decoded = jsonDecode(response.body);
     final Map<String, dynamic> json = decoded is String ? jsonDecode(decoded) as Map<String, dynamic> : decoded as Map<String, dynamic>;
 
-    return Service.fromJson(json);
+    return ServiceSpec.fromJson(json);
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Service>> listRoomServices({required String projectId, required String roomName}) async {
+  Future<List<ServiceSpec>> listRoomServices({required String projectId, required String roomName}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -513,7 +514,7 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => Service.fromJson(a)).toList();
+    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => ServiceSpec.fromJson(a)).toList();
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
@@ -1354,13 +1355,13 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/room-grants/by-room/{room_name}?limit=&offset=&order_by=
   Future<List<ProjectRoomGrant>> listRoomGrantsByRoom({
     required String projectId,
-    required String roomId,
+    required String roomName,
     int limit = 50,
     int offset = 0,
     String orderBy = 'user_id',
   }) async {
     var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$roomId',
+      '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$roomName',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
 
     final response = await http.get(uri, headers: _getHeaders());
