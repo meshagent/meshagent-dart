@@ -437,8 +437,8 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<String> createRoomService({required String projectId, required Service service, required String roomId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services');
+  Future<String> createRoomService({required String projectId, required Service service, required String roomName}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
 
@@ -459,9 +459,9 @@ class Meshagent {
     required String projectId,
     required String serviceId,
     required Service service,
-    required String roomId,
+    required String roomName,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$serviceId');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
 
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
 
@@ -482,9 +482,9 @@ class Meshagent {
   ///
   /// Note: Some servers may return the JSON as a string payload.
   /// This method handles both a Map response and a stringified JSON.
-  Future<Service> getRoomService({required String projectId, required String serviceId, required String roomId}) async {
+  Future<Service> getRoomService({required String projectId, required String serviceId, required String roomName}) async {
     final sid = Uri.encodeComponent(serviceId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$sid');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$sid');
 
     final response = await http.get(uri, headers: _getHeaders());
 
@@ -503,8 +503,8 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
-  Future<List<Service>> listRoomServices({required String projectId, required String roomId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services');
+  Future<List<Service>> listRoomServices({required String projectId, required String roomName}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
@@ -518,8 +518,8 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
   /// Returns 204 No Content on success (no JSON body).
-  Future<void> deleteRoomService({required String projectId, required String serviceId, String? roomId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomId/services/$serviceId');
+  Future<void> deleteRoomService({required String projectId, required String serviceId, required String roomName}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
     final response = await http.delete(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
