@@ -1806,17 +1806,27 @@ class ServiceTemplateVariable {
   };
 }
 
-class ServiceTemplateEnvironmentVariable {
+class EnvironmentVariable {
   final String name;
   final String value;
 
-  ServiceTemplateEnvironmentVariable({required this.name, required this.value});
+  EnvironmentVariable({required this.name, required this.value});
 
-  factory ServiceTemplateEnvironmentVariable.fromJson(Map<String, dynamic> json) {
-    return ServiceTemplateEnvironmentVariable(name: json['name'] as String, value: json['value'] as String);
+  factory EnvironmentVariable.fromJson(Map<String, dynamic> json) {
+    return EnvironmentVariable(name: json['name'] as String, value: json['value'] as String);
   }
 
   Map<String, dynamic> toJson() => {'name': name, 'value': value};
+}
+
+extension EnvList on List<EnvironmentVariable> {
+  List<EnvironmentVariable> copy() {
+    final l = <EnvironmentVariable>[];
+    for (var v in this) {
+      l.add(EnvironmentVariable(name: v.name, value: v.value));
+    }
+    return l;
+  }
 }
 
 /// ---------------------------------------------------------------------------
@@ -1890,64 +1900,34 @@ class ServiceTemplateMetadata {
   }
 }
 
-class ServiceTemplateSpec {
-  final String version; // default "v1"
-  final String kind; // default "ServiceTemplate"
-  final List<ServiceTemplateVariable>? variables;
-  final List<ServiceTemplateEnvironmentVariable>? environment;
-  final ServiceTemplateMetadata metadata;
-  final String? image;
+class ContainerTemplateSpec {
+  ContainerTemplateSpec({this.environment, this.image, this.command, this.storage});
 
-  final List<ServicePortSpec> ports;
+  final String? image;
   final String? command;
-  final String? role; // "user" | "tool" | "agent"
+  final List<EnvironmentVariable>? environment;
   final ServiceTemplateMountSpec? storage;
 
-  ServiceTemplateSpec({
-    this.version = 'v1',
-    this.kind = 'ServiceTemplate',
-    this.variables,
-    this.environment,
-    required this.metadata,
-    this.image,
-    List<ServicePortSpec>? ports,
-    this.command,
-    this.role,
-    this.storage,
-  }) : ports = ports ?? const [];
+  static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
+    return ContainerTemplateSpec(
+      environment: (json['environment'] as List<dynamic>?)?.map((e) => EnvironmentVariable.fromJson(e as Map<String, dynamic>)).toList(),
 
-  factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
-    return ServiceTemplateSpec(
-      version: json['version'] as String? ?? 'v1',
-      kind: json['kind'] as String? ?? 'ServiceTemplate',
-      variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
-      environment:
-          (json['environment'] as List<dynamic>?)
-              ?.map((e) => ServiceTemplateEnvironmentVariable.fromJson(e as Map<String, dynamic>))
-              .toList(),
-      metadata: ServiceTemplateMetadata.fromJson(json['metadata']),
       image: json['image'] as String?,
-      ports: (json['ports'] as List<dynamic>? ?? []).map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList(),
       command: json['command'] as String?,
-      role: json['role'] as String?,
       storage: json['storage'] == null ? null : ServiceTemplateMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'version': version,
-    'kind': kind,
-    if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
-    if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
-    if (image != null) 'image': image,
-    "metadata": metadata.toJson(),
-    if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
-    if (command != null) 'command': command,
-    if (role != null) 'role': role,
-    if (storage != null) 'storage': storage!.toJson(),
-  };
+  Map<String, dynamic> toJson() {
+    return {
+      if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
+      if (image != null) 'image': image,
+      if (command != null) 'command': command,
+      if (storage != null) 'storage': storage!.toJson(),
+    };
+  }
 
-  ServiceSpec toServiceSpec({required Map<String, String> values}) {
+  ContainerSpec? toContainerSpec({required Map<String, String> values}) {
     // Build env map with {var} expansion.
     final env = <String, String>{};
     if (environment != null) {
@@ -1961,7 +1941,60 @@ class ServiceTemplateSpec {
     if (img == null || img.isEmpty) {
       throw ArgumentError('ServiceTemplateSpec.image is required to build a ServiceSpec');
     }
+    return ContainerSpec(
+      command: command,
+      image: img,
+      environment: env,
+      storage:
+          storage == null
+              ? null
+              : ServiceStorageMountsSpec(
+                room: storage!.room,
+                // If you later add `project` to ServiceTemplateMountSpec, map it here:
+                // project: storage!.project,
+              ),
+    );
+  }
+}
 
+class ServiceTemplateSpec {
+  final String version; // default "v1"
+  final String kind; // default "ServiceTemplate"
+  final List<ServiceTemplateVariable>? variables;
+  final ServiceTemplateMetadata metadata;
+  final List<ServicePortSpec> ports;
+  final ContainerTemplateSpec? container;
+
+  ServiceTemplateSpec({
+    this.version = 'v1',
+    this.kind = 'ServiceTemplate',
+    this.variables,
+    required this.metadata,
+    List<ServicePortSpec>? ports,
+    this.container,
+  }) : ports = ports ?? const [];
+
+  factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateSpec(
+      version: json['version'] as String? ?? 'v1',
+      kind: json['kind'] as String? ?? 'ServiceTemplate',
+      variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
+      metadata: ServiceTemplateMetadata.fromJson(json['metadata']),
+      ports: (json['ports'] as List<dynamic>? ?? []).map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      container: json['container'] == null ? null : ContainerTemplateSpec.fromJson(json['container']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'version': version,
+    'kind': kind,
+    if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
+    'metadata': metadata.toJson(),
+    if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
+    if (container != null) 'container': container?.toJson(),
+  };
+
+  ServiceSpec toServiceSpec({required Map<String, String> values}) {
     return ServiceSpec(
       version: Version.v1,
       kind: Kind.service,
@@ -1972,20 +2005,8 @@ class ServiceTemplateSpec {
         icon: metadata.icon,
         annotations: metadata.annotations,
       ),
-      command: command,
-      image: img,
       ports: ports,
-      role: roleFromString(role), // template role is a String? → convert to Role?
-      environment: env,
-      storage:
-          storage == null
-              ? null
-              : ServiceStorageMountsSpec(
-                room: storage!.room,
-                // If you later add `project` to ServiceTemplateMountSpec, map it here:
-                // project: storage!.project,
-              ),
-      // secrets, pullSecret, apiKey are not part of the template → leave defaults
+      container: container?.toContainerSpec(values: values),
     );
   }
 }
@@ -2142,52 +2163,65 @@ Role? roleFromString(String? s) {
 String _apiKeyRoleToString(ApiKeyRole r) => 'admin';
 ApiKeyRole _apiKeyRoleFromString(String? s) => ApiKeyRole.admin;
 
-class ServiceSpec {
-  final Version version; // Literal["v1"]
-  final ServiceMetadata metadata;
-  final Kind kind; // Literal["Service"]
-  final String? id;
+class ContainerSpec {
+  ContainerSpec({
+    this.command,
+    required this.image,
+    Map<String, String>? environment,
+    List<String>? secrets,
+    this.pullSecret,
+    this.storage,
+    this.apiKey,
+  }) : environment = environment ?? const {},
+       secrets = secrets ?? const [];
+
   final String? command;
   final String image;
-  final List<ServicePortSpec> ports;
-  final Role? role; // Optional[Literal["user","tool","agent"]]
   final Map<String, String> environment;
   final List<String> secrets;
   final String? pullSecret;
   final ServiceStorageMountsSpec? storage;
   final ServiceApiKeySpec? apiKey;
 
+  Map<String, dynamic> toJson() {
+    return {
+      if (command != null) 'command': command,
+      'image': image,
+      if (environment.isNotEmpty) 'environment': environment,
+      if (secrets.isNotEmpty) 'secrets': secrets,
+      if (pullSecret != null) 'pull_secret': pullSecret,
+      if (storage != null) 'storage': storage!.toJson(),
+      if (apiKey != null) 'api_key': apiKey!.toJson(),
+    };
+  }
+}
+
+class ServiceSpec {
+  final Version version; // Literal["v1"]
+  final ServiceMetadata metadata;
+  final Kind kind; // Literal["Service"]
+  final String? id;
+  final List<ServicePortSpec> ports;
+
+  final ContainerSpec? container;
+
   ServiceSpec({
     this.version = Version.v1,
     required this.metadata,
     this.kind = Kind.service,
     this.id,
-    this.command,
-    required this.image,
     List<ServicePortSpec>? ports,
-    this.role,
-    Map<String, String>? environment,
-    List<String>? secrets,
-    this.pullSecret,
-    this.storage,
-    this.apiKey,
-  }) : ports = ports ?? const [],
-       environment = environment ?? const {},
-       secrets = secrets ?? const [];
+    this.container,
+  }) : ports = ports ?? const [];
+
   Map<String, dynamic> toJson() => {
     'version': _versionToString(version),
     'kind': _kindToString(kind),
     if (id != null) 'id': id,
     'metadata': metadata.toJson(),
-    if (command != null) 'command': command,
-    'image': image,
+
+    if (container != null) 'container': container?.toJson(),
     if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
-    if (roleToString(role) != null) 'role': roleToString(role),
-    if (environment.isNotEmpty) 'environment': environment,
-    if (secrets.isNotEmpty) 'secrets': secrets,
-    if (pullSecret != null) 'pull_secret': pullSecret,
-    if (storage != null) 'storage': storage!.toJson(),
-    if (apiKey != null) 'api_key': apiKey!.toJson(),
   };
 
   static ServiceSpec fromJson(Map<String, dynamic> json) {
@@ -2196,16 +2230,24 @@ class ServiceSpec {
       kind: _kindFromString(json['kind'] as String?),
       id: json['id'] as String?,
       metadata: ServiceMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
-      command: json['command'] as String?,
-      image: json['image'] as String,
       ports:
           (json['ports'] as List?)?.map((e) => ServicePortSpec.fromJson(e as Map<String, dynamic>)).toList() ?? const <ServicePortSpec>[],
-      role: roleFromString(json['role'] as String?),
-      environment: Map<String, String>.from(json['environment'] as Map? ?? const <String, String>{}),
-      secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
-      pullSecret: json['pull_secret'] as String?,
-      storage: ServiceStorageMountsSpec.fromJson(json['storage'] as Map<String, dynamic>?),
-      apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
+
+      container:
+          json['container'] != null
+              ? ContainerSpec(
+                command: json['container']['command'] as String?,
+                image: json['container']['image'] as String,
+                environment: Map<String, String>.from(json['container']['environment'] as Map? ?? const <String, String>{}),
+                secrets: (json['container']['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
+                pullSecret: json['container']['pull_secret'] as String?,
+                storage: ServiceStorageMountsSpec.fromJson(json['container']['storage'] as Map<String, dynamic>?),
+                apiKey:
+                    (json['container']['api_key'] == null)
+                        ? null
+                        : ServiceApiKeySpec.fromJson(json['container']['api_key'] as Map<String, dynamic>),
+              )
+              : null,
     );
   }
 }
