@@ -1719,7 +1719,7 @@ class ServicePortEndpointSpec {
   final String path;
   final String identity;
   final String? role; // "user" | "tool" | "agent"
-  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+  final String? type; // "mcp.sse" | "meshagent.callable" | "http"
   final ApiScope? api;
 
   ServicePortEndpointSpec({required this.path, required this.identity, this.role, this.type, this.api});
@@ -1749,7 +1749,7 @@ class ServicePortEndpointSpec {
 
 class ServicePortSpec {
   final PortNum num;
-  final String? type; // "mcp.sse" | "meshagent.callable" | "http" | "tcp"
+  final String? type; // "http" | "tcp"
   final List<ServicePortEndpointSpec> endpoints;
   final String? liveness;
 
@@ -1929,10 +1929,10 @@ class ContainerTemplateSpec {
 
   ContainerSpec? toContainerSpec({required Map<String, String> values}) {
     // Build env map with {var} expansion.
-    final env = <String, String>{};
+    final env = <EnvironmentVariable>[];
     if (environment != null) {
       for (final e in environment!) {
-        env[e.name] = e.value.formatWith(values);
+        env.add(EnvironmentVariable(name: e.name, value: e.value.formatWith(values)));
       }
     }
 
@@ -2185,17 +2185,17 @@ class ContainerSpec {
   ContainerSpec({
     this.command,
     required this.image,
-    Map<String, String>? environment,
+    List<EnvironmentVariable>? environment,
     List<String>? secrets,
     this.pullSecret,
     this.storage,
     this.apiKey,
-  }) : environment = environment ?? const {},
-       secrets = secrets ?? const [];
+  }) : environment = environment ?? [],
+       secrets = secrets ?? [];
 
   final String? command;
   final String image;
-  final Map<String, String> environment;
+  final List<EnvironmentVariable> environment;
   final List<String> secrets;
   final String? pullSecret;
   final ServiceStorageMountsSpec? storage;
@@ -2205,7 +2205,7 @@ class ContainerSpec {
     return ContainerSpec(
       command: json['command'] as String?,
       image: json['image'] as String,
-      environment: Map<String, String>.from(json['environment'] as Map? ?? const <String, String>{}),
+      environment: json['environment'] == null ? null : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList(),
       secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
       pullSecret: json['pull_secret'] as String?,
       storage: ServiceStorageMountsSpec.fromJson(json['storage'] as Map<String, dynamic>?),

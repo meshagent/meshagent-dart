@@ -1795,7 +1795,7 @@ class NameInUseException extends MeshagentException {
 }
 
 class Endpoint {
-  String? type; // "mcp.sse", "meshagent.callable", "http", "tcp"
+  String? type; // "mcp.sse", "meshagent.callable", "http""
   String? path;
   String? participantName;
   String? role; // "user", "tool", "agent"
@@ -1821,17 +1821,15 @@ class Port {
   String? livenessPath;
   String? participantName;
 
-  String? type; // "mcp.sse", "meshagent.callable", "http", "tcp"
   String? path;
 
   List<Endpoint>? endpoints;
 
-  Port({this.livenessPath, this.participantName, this.type, this.path, this.endpoints});
+  Port({this.livenessPath, this.participantName, this.path, this.endpoints});
 
   factory Port.fromJson(Map<String, dynamic> json) => Port(
     livenessPath: json['liveness_path'] as String?,
     participantName: json['participant_name'] as String?,
-    type: json['type'] as String?,
     path: json['path'] as String?,
     endpoints: (json['endpoints'] as List?)?.map((e) => Endpoint.fromJson(e as Map<String, dynamic>)).toList(),
   );
@@ -1839,7 +1837,6 @@ class Port {
   Map<String, dynamic> toJson() => {
     if (livenessPath != null) 'liveness_path': livenessPath,
     if (participantName != null) 'participant_name': participantName,
-    if (type != null) 'type': type,
     if (path != null) 'path': path,
     if (endpoints != null) 'endpoints': endpoints!.map((e) => e.toJson()).toList(),
   };
