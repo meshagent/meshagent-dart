@@ -1820,14 +1820,16 @@ class Endpoint {
 class Port {
   String? livenessPath;
   String? participantName;
+  String? type;
 
   String? path;
 
   List<Endpoint>? endpoints;
 
-  Port({this.livenessPath, this.participantName, this.path, this.endpoints});
+  Port({this.livenessPath, this.participantName, this.path, this.endpoints, this.type});
 
   factory Port.fromJson(Map<String, dynamic> json) => Port(
+    type: json['type'] as String?,
     livenessPath: json['liveness_path'] as String?,
     participantName: json['participant_name'] as String?,
     path: json['path'] as String?,
@@ -1835,6 +1837,7 @@ class Port {
   );
 
   Map<String, dynamic> toJson() => {
+    if (type != null) 'type': type,
     if (livenessPath != null) 'liveness_path': livenessPath,
     if (participantName != null) 'participant_name': participantName,
     if (path != null) 'path': path,
