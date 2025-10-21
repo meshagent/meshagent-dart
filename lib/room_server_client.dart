@@ -1736,7 +1736,7 @@ class OAuthClientConfig {
   final String? clientSecret;
   final String authorizationEndpoint;
   final String tokenEndpoint;
-  final bool? noPcke;
+  final bool? noPkce;
   final List<String>? scopes;
 
   OAuthClientConfig({
@@ -1744,7 +1744,7 @@ class OAuthClientConfig {
     this.clientSecret,
     required this.authorizationEndpoint,
     required this.tokenEndpoint,
-    this.noPcke,
+    this.noPkce,
     this.scopes,
   });
 
@@ -1754,7 +1754,7 @@ class OAuthClientConfig {
       clientSecret: json['client_secret'] as String?,
       authorizationEndpoint: json['authorization_endpoint'] as String,
       tokenEndpoint: json['token_endpoint'] as String,
-      noPcke: json['no_pcke'] as bool?,
+      noPkce: json['no_pkce'] as bool?,
       scopes: (json['scopes'] as List?)?.cast<String>(),
     );
   }
@@ -1764,12 +1764,12 @@ class OAuthClientConfig {
     'authorization_endpoint': authorizationEndpoint,
     'token_endpoint': tokenEndpoint,
     if (clientSecret != null) 'client_secret': clientSecret,
-    if (noPcke != null) 'no_pcke': noPcke,
+    if (noPkce != null) 'no_pkce': noPkce,
     if (scopes != null) 'scopes': scopes,
   };
 }
 
-class McpEndpointSpec {
+class MCPEndpointSpec {
   final String label;
   final String description;
   final List<AllowedMcpToolFilter>? allowedTools;
@@ -1778,7 +1778,7 @@ class McpEndpointSpec {
   final OAuthClient? oauth;
   final String? openaiConnectorId;
 
-  McpEndpointSpec({
+  MCPEndpointSpec({
     required this.label,
     required this.description,
     this.allowedTools,
@@ -1788,8 +1788,8 @@ class McpEndpointSpec {
     this.openaiConnectorId,
   });
 
-  factory McpEndpointSpec.fromJson(Map<String, dynamic> json) {
-    return McpEndpointSpec(
+  factory MCPEndpointSpec.fromJson(Map<String, dynamic> json) {
+    return MCPEndpointSpec(
       label: json['label'] as String,
       description: json['description'] as String,
       allowedTools:
@@ -1828,7 +1828,7 @@ class MeshagentEndpointSpec {
 class ServicePortEndpointSpec {
   final String path;
   final MeshagentEndpointSpec? meshagent;
-  final McpEndpointSpec? mcp;
+  final MCPEndpointSpec? mcp;
 
   ServicePortEndpointSpec({required this.path, this.meshagent, this.mcp});
 
@@ -1836,7 +1836,7 @@ class ServicePortEndpointSpec {
     return ServicePortEndpointSpec(
       path: json['path'] as String,
       meshagent: json['meshagent'] == null ? null : MeshagentEndpointSpec.fromJson(json['meshagent']),
-      mcp: json['mcp'] == null ? null : McpEndpointSpec.fromJson(json['mcp']),
+      mcp: json['mcp'] == null ? null : MCPEndpointSpec.fromJson(json['mcp']),
     );
   }
 
