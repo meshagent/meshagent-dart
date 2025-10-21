@@ -1813,21 +1813,16 @@ class McpEndpointSpec {
 }
 
 class MeshagentEndpointSpec {
-  MeshagentEndpointSpec({required this.identity, this.role, this.api});
+  MeshagentEndpointSpec({required this.identity, this.api});
 
-  final String? role; // "user" | "tool" | "agent"
   final String identity;
   final ApiScope? api;
 
   factory MeshagentEndpointSpec.fromJson(Map<String, dynamic> json) {
-    return MeshagentEndpointSpec(
-      identity: json['identity'] as String,
-      role: json['role'] as String?,
-      api: json["api"] == null ? null : ApiScope.fromJson(json["api"]),
-    );
+    return MeshagentEndpointSpec(identity: json['identity'] as String, api: json["api"] == null ? null : ApiScope.fromJson(json["api"]));
   }
 
-  Map<String, dynamic> toJson() => {'identity': identity, if (role != null) 'role': role, if (api != null) 'api': api?.toJson()};
+  Map<String, dynamic> toJson() => {'identity': identity, if (api != null) 'api': api?.toJson()};
 }
 
 class ServicePortEndpointSpec {
