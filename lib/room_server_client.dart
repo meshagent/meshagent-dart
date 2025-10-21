@@ -1715,31 +1715,140 @@ class PortNum {
 ///  ServicePortEndpointSpec
 /// ---------------------------------------------------------------------------
 
-class ServicePortEndpointSpec {
-  final String path;
-  final String identity;
+class AllowedMcpToolFilter {
+  final List<String>? toolNames;
+  final bool? readOnly;
+
+  AllowedMcpToolFilter({this.toolNames, this.readOnly});
+
+  factory AllowedMcpToolFilter.fromJson(Map<String, dynamic> json) {
+    return AllowedMcpToolFilter(
+      toolNames: json['tool_names'] == null ? null : List<String>.from(json['tool_names']),
+      readOnly: json['read_only'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {if (toolNames != null) 'tool_names': toolNames, if (readOnly != null) 'read_only': readOnly};
+}
+
+class OAuthClientConfig {
+  final String clientId;
+  final String? clientSecret;
+  final String authorizationEndpoint;
+  final String tokenEndpoint;
+  final bool? noPcke;
+  final List<String>? scopes;
+
+  OAuthClientConfig({
+    required this.clientId,
+    this.clientSecret,
+    required this.authorizationEndpoint,
+    required this.tokenEndpoint,
+    this.noPcke,
+    this.scopes,
+  });
+
+  factory OAuthClientConfig.fromJson(Map<String, dynamic> json) {
+    return OAuthClientConfig(
+      clientId: json['client_id'] as String,
+      clientSecret: json['client_secret'] as String?,
+      authorizationEndpoint: json['authorization_endpoint'] as String,
+      tokenEndpoint: json['token_endpoint'] as String,
+      noPcke: json['no_pcke'] as bool?,
+      scopes: (json['scopes'] as List?)?.cast<String>(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'client_id': clientId,
+    'authorization_endpoint': authorizationEndpoint,
+    'token_endpoint': tokenEndpoint,
+    if (clientSecret != null) 'client_secret': clientSecret,
+    if (noPcke != null) 'no_pcke': noPcke,
+    if (scopes != null) 'scopes': scopes,
+  };
+}
+
+class McpEndpointSpec {
+  final String label;
+  final String description;
+  final List<AllowedMcpToolFilter>? allowedTools;
+  final Map<String, String>? headers;
+  final String? requireApproval; // "always" | "never"
+  final OAuthClient? oauth;
+  final String? openaiConnectorId;
+
+  McpEndpointSpec({
+    required this.label,
+    required this.description,
+    this.allowedTools,
+    this.headers,
+    this.requireApproval,
+    this.oauth,
+    this.openaiConnectorId,
+  });
+
+  factory McpEndpointSpec.fromJson(Map<String, dynamic> json) {
+    return McpEndpointSpec(
+      label: json['label'] as String,
+      description: json['description'] as String,
+      allowedTools:
+          json['allowed_tools'] == null ? null : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
+      headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
+      requireApproval: json['require_approval'] as String?,
+      oauth: json['oauth'] == null ? null : OAuthClient.fromJson(json['oauth']),
+      openaiConnectorId: json['openai_connector_id'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    'description': description,
+    if (allowedTools != null) 'allowed_tools': allowedTools!.map((e) => e.toJson()).toList(),
+    if (headers != null) 'headers': headers,
+    if (requireApproval != null) 'require_approval': requireApproval,
+    if (oauth != null) 'oauth': oauth!.toJson(),
+    if (openaiConnectorId != null) 'openai_connector_id': openaiConnectorId,
+  };
+}
+
+class MeshagentEndpointSpec {
+  MeshagentEndpointSpec({required this.identity, this.role, this.api});
+
   final String? role; // "user" | "tool" | "agent"
-  final String? type; // "mcp.sse" | "meshagent.callable" | "http"
+  final String identity;
   final ApiScope? api;
 
-  ServicePortEndpointSpec({required this.path, required this.identity, this.role, this.type, this.api});
+  factory MeshagentEndpointSpec.fromJson(Map<String, dynamic> json) {
+    return MeshagentEndpointSpec(
+      identity: json['identity'] as String,
+      role: json['role'] as String?,
+      api: json["api"] == null ? null : ApiScope.fromJson(json["api"]),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'identity': identity, if (role != null) 'role': role, if (api != null) 'api': api?.toJson()};
+}
+
+class ServicePortEndpointSpec {
+  final String path;
+  final MeshagentEndpointSpec? meshagent;
+  final McpEndpointSpec? mcp;
+
+  ServicePortEndpointSpec({required this.path, this.meshagent, this.mcp});
 
   factory ServicePortEndpointSpec.fromJson(Map<String, dynamic> json) {
     return ServicePortEndpointSpec(
       path: json['path'] as String,
-      identity: json['identity'] as String,
-      role: json['role'] as String?,
-      type: json['type'] as String?,
-      api: json["api"] == null ? null : ApiScope.fromJson(json["api"]),
+      meshagent: json['meshagent'] == null ? null : MeshagentEndpointSpec.fromJson(json['meshagent']),
+      mcp: json['mcp'] == null ? null : McpEndpointSpec.fromJson(json['mcp']),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'path': path,
-    'identity': identity,
-    if (role != null) 'role': role,
-    if (type != null) 'type': type,
-    if (api != null) 'api': api?.toJson(),
+    if (meshagent != null) 'meshagent': meshagent!.toJson(),
+    if (mcp != null) 'mcp': mcp!.toJson(),
   };
 }
 
@@ -2160,21 +2269,6 @@ Kind _kindFromString(String? s) {
   return switch (s) {
     'Service' => Kind.service,
     _ => Kind.service,
-  };
-}
-
-String? roleToString(Role? r) => switch (r) {
-  Role.user => 'user',
-  Role.tool => 'tool',
-  Role.agent => 'agent',
-  null => null,
-};
-Role? roleFromString(String? s) {
-  return switch (s) {
-    'user' => Role.user,
-    'tool' => Role.tool,
-    'agent' => Role.agent,
-    _ => null,
   };
 }
 
