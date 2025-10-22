@@ -18,6 +18,8 @@ abstract class ToolkitConfig {
         return ImageGenerationConfig.fromJson(json);
       case 'local_shell':
         return LocalShellConfig.fromJson(json);
+      case 'storage':
+        return StorageConfig.fromJson(json);
       default:
         throw ArgumentError('Unknown ToolkitConfig name: ${json['name']}');
     }
@@ -170,6 +172,15 @@ class LocalShellConfig extends ToolkitConfig {
   LocalShellConfig() : super('local_shell');
 
   factory LocalShellConfig.fromJson(Map<String, dynamic> json) => LocalShellConfig();
+
+  @override
+  Map<String, dynamic> toJson() => {'name': name};
+}
+
+class StorageConfig extends ToolkitConfig {
+  StorageConfig() : super('storage');
+
+  factory StorageConfig.fromJson(Map<String, dynamic> json) => StorageConfig();
 
   @override
   Map<String, dynamic> toJson() => {'name': name};
