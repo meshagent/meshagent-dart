@@ -1,14 +1,14 @@
 import 'dart:convert';
 
 /// Base class for all tool configurations
-abstract class ToolConfig {
+abstract class ToolkitConfig {
   final String name;
 
-  const ToolConfig(this.name);
+  const ToolkitConfig(this.name);
 
   Map<String, dynamic> toJson();
 
-  static ToolConfig fromJson(Map<String, dynamic> json) {
+  static ToolkitConfig fromJson(Map<String, dynamic> json) {
     switch (json['name']) {
       case 'mcp':
         return MCPConfig.fromJson(json);
@@ -19,7 +19,7 @@ abstract class ToolConfig {
       case 'local_shell':
         return LocalShellConfig.fromJson(json);
       default:
-        throw ArgumentError('Unknown ToolConfig name: ${json['name']}');
+        throw ArgumentError('Unknown ToolkitConfig name: ${json['name']}');
     }
   }
 }
@@ -80,7 +80,7 @@ class MCPServer {
   static MCPServer fromJsonString(String data) => MCPServer.fromJson(jsonDecode(data));
 }
 
-class MCPConfig extends ToolConfig {
+class MCPConfig extends ToolkitConfig {
   final List<MCPServer> servers;
 
   MCPConfig({required this.servers}) : super('mcp');
@@ -97,7 +97,7 @@ class MCPConfig extends ToolConfig {
 /// WEB SEARCH CONFIGURATION
 /// ----------------------------------------------
 
-class WebSearchConfig extends ToolConfig {
+class WebSearchConfig extends ToolkitConfig {
   WebSearchConfig() : super('web_search');
 
   factory WebSearchConfig.fromJson(Map<String, dynamic> json) => WebSearchConfig();
@@ -110,7 +110,7 @@ class WebSearchConfig extends ToolConfig {
 /// IMAGE GENERATION CONFIGURATION
 /// ----------------------------------------------
 
-class ImageGenerationConfig extends ToolConfig {
+class ImageGenerationConfig extends ToolkitConfig {
   final String? background; // "transparent" | "opaque" | "auto"
   final String? inputImageMaskUrl;
   final String? model;
@@ -166,7 +166,7 @@ class ImageGenerationConfig extends ToolConfig {
 /// LOCAL SHELL CONFIGURATION
 /// ----------------------------------------------
 
-class LocalShellConfig extends ToolConfig {
+class LocalShellConfig extends ToolkitConfig {
   LocalShellConfig() : super('local_shell');
 
   factory LocalShellConfig.fromJson(Map<String, dynamic> json) => LocalShellConfig();
