@@ -7,3 +7,4 @@ export 'package:meshagent/protocol.dart';
 export 'package:meshagent/data_types.dart';
 export 'package:meshagent/client.dart';
 export 'package:meshagent/api_keys.dart';
+export 'package:meshagent/tool_providers.dart';
