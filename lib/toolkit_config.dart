@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'room_server_client.dart';
+
 /// Base class for all tool configurations
 abstract class ToolkitConfig {
   final String name;
@@ -32,7 +34,8 @@ abstract class ToolkitConfig {
 
 class MCPServer {
   final String serverLabel;
-  final String serverUrl;
+  final String? authorization;
+  final String? serverUrl;
   final List<String>? allowedTools;
   final Map<String, dynamic>? headers;
   final String? requireApproval; // "always" | "never"
@@ -42,7 +45,8 @@ class MCPServer {
 
   MCPServer({
     required this.serverLabel,
-    required this.serverUrl,
+    this.authorization,
+    this.serverUrl,
     this.allowedTools,
     this.headers,
     this.requireApproval,
@@ -54,6 +58,7 @@ class MCPServer {
   factory MCPServer.fromJson(Map<String, dynamic> json) {
     return MCPServer(
       serverLabel: json['server_label'] ?? json['serverLabel'],
+      authorization: json['authorization'] ?? json['authorization'],
       serverUrl: json['server_url'] ?? json['serverUrl'],
       allowedTools: (json['allowed_tools'] ?? json['allowedTools'])?.cast<String>(),
       headers: json['headers'] != null ? Map<String, dynamic>.from(json['headers']) : null,
@@ -68,6 +73,7 @@ class MCPServer {
     return {
       'server_label': serverLabel,
       'server_url': serverUrl,
+      if (authorization != null) 'authorization': authorization,
       if (allowedTools != null) 'allowed_tools': allowedTools,
       if (headers != null) 'headers': headers,
       if (requireApproval != null) 'require_approval': requireApproval,
@@ -80,6 +86,30 @@ class MCPServer {
   String toJsonString() => jsonEncode(toJson());
 
   static MCPServer fromJsonString(String data) => MCPServer.fromJson(jsonDecode(data));
+
+  MCPServer copyWith({
+    String? serverLabel,
+    String? authorization,
+    String? serverUrl,
+    List<String>? allowedTools,
+    Map<String, dynamic>? headers,
+    String? requireApproval,
+    List<String>? alwaysRequireApproval,
+    List<String>? neverRequireApproval,
+    String? openaiConnectorId,
+  }) {
+    return MCPServer(
+      serverLabel: serverLabel ?? this.serverLabel,
+      authorization: authorization ?? this.authorization,
+      serverUrl: serverUrl ?? this.serverUrl,
+      allowedTools: allowedTools ?? this.allowedTools,
+      headers: headers ?? this.headers,
+      requireApproval: requireApproval ?? this.requireApproval,
+      alwaysRequireApproval: alwaysRequireApproval ?? this.alwaysRequireApproval,
+      neverRequireApproval: neverRequireApproval ?? this.neverRequireApproval,
+      openaiConnectorId: openaiConnectorId ?? this.openaiConnectorId,
+    );
+  }
 }
 
 class MCPConfig extends ToolkitConfig {
@@ -184,4 +214,118 @@ class StorageConfig extends ToolkitConfig {
 
   @override
   Map<String, dynamic> toJson() => {'name': name};
+}
+
+class Connector {
+  Connector({required this.server, this.auth});
+
+  final OAuthClientConfig? auth;
+  final MCPServer server;
+
+  Future<String?> authenticate(RoomClient client) async {
+    return null;
+  }
+}
+
+class OpenAIConnectors {
+  static final dropbox = Connector(
+    server: MCPServer(serverLabel: "Dropbox", openaiConnectorId: "connector_dropbox"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://www.dropbox.com/oauth2/authorize",
+      tokenEndpoint: "https://api.dropbox.com/oauth2/token",
+      noPkce: true,
+      scopes: ["files.metadata.read", "files.content.read", "account_info.read"],
+    ),
+  );
+
+  static final gmail = Connector(
+    server: MCPServer(serverLabel: "Gmail", openaiConnectorId: "connector_gmail"),
+    auth: OAuthClientConfig(
+      clientId: const String.fromEnvironment("GMAIL_CONNECTOR_OAUTH_CLIENT_ID"),
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      noPkce: false,
+      scopes: [
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+      ],
+    ),
+  );
+
+  static final googleCalendar = Connector(
+    server: MCPServer(serverLabel: "Google_Calendar", openaiConnectorId: "connector_googlecalendar"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      noPkce: false,
+      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+    ),
+  );
+
+  static final googleDrive = Connector(
+    server: MCPServer(serverLabel: "Google_Drive", openaiConnectorId: "connector_googledrive"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      noPkce: false,
+      scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    ),
+  );
+
+  static final microsoftTeams = Connector(
+    server: MCPServer(serverLabel: "Microsoft_Teams", openaiConnectorId: "connector_microsoftteams"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      noPkce: true,
+      scopes: ["https://graph.microsoft.com/.default", "offline_access", "User.Read"],
+    ),
+  );
+
+  static final outlookCalendar = Connector(
+    server: MCPServer(serverLabel: "Outlook_Calendar", openaiConnectorId: "connector_outlookcalendar"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      noPkce: true,
+      scopes: ["https://graph.microsoft.com/Calendars.Read", "offline_access"],
+    ),
+  );
+
+  static final outlookEmail = Connector(
+    server: MCPServer(serverLabel: "Outlook_Email", openaiConnectorId: "connector_outlookemail"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      noPkce: true,
+      scopes: ["https://graph.microsoft.com/Mail.Read", "offline_access"],
+    ),
+  );
+
+  static final sharepoint = Connector(
+    server: MCPServer(serverLabel: "Sharepoint", openaiConnectorId: "connector_sharepoint"),
+    auth: OAuthClientConfig(
+      clientId: "CLIENT_ID",
+      clientSecret: "CLIENT_SECRET",
+      authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      noPkce: true,
+      scopes: ["https://graph.microsoft.com/Sites.Read.All", "offline_access"],
+    ),
+  );
+
+  static final all = [dropbox, gmail, googleCalendar, googleDrive, microsoftTeams, sharepoint, outlookEmail, outlookCalendar];
 }
