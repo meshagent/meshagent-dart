@@ -217,8 +217,9 @@ class StorageConfig extends ToolkitConfig {
 }
 
 class Connector {
-  Connector({required this.server, this.auth});
+  Connector({required this.name, required this.server, this.auth});
 
+  final String name;
   final OAuthClientConfig? auth;
   final MCPServer server;
 
@@ -229,21 +230,23 @@ class Connector {
 
 class OpenAIConnectors {
   static final dropbox = Connector(
+    name: "Dropbox",
     server: MCPServer(serverLabel: "Dropbox", openaiConnectorId: "connector_dropbox"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
+      clientId: const String.fromEnvironment("DROPBOX_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://www.dropbox.com/oauth2/authorize",
       tokenEndpoint: "https://api.dropbox.com/oauth2/token",
       noPkce: true,
-      scopes: ["files.metadata.read", "files.content.read", "account_info.read"],
+      scopes: ["files.metadata.read", "account_info.read", "files.content.read"],
     ),
   );
 
   static final gmail = Connector(
+    name: "Gmail",
     server: MCPServer(serverLabel: "Gmail", openaiConnectorId: "connector_gmail"),
     auth: OAuthClientConfig(
-      clientId: const String.fromEnvironment("GMAIL_CONNECTOR_OAUTH_CLIENT_ID"),
+      clientId: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       noPkce: false,
@@ -256,74 +259,87 @@ class OpenAIConnectors {
   );
 
   static final googleCalendar = Connector(
+    name: "Google Calendar",
     server: MCPServer(serverLabel: "Google_Calendar", openaiConnectorId: "connector_googlecalendar"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
-      clientSecret: "CLIENT_SECRET",
+      clientId: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       noPkce: false,
-      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+      scopes: [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/calendar.events",
+      ],
     ),
   );
 
   static final googleDrive = Connector(
+    name: "Google Drive",
     server: MCPServer(serverLabel: "Google_Drive", openaiConnectorId: "connector_googledrive"),
     auth: OAuthClientConfig(
       clientId: "CLIENT_ID",
-      clientSecret: "CLIENT_SECRET",
+      clientSecret: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       noPkce: false,
-      scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      scopes: [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/drive.readonly",
+      ],
     ),
   );
 
   static final microsoftTeams = Connector(
+    name: "Microsoft Teams",
     server: MCPServer(serverLabel: "Microsoft_Teams", openaiConnectorId: "connector_microsoftteams"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
+      clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      noPkce: true,
-      scopes: ["https://graph.microsoft.com/.default", "offline_access", "User.Read"],
+      noPkce: false,
+      scopes: ["User.Read", "Chat.Read", "ChannelMessage.Read.All"],
     ),
   );
 
   static final outlookCalendar = Connector(
+    name: "Outlook Calendar",
     server: MCPServer(serverLabel: "Outlook_Calendar", openaiConnectorId: "connector_outlookcalendar"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
+      clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      noPkce: true,
-      scopes: ["https://graph.microsoft.com/Calendars.Read", "offline_access"],
+      noPkce: false,
+      scopes: ["Calendars.Read", "User.Read"],
     ),
   );
 
   static final outlookEmail = Connector(
+    name: "Outlook Email",
     server: MCPServer(serverLabel: "Outlook_Email", openaiConnectorId: "connector_outlookemail"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
+      clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      noPkce: true,
-      scopes: ["https://graph.microsoft.com/Mail.Read", "offline_access"],
+      noPkce: false,
+      scopes: ["User.Read", "Mail.Read"],
     ),
   );
 
   static final sharepoint = Connector(
+    name: "Sharepoint",
     server: MCPServer(serverLabel: "Sharepoint", openaiConnectorId: "connector_sharepoint"),
     auth: OAuthClientConfig(
-      clientId: "CLIENT_ID",
+      clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      noPkce: true,
-      scopes: ["https://graph.microsoft.com/Sites.Read.All", "offline_access"],
+      noPkce: false,
+      scopes: ["Sites.Read.All", "Files.Read.All", "User.Read"],
     ),
   );
 
