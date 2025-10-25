@@ -2538,4 +2538,30 @@ class SecretsClient extends ChangeEmitter {
     }
     return accessToken;
   }
+
+  Future<String?> getOfflineOAuthToken({
+    ConnectorRef? connector,
+    OAuthClientConfig? oauth,
+    String? delegatedTo,
+    String? delegatedBy,
+  }) async {
+    final req = <String, dynamic>{
+      if (connector != null) 'connector': connector.toJson(),
+      if (oauth != null) 'oauth': oauth.toJson(),
+      if (delegatedBy != null) 'delegated_by': delegatedBy,
+      if (delegatedTo != null) 'delegated_to': delegatedTo,
+    };
+
+    final res = await room.sendRequest('secrets.get_offline_oauth_token', req);
+
+    if (res is JsonResponse) {
+      final token = (res.json['access_token'] as String?) ?? '';
+      if (token.isEmpty) {
+        return null;
+      }
+      return token;
+    } else {
+      throw RoomServerException('Invalid response received, expected JsonResponse');
+    }
+  }
 }

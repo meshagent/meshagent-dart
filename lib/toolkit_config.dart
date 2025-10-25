@@ -217,14 +217,29 @@ class StorageConfig extends ToolkitConfig {
 }
 
 class Connector {
-  Connector({required this.name, required this.server, this.auth});
+  Connector({required this.name, required this.server, this.oauth});
 
   final String name;
-  final OAuthClientConfig? auth;
+  final OAuthClientConfig? oauth;
   final MCPServer server;
 
-  Future<String?> authenticate(RoomClient client, RemoteParticipant agent) async {
-    return null;
+  Future<bool> isConnected(RoomClient client, RemoteParticipant agent) async {
+    final token = await client.secrets.getOfflineOAuthToken(
+      connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
+      oauth: server.openaiConnectorId != null ? null : oauth,
+      delegatedTo: agent.getAttribute("name"),
+    );
+    return token != null;
+  }
+
+  Future<String?> authenticate(RoomClient client, RemoteParticipant agent, Uri redirectUri) async {
+    return await client.secrets.requestOAuthToken(
+      fromParticipantId: client.localParticipant!.id,
+      connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
+      oauth: server.openaiConnectorId != null ? null : oauth,
+      redirectUri: redirectUri,
+      delegateTo: agent.getAttribute("name"),
+    );
   }
 }
 
@@ -232,7 +247,7 @@ class OpenAIConnectors {
   static final dropbox = Connector(
     name: "Dropbox",
     server: MCPServer(serverLabel: "Dropbox", openaiConnectorId: "connector_dropbox"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("DROPBOX_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://www.dropbox.com/oauth2/authorize",
@@ -245,7 +260,7 @@ class OpenAIConnectors {
   static final gmail = Connector(
     name: "Gmail",
     server: MCPServer(serverLabel: "Gmail", openaiConnectorId: "connector_gmail"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
@@ -261,7 +276,7 @@ class OpenAIConnectors {
   static final googleCalendar = Connector(
     name: "Google Calendar",
     server: MCPServer(serverLabel: "Google_Calendar", openaiConnectorId: "connector_googlecalendar"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
@@ -277,7 +292,7 @@ class OpenAIConnectors {
   static final googleDrive = Connector(
     name: "Google Drive",
     server: MCPServer(serverLabel: "Google_Drive", openaiConnectorId: "connector_googledrive"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: "CLIENT_ID",
       clientSecret: const String.fromEnvironment("GOOGLE_CONNECTOR_OAUTH_CLIENT_ID"),
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -294,7 +309,7 @@ class OpenAIConnectors {
   static final microsoftTeams = Connector(
     name: "Microsoft Teams",
     server: MCPServer(serverLabel: "Microsoft_Teams", openaiConnectorId: "connector_microsoftteams"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -307,7 +322,7 @@ class OpenAIConnectors {
   static final outlookCalendar = Connector(
     name: "Outlook Calendar",
     server: MCPServer(serverLabel: "Outlook_Calendar", openaiConnectorId: "connector_outlookcalendar"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -320,7 +335,7 @@ class OpenAIConnectors {
   static final outlookEmail = Connector(
     name: "Outlook Email",
     server: MCPServer(serverLabel: "Outlook_Email", openaiConnectorId: "connector_outlookemail"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -333,7 +348,7 @@ class OpenAIConnectors {
   static final sharepoint = Connector(
     name: "Sharepoint",
     server: MCPServer(serverLabel: "Sharepoint", openaiConnectorId: "connector_sharepoint"),
-    auth: OAuthClientConfig(
+    oauth: OAuthClientConfig(
       clientId: const String.fromEnvironment("MICROSOFT_CONNECTOR_OAUTH_CLIENT_ID"),
       clientSecret: "CLIENT_SECRET",
       authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
