@@ -374,6 +374,18 @@ class ApiScope {
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
+  );
+
+  static ApiScope userDefault() => ApiScope(
+    livekit: LivekitGrant(),
+    queues: QueuesGrant(),
+    messaging: MessagingGrant(),
+    database: DatabaseGrant(),
+    sync: SyncGrant(),
+    storage: StorageGrant(),
+    containers: ContainersGrant(),
+    developer: DeveloperGrant(),
+    agents: AgentsGrant(),
     secrets: SecretsGrant(),
   );
 
