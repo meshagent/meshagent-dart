@@ -223,7 +223,7 @@ class Connector {
   final OAuthClientConfig? auth;
   final MCPServer server;
 
-  Future<String?> authenticate(RoomClient client) async {
+  Future<String?> authenticate(RoomClient client, RemoteParticipant agent) async {
     return null;
   }
 }

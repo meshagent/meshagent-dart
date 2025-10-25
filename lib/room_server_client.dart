@@ -1731,6 +1731,22 @@ class AllowedMcpToolFilter {
   Map<String, dynamic> toJson() => {if (toolNames != null) 'tool_names': toolNames, if (readOnly != null) 'read_only': readOnly};
 }
 
+class ConnectorRef {
+  String? openaiConnectorId;
+  String? serverUrl;
+
+  ConnectorRef({this.openaiConnectorId, this.serverUrl});
+
+  factory ConnectorRef.fromJson(Map<String, dynamic> json) {
+    return ConnectorRef(serverUrl: json['server_url'] as String, openaiConnectorId: json['openai_connector_id'] as String?);
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (openaiConnectorId != null) 'openai_connector_id': openaiConnectorId,
+    if (serverUrl != null) 'server_url': serverUrl,
+  };
+}
+
 class OAuthClientConfig {
   final String clientId;
   final String? clientSecret;
@@ -2453,7 +2469,7 @@ class SecretsClient extends ChangeEmitter {
     //   }
     // }
     final String requestId = header["request_id"] as String;
-    final req = header["request"] as Map<String, dynamic>;
+    final req = header["request"]["oauth"] as Map<String, dynamic>;
     final String clientId = req["client_id"] as String;
 
     if (oauthTokenRequestHandler == null) {
@@ -2499,24 +2515,20 @@ class SecretsClient extends ChangeEmitter {
   /// This matches the Python signature:
   ///   request_oauth_token(authorization_endpoint, token_endpoint, scopes, timeout, from_participant_id)
   Future<String> requestOAuthToken({
-    required String authorizationEndpoint,
-    required String tokenEndpoint,
     required String fromParticipantId,
-    required String clientId,
-    required String clientSecret,
     required Uri redirectUri,
-    List<String>? scopes,
+    required String delegateTo,
+    ConnectorRef? connector,
+    OAuthClientConfig? oauth,
     int timeout = 60 * 5,
   }) async {
     final req = {
-      "authorization_endpoint": authorizationEndpoint,
-      "token_endpoint": tokenEndpoint,
-      "scopes": scopes,
+      if (connector != null) "connector": connector.toJson(),
+      if (oauth != null) "oauth": oauth.toJson(),
+      "redirect_uri": redirectUri.toString(),
       "timeout": timeout,
       "participant_id": fromParticipantId,
-      "client_id": clientId,
-      "client_secret": clientSecret,
-      "redirect_uri": redirectUri.toString(),
+      "delegate_to": delegateTo,
     };
 
     final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonResponse;
