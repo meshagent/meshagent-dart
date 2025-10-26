@@ -223,11 +223,14 @@ class Connector {
   final OAuthClientConfig? oauth;
   final MCPServer server;
 
-  Future<bool> isConnected(RoomClient client, RemoteParticipant agent) async {
-    final token = await client.secrets.getOfflineOAuthToken(
+  Future<bool> isConnected(RoomClient room, String agentName) async {
+    if (server.openaiConnectorId == null && oauth == null) {
+      return true;
+    }
+    final token = await room.secrets.getOfflineOAuthToken(
       connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
       oauth: server.openaiConnectorId != null ? null : oauth,
-      delegatedTo: agent.getAttribute("name"),
+      delegatedTo: agentName,
     );
     return token != null;
   }
