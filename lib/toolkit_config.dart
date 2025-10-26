@@ -233,13 +233,17 @@ class Connector {
   }
 
   Future<String?> authenticate(RoomClient client, RemoteParticipant agent, Uri redirectUri) async {
-    return await client.secrets.requestOAuthToken(
-      fromParticipantId: client.localParticipant!.id,
-      connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
-      oauth: server.openaiConnectorId != null ? null : oauth,
-      redirectUri: redirectUri,
-      delegateTo: agent.getAttribute("name"),
-    );
+    if (server.openaiConnectorId != null || oauth != null) {
+      return await client.secrets.requestOAuthToken(
+        fromParticipantId: client.localParticipant!.id,
+        connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
+        oauth: server.openaiConnectorId != null ? null : oauth,
+        redirectUri: redirectUri,
+        delegateTo: agent.getAttribute("name"),
+      );
+    } else {
+      return null;
+    }
   }
 }
 

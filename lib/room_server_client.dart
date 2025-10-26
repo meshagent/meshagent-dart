@@ -1787,7 +1787,7 @@ class OAuthClientConfig {
 
 class MCPEndpointSpec {
   final String label;
-  final String description;
+  final String? description;
   final List<AllowedMcpToolFilter>? allowedTools;
   final Map<String, String>? headers;
   final String? requireApproval; // "always" | "never"
@@ -1796,7 +1796,7 @@ class MCPEndpointSpec {
 
   MCPEndpointSpec({
     required this.label,
-    required this.description,
+    this.description,
     this.allowedTools,
     this.headers,
     this.requireApproval,
@@ -1807,7 +1807,7 @@ class MCPEndpointSpec {
   factory MCPEndpointSpec.fromJson(Map<String, dynamic> json) {
     return MCPEndpointSpec(
       label: json['label'] as String,
-      description: json['description'] as String,
+      description: json['description'] as String?,
       allowedTools:
           json['allowed_tools'] == null ? null : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
       headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
