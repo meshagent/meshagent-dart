@@ -850,7 +850,7 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
-  ContainerRun exec({required String containerId, required String image, required String command, bool tty = false, String? name}) {
+  ContainerRun exec({required String containerId, required String command, bool tty = false, String? name}) {
     final requestId = Uuid().v4().toString();
 
     final req = _ExecRequest(containerId: containerId, requestId: requestId, command: command, tty: tty);
