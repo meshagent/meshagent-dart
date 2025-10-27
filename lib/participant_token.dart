@@ -236,13 +236,12 @@ class StorageGrant {
 }
 
 class ContainersGrant {
-  final bool build;
   final bool logs;
   final List<String>? pull;
   final List<String>? run;
   final bool useContainers;
 
-  ContainersGrant({this.build = true, this.logs = true, this.pull, this.run, this.useContainers = true});
+  ContainersGrant({this.logs = true, this.pull, this.run, this.useContainers = true});
 
   bool _matchesTag(String rule, String tag) => tag == rule || tag.startsWith(_stripWildcardSuffix(rule));
 
@@ -263,7 +262,6 @@ class ContainersGrant {
   }
 
   Map<String, dynamic> toJson() => {
-    'build': build,
     'logs': logs,
     if (pull != null) 'pull': pull,
     if (run != null) 'run': run,
@@ -271,7 +269,6 @@ class ContainersGrant {
   };
 
   factory ContainersGrant.fromJson(Map<String, dynamic> j) => ContainersGrant(
-    build: j['build'] ?? true,
     logs: j['logs'] ?? true,
     pull: (j['pull'] as List?)?.cast<String>(),
     run: (j['run'] as List?)?.cast<String>(),
