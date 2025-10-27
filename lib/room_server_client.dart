@@ -1783,6 +1783,24 @@ class OAuthClientConfig {
     if (noPkce != null) 'no_pkce': noPkce,
     if (scopes != null) 'scopes': scopes,
   };
+
+  OAuthClientConfig copyWith({
+    String? clientId,
+    String? clientSecret,
+    String? authorizationEndpoint,
+    String? tokenEndpoint,
+    bool? noPkce,
+    List<String>? scopes,
+  }) {
+    return OAuthClientConfig(
+      clientId: clientId ?? this.clientId,
+      clientSecret: clientSecret ?? this.clientSecret,
+      authorizationEndpoint: authorizationEndpoint ?? this.authorizationEndpoint,
+      tokenEndpoint: tokenEndpoint ?? this.tokenEndpoint,
+      noPkce: noPkce ?? this.noPkce,
+      scopes: scopes ?? this.scopes,
+    );
+  }
 }
 
 class MCPEndpointSpec {
@@ -1791,7 +1809,7 @@ class MCPEndpointSpec {
   final List<AllowedMcpToolFilter>? allowedTools;
   final Map<String, String>? headers;
   final String? requireApproval; // "always" | "never"
-  final OAuthClient? oauth;
+  final OAuthClientConfig? oauth;
   final String? openaiConnectorId;
 
   MCPEndpointSpec({
@@ -1804,6 +1822,26 @@ class MCPEndpointSpec {
     this.openaiConnectorId,
   });
 
+  MCPEndpointSpec copyWith({
+    String? label,
+    String? description,
+    List<AllowedMcpToolFilter>? allowedTools,
+    Map<String, String>? headers,
+    String? requireApproval,
+    OAuthClientConfig? oauth,
+    String? openaiConnectorId,
+  }) {
+    return MCPEndpointSpec(
+      label: label ?? this.label,
+      description: description ?? this.description,
+      allowedTools: allowedTools ?? this.allowedTools,
+      headers: headers ?? this.headers,
+      requireApproval: requireApproval ?? this.requireApproval,
+      oauth: oauth ?? this.oauth,
+      openaiConnectorId: openaiConnectorId ?? this.openaiConnectorId,
+    );
+  }
+
   factory MCPEndpointSpec.fromJson(Map<String, dynamic> json) {
     return MCPEndpointSpec(
       label: json['label'] as String,
@@ -1812,7 +1850,7 @@ class MCPEndpointSpec {
           json['allowed_tools'] == null ? null : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
       headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
       requireApproval: json['require_approval'] as String?,
-      oauth: json['oauth'] == null ? null : OAuthClient.fromJson(json['oauth']),
+      oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson(json['oauth']),
       openaiConnectorId: json['openai_connector_id'] as String?,
     );
   }
@@ -1839,6 +1877,10 @@ class MeshagentEndpointSpec {
   }
 
   Map<String, dynamic> toJson() => {'identity': identity, if (api != null) 'api': api?.toJson()};
+
+  MeshagentEndpointSpec copyWith({String? identity, ApiScope? api}) {
+    return MeshagentEndpointSpec(identity: identity ?? this.identity, api: api ?? this.api);
+  }
 }
 
 class ServicePortEndpointSpec {
@@ -1861,6 +1903,14 @@ class ServicePortEndpointSpec {
     if (meshagent != null) 'meshagent': meshagent!.toJson(),
     if (mcp != null) 'mcp': mcp!.toJson(),
   };
+
+  ServicePortEndpointSpec copyWith({String? path, MeshagentEndpointSpec? meshagent, MCPEndpointSpec? mcp}) {
+    return ServicePortEndpointSpec(
+      path: path ?? this.path,
+      meshagent: mcp != null ? null : meshagent ?? this.meshagent,
+      mcp: meshagent != null ? null : mcp ?? this.mcp,
+    );
+  }
 }
 
 /// ---------------------------------------------------------------------------
@@ -1892,6 +1942,15 @@ class ServicePortSpec {
     if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
     if (liveness != null) 'liveness': liveness,
   };
+
+  ServicePortSpec copyWith({PortNum? num, String? type, List<ServicePortEndpointSpec>? endpoints, String? liveness}) {
+    return ServicePortSpec(
+      num: num ?? this.num,
+      type: type ?? this.type,
+      endpoints: endpoints ?? List<ServicePortEndpointSpec>.from(this.endpoints),
+      liveness: liveness ?? this.liveness,
+    );
+  }
 }
 
 /// ---------------------------------------------------------------------------
@@ -2389,6 +2448,26 @@ class ServiceSpec {
 
       container: json['container'] != null ? ContainerSpec.fromJson(json['container']) : null,
       external: json['external'] != null ? ExternalServiceSpec.fromJson(json['external']) : null,
+    );
+  }
+
+  ServiceSpec copyWith({
+    Version? version,
+    ServiceMetadata? metadata,
+    Kind? kind,
+    String? id,
+    List<ServicePortSpec>? ports,
+    ContainerSpec? container,
+    ExternalServiceSpec? external,
+  }) {
+    return ServiceSpec(
+      version: version ?? this.version,
+      metadata: metadata ?? this.metadata,
+      kind: kind ?? this.kind,
+      id: id ?? this.id,
+      ports: ports ?? List<ServicePortSpec>.from(this.ports),
+      container: external != null ? null : container ?? this.container,
+      external: container != null ? null : external ?? this.external,
     );
   }
 }
