@@ -229,6 +229,10 @@ class MeshElement extends MeshNode {
     return _children;
   }
 
+  List<MeshElement> getElementsByTagName(String tagName) {
+    return getChildren().whereType<MeshElement>().where((t) => t.tagName == tagName).toList();
+  }
+
   // Equivalent of the Python append_json
   MeshElement appendJson(Map<String, dynamic> json) {
     final tagName = tagNameFromJson(json);
