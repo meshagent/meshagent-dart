@@ -186,7 +186,9 @@ abstract class RemoteToolkit extends Toolkit {
   }
 
   Future<void> _unregister() async {
-    await room.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+    if (_registrationId != null) {
+      await room.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+    }
   }
 
   Future<void> _toolCall(Protocol protocol, int messageId, String type, Uint8List data) async {
