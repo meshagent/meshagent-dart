@@ -804,9 +804,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/:project_id/users
   /// Returns JSON like { "users": [...] } on success.
   Future<List<Map<String, dynamic>>> getUsersInProject(String projectId, {String? email}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
+    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
     if (email != null) {
-      uri.replace(queryParameters: {"email": email});
+      uri = uri.replace(queryParameters: {"email": email});
     }
     final response = await http.get(uri, headers: _getHeaders());
 
