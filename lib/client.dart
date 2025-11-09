@@ -758,9 +758,15 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/users/:user_id
   /// Body: { "is_admin" }
   /// Returns JSON like { "ok": true } on success.
-  Future<void> updateUser({required String projectId, required String userId, required bool isAdmin, required bool isDeveloper}) async {
+  Future<void> updateUser({
+    required String projectId,
+    required String userId,
+    required bool isAdmin,
+    required bool isDeveloper,
+    required bool canCreateRooms,
+  }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users/$userId');
-    final body = {'is_admin': isAdmin, "is_developer": isDeveloper};
+    final body = {'is_admin': isAdmin, "is_developer": isDeveloper, "can_create_rooms": canCreateRooms};
 
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
