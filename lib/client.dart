@@ -649,9 +649,22 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/users
   /// Body: { "project_id", "user_id" }
   /// Returns JSON like { "ok": true } on success.
-  Future<Map<String, dynamic>> addUserToProject(String projectId, String userId) async {
+  Future<Map<String, dynamic>> addUserToProject(
+    String projectId,
+    String userId, {
+    bool isAdmin = false,
+    bool isDeveloper = false,
+    bool canCreateRooms = false,
+  }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
-    final body = {'project_id': projectId, 'user_id': userId};
+
+    final body = {
+      'project_id': projectId,
+      'user_id': userId,
+      "is_admin": isAdmin,
+      "is_developer": isDeveloper,
+      "can_create_rooms": canCreateRooms,
+    };
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
@@ -778,9 +791,21 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/users
   /// Body: { "project_id", "user_id" }
   /// Returns JSON like { "ok": true } on success.
-  Future<Map<String, dynamic>> addUserToProjectByEmail(String projectId, String email) async {
+  Future<Map<String, dynamic>> addUserToProjectByEmail(
+    String projectId,
+    String email, {
+    bool isAdmin = false,
+    bool isDeveloper = false,
+    bool canCreateRooms = false,
+  }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
-    final body = {'project_id': projectId, 'email': email};
+    final body = {
+      'project_id': projectId,
+      'email': email,
+      "is_admin": isAdmin,
+      "is_developer": isDeveloper,
+      "can_create_rooms": canCreateRooms,
+    };
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
