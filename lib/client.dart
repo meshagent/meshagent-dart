@@ -1539,11 +1539,11 @@ class Meshagent {
   /// POST /accounts/projects/{project_id}/rooms/{room_name}/connect
   /// Body: {}
   /// Returns { "jwt", "room_name", "project_id", "room_url" } on success.
-  Future<RoomConnectionInfo> connectRoom({required String projectId, required String roomName}) async {
+  Future<RoomConnectionInfo> connectRoom({required String projectId, required String roomName, String? client}) async {
     final r = Uri.encodeComponent(roomName);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$r/connect');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({}));
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"client": client}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
