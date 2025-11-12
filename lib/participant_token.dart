@@ -35,6 +35,7 @@ class AgentsGrant {
   final bool call;
   final bool useAgents;
   final bool useTools;
+  final List<String>? allowedToolkits;
 
   AgentsGrant({
     this.registerAgent = true,
@@ -43,6 +44,7 @@ class AgentsGrant {
     this.call = true,
     this.useAgents = true,
     this.useTools = true,
+    this.allowedToolkits,
   });
 
   Map<String, dynamic> toJson() => {
@@ -52,6 +54,7 @@ class AgentsGrant {
     'call': call,
     'use_agents': useAgents,
     'use_tools': useTools,
+    'allowed_toolkits': allowedToolkits,
   };
 
   factory AgentsGrant.fromJson(Map<String, dynamic> j) => AgentsGrant(
@@ -61,6 +64,7 @@ class AgentsGrant {
     call: j['call'] ?? true,
     useAgents: j['use_agents'] ?? true,
     useTools: j['use_tools'] ?? true,
+    allowedToolkits: j['allowed_toolkits'] == null ? null : (j['allowed_toolkits'] as List).cast<String>().toList(),
   );
 }
 
