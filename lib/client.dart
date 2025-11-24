@@ -5,15 +5,15 @@ import 'package:meshagent/meshagent.dart';
 
 enum ProjectRole { member, developer, admin }
 
-class OAuthProvider {
-  OAuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
+class AuthProvider {
+  AuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
 
   final String id;
   final String svgLogo;
   final String alt;
   final String label;
 
-  factory OAuthProvider.fromJson(Map<String, dynamic> json) => OAuthProvider(
+  factory AuthProvider.fromJson(Map<String, dynamic> json) => AuthProvider(
     id: json['id'] as String,
     svgLogo: json['svgLogo'] as String,
     alt: json['alt'] as String,
@@ -1573,7 +1573,7 @@ class Meshagent {
 
   /// GET /oauth/provider/list
   /// Returns a list of OAuth providers.
-  Future<List<OAuthProvider>> listOAuthProviders() async {
+  Future<List<AuthProvider>> listOAuthProviders() async {
     final uri = Uri.parse('$baseUrl/oauth/provider/list');
     final response = await http.get(uri);
 
@@ -1586,7 +1586,7 @@ class Meshagent {
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final list = decoded['providers'] as List<dynamic>? ?? const [];
-    return list.whereType<Map<String, dynamic>>().map(OAuthProvider.fromJson).toList();
+    return list.whereType<Map<String, dynamic>>().map(AuthProvider.fromJson).toList();
   }
 
   /// POST /accounts/projects/{project_id}/oauth/clients
