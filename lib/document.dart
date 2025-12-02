@@ -193,7 +193,7 @@ class MeshElement extends MeshNode {
     return getNodeByID(elementData["attributes"]!["\$id"])!;
   }
 
-  List<Map<String, dynamic>> _defaultChildren(tagName) {
+  List<Map<String, dynamic>> _defaultChildren(String tagName) {
     if (tagName == "text") {
       return [
         {
