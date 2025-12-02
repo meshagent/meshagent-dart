@@ -5,7 +5,10 @@ import 'package:meshagent/schema.dart'; // This should contain the translated Me
 void main() {
   test('test_schema_validates_tag_names', () {
     expect(() {
-      MeshSchema(rootTagName: "sample2", elements: [ElementType(tagName: "sample", description: "test", properties: [])]);
+      MeshSchema(
+        rootTagName: "sample2",
+        elements: [ElementType(tagName: "sample", description: "test", properties: [])],
+      );
     }, throwsA(TypeMatcher<MeshSchemaValidationException>()));
   });
 

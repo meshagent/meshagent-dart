@@ -1793,14 +1793,13 @@ class ProjectRoomGrantCount {
 
   factory ProjectRoomGrantCount.fromJson(Map<String, dynamic> json) {
     final dynamic c = json['count'];
-    final int parsedCount =
-        c is int
-            ? c
-            : c is num
-            ? c.toInt()
-            : c is String
-            ? int.tryParse(c) ?? 0
-            : 0;
+    final int parsedCount = c is int
+        ? c
+        : c is num
+        ? c.toInt()
+        : c is String
+        ? int.tryParse(c) ?? 0
+        : 0;
     return ProjectRoomGrantCount(room: Room.fromJson(json['room']), count: parsedCount);
   }
 
@@ -1818,14 +1817,13 @@ class ProjectUserGrantCount {
 
   factory ProjectUserGrantCount.fromJson(Map<String, dynamic> json) {
     final dynamic c = json['count'];
-    final int parsedCount =
-        c is int
-            ? c
-            : c is num
-            ? c.toInt()
-            : c is String
-            ? int.tryParse(c) ?? 0
-            : 0;
+    final int parsedCount = c is int
+        ? c
+        : c is num
+        ? c.toInt()
+        : c is String
+        ? int.tryParse(c) ?? 0
+        : 0;
 
     return ProjectUserGrantCount(
       userId: json['user_id'] as String,

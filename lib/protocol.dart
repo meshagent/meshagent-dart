@@ -263,5 +263,8 @@ class Protocol<T extends ProtocolChannel> {
 }
 
 class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
-  WebSocketClientProtocol({required Uri url, required String token}) : super(channel: WebSocketProtocolChannel(url: url, jwt: token));
+  WebSocketClientProtocol({required Uri url, required String token})
+    : super(
+        channel: WebSocketProtocolChannel(url: url, jwt: token),
+      );
 }

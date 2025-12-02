@@ -28,7 +28,8 @@ class AgentChatContext {
       messages.add(systemMessage);
     }
 
-    var plan = """
+    var plan =
+        """
             Rules:
             -${rules.join("\n-")}
         """;
