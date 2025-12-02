@@ -5,6 +5,22 @@ import 'package:meshagent/meshagent.dart';
 
 enum ProjectRole { member, developer, admin }
 
+class AuthProvider {
+  AuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
+
+  final String id;
+  final String svgLogo;
+  final String alt;
+  final String label;
+
+  factory AuthProvider.fromJson(Map<String, dynamic> json) => AuthProvider(
+    id: json['id'] as String,
+    svgLogo: json['svgLogo'] as String,
+    alt: json['alt'] as String,
+    label: json['label'] as String,
+  );
+}
+
 class RoomConnectionInfo {
   RoomConnectionInfo({required this.jwt, required this.roomName, required this.projectId, required this.roomUrl});
   String jwt;
@@ -1553,6 +1569,24 @@ class Meshagent {
     }
 
     return RoomConnectionInfo.fromJson(jsonDecode(response.body));
+  }
+
+  /// GET /oauth/provider/list
+  /// Returns a list of OAuth providers.
+  Future<List<AuthProvider>> listOAuthProviders() async {
+    final uri = Uri.parse('$baseUrl/oauth/provider/list');
+    final response = await http.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list OAuth providers. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = decoded['providers'] as List<dynamic>? ?? const [];
+    return list.whereType<Map<String, dynamic>>().map(AuthProvider.fromJson).toList();
   }
 
   /// POST /accounts/projects/{project_id}/oauth/clients
