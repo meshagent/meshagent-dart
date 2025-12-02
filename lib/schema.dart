@@ -114,8 +114,9 @@ abstract class ElementProperty {
 class ValueProperty extends ElementProperty {
   final SimpleValue type;
   final List<dynamic>? enumValues;
+  final bool required;
 
-  ValueProperty({required super.name, super.description, required this.type, this.enumValues});
+  ValueProperty({required super.name, super.description, required this.type, this.enumValues, this.required = false});
 
   @override
   void validate(MeshSchema schema) {
@@ -128,7 +129,12 @@ class ValueProperty extends ElementProperty {
   @override
   Map toJson() {
     return {
-      name: {"type": type.value, if (description != null) "description": description, if (enumValues != null) "enum": enumValues},
+      name: {
+        if (required) "type": type.value,
+        if (!required) "type": [type.value, "null"],
+        if (description != null) "description": description,
+        if (enumValues != null) "enum": enumValues,
+      },
     };
   }
 }
@@ -314,7 +320,9 @@ class ElementType {
         }
 
         final enumValue = pMap["enum"] as List<dynamic>?;
-        properties.add(ValueProperty(name: propName, description: propDescription, type: valType, enumValues: enumValue));
+        properties.add(
+          ValueProperty(name: propName, description: propDescription, type: valType, enumValues: enumValue, required: required),
+        );
       }
     });
 
