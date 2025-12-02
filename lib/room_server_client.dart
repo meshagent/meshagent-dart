@@ -205,10 +205,9 @@ class AgentDescription {
   }
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
-    final requires =
-        a["requires"] == null
-            ? <Requirement>[]
-            : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
+    final requires = a["requires"] == null
+        ? <Requirement>[]
+        : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
 
     return AgentDescription(
       description: a["description"] ?? "",
@@ -1096,21 +1095,20 @@ class ToolkitDescription {
       "description": description,
       "title": title,
       "thumbnail_url": thumbnailUrl,
-      "tools":
-          tools
-              .map(
-                (tool) => {
-                  "name": tool.name,
-                  "title": tool.title,
-                  "description": tool.description,
-                  "input_schema": tool.inputSchema,
-                  "thumbnail_url": tool.thumbnailUrl,
-                  "defs": tool.defs,
-                  "pricing": tool.pricing,
-                  "supports_context": tool.supportsContext,
-                },
-              )
-              .toList(),
+      "tools": tools
+          .map(
+            (tool) => {
+              "name": tool.name,
+              "title": tool.title,
+              "description": tool.description,
+              "input_schema": tool.inputSchema,
+              "thumbnail_url": tool.thumbnailUrl,
+              "defs": tool.defs,
+              "pricing": tool.pricing,
+              "supports_context": tool.supportsContext,
+            },
+          )
+          .toList(),
     };
   }
 
@@ -1196,14 +1194,13 @@ class StorageClient extends ChangeEmitter {
   Future<List<StorageEntry>> list(String path) async {
     final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
     return (response.json["files"] as List).map((f) {
-        return StorageEntry(
-          name: f["name"],
-          isFolder: f["is_folder"],
-          createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
-          updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
-        );
-      }).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+      return StorageEntry(
+        name: f["name"],
+        isFolder: f["is_folder"],
+        createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
+        updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
+      );
+    }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
   Future<void> delete(String path) async {
@@ -1257,6 +1254,18 @@ class DeveloperClient extends ChangeEmitter {
 
   Future<void> log(String type, Map<String, dynamic> data) async {
     room.protocol.send("developer.log", packMessage({"type": type, "data": data}, null));
+  }
+
+  Future<void> info(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.info", packMessage({"message": message, "extra": extra ?? {}}, null));
+  }
+
+  Future<void> warning(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.warning", packMessage({"message": message, "extra": extra ?? {}}, null));
+  }
+
+  Future<void> error(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.error", packMessage({"message": message, "extra": extra ?? {}}, null));
   }
 
   Future<void> enable() async {
@@ -1846,8 +1855,9 @@ class MCPEndpointSpec {
     return MCPEndpointSpec(
       label: json['label'] as String,
       description: json['description'] as String?,
-      allowedTools:
-          json['allowed_tools'] == null ? null : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
+      allowedTools: json['allowed_tools'] == null
+          ? null
+          : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
       headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
       requireApproval: json['require_approval'] as String?,
       oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson(json['oauth']),
@@ -2122,14 +2132,13 @@ class ContainerTemplateSpec {
       command: command,
       image: img,
       environment: env,
-      storage:
-          storage == null
-              ? null
-              : ServiceStorageMountsSpec(
-                room: storage!.room,
-                // If you later add `project` to ServiceTemplateMountSpec, map it here:
-                // project: storage!.project,
-              ),
+      storage: storage == null
+          ? null
+          : ServiceStorageMountsSpec(
+              room: storage!.room,
+              // If you later add `project` to ServiceTemplateMountSpec, map it here:
+              // project: storage!.project,
+            ),
     );
   }
 }

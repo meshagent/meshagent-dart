@@ -29,12 +29,18 @@ class MeshNode extends ChangeEmitter {
 }
 
 class MeshElement extends MeshNode {
-  MeshElement({super.parent, required super.doc, required this.tagName, required this.attributes, required this.elementType});
+  MeshElement({
+    super.parent,
+    required super.doc,
+    required this.tagName,
+    required Map<String, dynamic> attributes,
+    required this.elementType,
+  }) : _attributes = attributes;
 
   final ElementType elementType;
   final List<MeshNode> _children = [];
   final String tagName;
-  final Map<String, dynamic> attributes;
+  final Map<String, dynamic> _attributes;
 
   MeshElement? getNodeByID(String id) {
     if (id == this.id) {
@@ -57,7 +63,7 @@ class MeshElement extends MeshNode {
   }
 
   dynamic getAttribute(String name) {
-    return attributes[name];
+    return _attributes[name];
   }
 
   void setAttribute(String name, dynamic value) {
@@ -239,14 +245,18 @@ class MeshElement extends MeshNode {
     final attributes = attributesFromJson(json);
     final elementType = doc.schema.element(tagName);
 
-    if (elementType.childPropertyName != null && attributes.containsKey(elementType.childPropertyName!)) {
-      // Extract children
-      final children = attributes.remove(elementType.childPropertyName!) as List;
-      // Create the element
+    if (elementType.childPropertyName != null) {
       final element = createChildElement(tagName, attributes);
-      // Append each child
-      for (final child in children) {
-        element.appendJson(child as Map<String, dynamic>);
+
+      if (attributes.containsKey(elementType.childPropertyName!)) {
+        // Extract children
+        final children = attributes.remove(elementType.childPropertyName!) as List;
+        // Create the element
+
+        // Append each child
+        for (final child in children) {
+          element.appendJson(child as Map<String, dynamic>);
+        }
       }
       return element;
     } else {
@@ -258,9 +268,9 @@ class MeshElement extends MeshNode {
   Map<String, dynamic> toJson({bool includeIds = false}) {
     final props = <String, dynamic>{};
 
-    for (final k in attributes.keys) {
+    for (final k in _attributes.keys) {
       if (k != "\$id" || includeIds) {
-        props[k] = attributes[k];
+        props[k] = _attributes[k];
       }
     }
 
@@ -537,12 +547,12 @@ class RuntimeDocument extends ChangeEmitter {
     }
 
     for (final change in message["attributes"]["set"] as List) {
-      target!.attributes[change["name"]] = change["value"];
+      target!._attributes[change["name"]] = change["value"];
       target.notifyListeners();
     }
 
     for (final name in message["attributes"]["delete"] as List) {
-      target!.attributes.remove(name);
+      target!._attributes.remove(name);
       target.notifyListeners();
     }
 
