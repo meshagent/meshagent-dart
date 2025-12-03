@@ -1203,8 +1203,8 @@ class StorageClient extends ChangeEmitter {
     }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  Future<void> delete(String path) async {
-    (await room.sendRequest("storage.delete", {"path": path}) as JsonResponse);
+  Future<void> delete(String path, {bool? recursive = false}) async {
+    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonResponse);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
@@ -2414,7 +2414,7 @@ class ContainerSpec {
     return {
       if (command != null) 'command': command,
       'image': image,
-      if (environment.isNotEmpty) 'environment': environment,
+      if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
       if (secrets.isNotEmpty) 'secrets': secrets,
       if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
