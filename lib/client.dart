@@ -1562,6 +1562,10 @@ class Meshagent {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"client": client}));
 
     if (response.statusCode >= 400) {
+      if (response.statusCode == 404) {
+        throw NotFoundException('Room not found');
+      }
+
       throw MeshagentException(
         'Failed to connect room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
