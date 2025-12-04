@@ -1,3 +1,15 @@
+## [0.8.4]
+- Stability
+
+## [0.8.3]
+- Stability
+
+## [0.8.2]
+- Stability
+
+## [0.8.1]
+- Stability
+
 ## [0.8.0]
 - Stability
 
