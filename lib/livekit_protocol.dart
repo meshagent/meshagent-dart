@@ -1,7 +1,6 @@
 import "dart:typed_data";
 
 import "package:meshagent/protocol.dart";
-import "package:flutter/material.dart";
 import "package:livekit_client/livekit_client.dart" as lk;
 
 class LivekitProtocolChannel extends ProtocolChannel {
@@ -34,10 +33,7 @@ class LivekitProtocolChannel extends ProtocolChannel {
   }
 
   void onDataPacket(lk.DataReceivedEvent evt) {
-    debugPrint("Message on topic $topic ${evt.participant?.identity} vs ${remote.identity}");
     if (evt.topic == topic && evt.participant == remote) {
-      debugPrint("Processing message on topic $topic");
-
       onDataReceived!(evt.data as Uint8List);
     }
   }
