@@ -139,11 +139,33 @@ class Protocol<T extends ProtocolChannel> {
 
   final T channel;
 
+  final _done = Completer<Object?>();
+
+  Future<Object?> get done {
+    return _done.future;
+  }
+
   void start({ProtocolMessageHandler? onMessage, void Function()? onDone, void Function(Object? error)? onError}) {
     if (onMessage != null) {
       addHandler("*", onMessage);
     }
-    channel.start(onDataReceived, onDone: onDone, onError: onError);
+    channel.start(
+      onDataReceived,
+      onDone: () {
+        if (!_done.isCompleted) {
+          _done.complete(null);
+        }
+        if (onDone != null) {
+          onDone();
+        }
+      },
+      onError: (error) {
+        _done.complete(error);
+        if (onError != null) {
+          onError(error);
+        }
+      },
+    );
 
     () async {
       await for (final message in _send.stream) {

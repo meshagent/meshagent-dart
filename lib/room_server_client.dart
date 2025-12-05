@@ -124,8 +124,9 @@ class _QueuedSync {
 }
 
 abstract class Requirement {
-  Requirement({required this.name});
+  Requirement({required this.name, this.callable = true});
 
+  final bool callable;
   final String name;
 
   Map<String, dynamic> toJson();
@@ -981,7 +982,7 @@ class SyncClient extends ChangeEmitter {
     if (_connectedDocuments.containsKey(path)) {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
-      DocumentRuntime.instance.applyBackendChanges(documentId: doc.ref.id, base64: base64);
+      DocumentRuntime.instance!.applyBackendChanges(documentId: doc.ref.id, base64: base64);
 
       if (!doc.ref._synchronized.isCompleted) {
         doc.ref._synchronized.complete(true);
@@ -1046,7 +1047,7 @@ class SyncClient extends ChangeEmitter {
     if (doc.count == 0) {
       _connectedDocuments.remove(path);
       await room.sendRequest("room.disconnect", {"path": path});
-      DocumentRuntime.instance.unregisterDocument(doc.ref);
+      DocumentRuntime.instance!.unregisterDocument(doc.ref);
     }
   }
 
@@ -1059,8 +1060,8 @@ class SyncClient extends ChangeEmitter {
 
 class MeshDocument extends RuntimeDocument {
   MeshDocument({super.sendChangesToBackend, required super.schema})
-    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance.sendChanges) {
-    DocumentRuntime.instance.registerDocument(this);
+    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance!.sendChanges) {
+    DocumentRuntime.instance!.registerDocument(this);
   }
 
   final _synchronized = Completer();
@@ -1069,7 +1070,7 @@ class MeshDocument extends RuntimeDocument {
   }
 
   void dispose() {
-    DocumentRuntime.instance.unregisterDocument(this);
+    DocumentRuntime.instance!.unregisterDocument(this);
   }
 }
 

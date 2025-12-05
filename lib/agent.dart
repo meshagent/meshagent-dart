@@ -138,7 +138,10 @@ abstract class Toolkit {
 }
 
 class ToolContext {
-  const ToolContext({required this.room});
+  const ToolContext({required this.room, this.caller, this.onBehalfOf});
+
+  final Participant? caller;
+  final Participant? onBehalfOf;
 
   final RoomClient room;
 }
