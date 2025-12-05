@@ -84,18 +84,11 @@ class AgentCallContext {
 }
 
 abstract class Tool {
-  Tool({
-    required this.name,
-    required this.description,
-    required this.title,
-    required this.inputSchema,
-    this.thumbnailUrl,
-    this.supportsContext = false,
-  });
+  Tool({required this.name, this.description, this.title, required this.inputSchema, this.thumbnailUrl, this.supportsContext = false});
 
   final String name;
-  final String description;
-  final String title;
+  final String? description;
+  final String? title;
   final String? thumbnailUrl;
   final Map<String, dynamic> inputSchema;
   final bool supportsContext;
@@ -146,7 +139,7 @@ class ToolContext {
   final RoomClient room;
 }
 
-abstract class RemoteToolkit extends Toolkit {
+class RemoteToolkit extends Toolkit {
   final RoomClient room;
   final String name;
   final String? title;

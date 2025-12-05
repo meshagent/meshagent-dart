@@ -1077,9 +1077,9 @@ class MeshDocument extends RuntimeDocument {
 class ToolkitDescription {
   ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.thumbnailUrl});
 
-  final String title;
+  final String? title;
   final String name;
-  final String description;
+  final String? description;
   final String? thumbnailUrl;
 
   late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
