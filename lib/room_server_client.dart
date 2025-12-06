@@ -1278,19 +1278,32 @@ class DeveloperClient extends ChangeEmitter {
   }
 }
 
-class MessageStreamWriter {
-  const MessageStreamWriter._({required String streamId, required Participant to, required MessagingClient client})
-    : _streamId = streamId,
-      _to = to,
-      _client = client;
+class MessageStream {
+  const MessageStream._({
+    required String streamId,
+    required this.header,
+    required this.to,
+    required MessagingClient client,
+    required StreamController<MessageStreamChunk> controller,
+  }) : _streamId = streamId,
+       _client = client,
+       _controller = controller;
 
+  final Map<String, dynamic> header;
+  final Participant to;
+
+  // ignore: unused_field
   final String _streamId;
-  final Participant _to;
   final MessagingClient _client;
+  final StreamController<MessageStreamChunk> _controller;
+
+  Stream<MessageStreamChunk> get incoming {
+    return _controller.stream;
+  }
 
   void write(MessageStreamChunk chunk) async {
     await _client.sendMessage(
-      to: _to,
+      to: to,
       type: "stream.chunk",
       message: {"stream_id": _streamId, "header": chunk.header},
       attachment: chunk.data,
@@ -1298,32 +1311,14 @@ class MessageStreamWriter {
   }
 
   void close() async {
-    await _client.sendMessage(to: _to, type: "stream.close", message: {"stream_id": _streamId});
+    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
+
+    _controller.close();
   }
 }
 
-class MessageStreamReader {
-  const MessageStreamReader._({
-    required String streamId,
-    required Participant to,
-    required MessagingClient client,
-    required StreamController controller,
-  }) : _streamId = streamId,
-       _to = to,
-       _client = client,
-       _controller = controller;
-
-  // ignore: unused_field
-  final String _streamId;
-  // ignore: unused_field
-  final Participant _to;
-  // ignore: unused_field
-  final MessagingClient _client;
-  final StreamController _controller;
-}
-
 class MessageStreamChunk {
-  MessageStreamChunk({required this.header, required this.data});
+  MessageStreamChunk({required this.header, this.data});
 
   final Map<String, dynamic> header;
   final Uint8List? data;
@@ -1342,18 +1337,27 @@ class MessagingClient extends ChangeEmitter {
   }
 
   final RoomClient room;
-  final Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
-  final Map<String, MessageStreamReader> _streamReaders = {};
+  final Map<String, Completer> pendingStreams = {};
+  final Map<String, MessageStream> _streams = {};
 
-  Future<MessageStreamWriter> createStream({required Participant to, required Map<String, dynamic> header}) async {
+  Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
 
-    final completer = Completer<MessageStreamWriter>();
-    _streamWriters[streamId] = completer;
+    final stream = MessageStream._(
+      header: header,
+      streamId: streamId,
+      to: to,
+      client: this,
+      controller: StreamController<MessageStreamChunk>(),
+    );
+    final completer = Completer();
+    pendingStreams[streamId] = completer;
+    _streams[streamId] = stream;
+    await completer.future;
 
     await sendMessage(to: to, type: "stream.open", message: {"stream_id": streamId, "header": header});
 
-    return await completer.future;
+    return stream;
   }
 
   Future<void> sendMessage({
@@ -1365,9 +1369,9 @@ class MessagingClient extends ChangeEmitter {
     await room.sendRequest("messaging.send", {"to_participant_id": to.id, "type": type, "message": message}, data: attachment);
   }
 
-  void Function(MessageStreamReader reader)? _onStreamAcceptCallback;
+  void Function(MessageStream reader)? _onStreamAcceptCallback;
 
-  Future<void> enable({void Function(MessageStreamReader reader)? onStreamAccept}) async {
+  Future<void> enable({void Function(MessageStream reader)? onStreamAccept}) async {
     await room.sendRequest("messaging.enable", {});
 
     _onStreamAcceptCallback = onStreamAccept;
@@ -1463,7 +1467,7 @@ class MessagingClient extends ChangeEmitter {
     final from = remoteParticipants.where((x) => x.id == message.fromParticipantId).first;
     final streamId = message.message["stream_id"];
     final controller = StreamController<MessageStreamChunk>();
-    final reader = MessageStreamReader._(streamId: streamId, to: from, client: this, controller: controller);
+    final reader = MessageStream._(header: message.message["header"], streamId: streamId, to: from, client: this, controller: controller);
     try {
       if (_onStreamAcceptCallback == null) {
         throw Exception("streams are not allowed by this client");
@@ -1474,32 +1478,30 @@ class MessagingClient extends ChangeEmitter {
       sendMessage(to: from, type: "stream.reject", message: {"stream_id": streamId, "error": e.toString()});
     }
 
-    _streamReaders[streamId] = reader;
+    _streams[streamId] = reader;
     notifyListeners();
   }
 
   void _onStreamAccept(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    // TODO: add hook for accept / reject from client
-    _streamWriters[streamId]!.complete(
-      MessageStreamWriter._(streamId: streamId, to: remoteParticipants.where((x) => x.id == message.fromParticipantId).first, client: this),
-    );
+    pendingStreams[streamId]!.complete(true);
   }
 
   void _onStreamReject(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamWriters[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
+    _streams.remove(streamId);
+    pendingStreams[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
   }
 
   void _onStreamChunk(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamReaders[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
+    _streams[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
   }
 
   void _onStreamClose(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamReaders[streamId]!._controller.close();
-    _streamReaders.remove(streamId);
+    _streams[streamId]!._controller.close();
+    _streams.remove(streamId);
   }
 }
 
