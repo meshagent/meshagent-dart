@@ -1936,7 +1936,7 @@ class PortSpec {
   final List<EndpointSpec> endpoints;
   final String? liveness;
 
-  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness}) : endpoints = endpoints ?? const [];
+  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness}) : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
@@ -2459,8 +2459,8 @@ class ServiceSpec {
     this.container,
     this.external,
     List<AgentSpec>? agents,
-  }) : ports = ports ?? const [],
-       agents = agents ?? const [];
+  }) : ports = ports ?? [],
+       agents = agents ?? [];
 
   final ExternalServiceSpec? external;
 
