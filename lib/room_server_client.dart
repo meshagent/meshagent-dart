@@ -1279,7 +1279,7 @@ class DeveloperClient extends ChangeEmitter {
 }
 
 class MessageStream {
-  const MessageStream._({
+  MessageStream._({
     required String streamId,
     required this.header,
     required this.to,
@@ -1296,12 +1296,16 @@ class MessageStream {
   final String _streamId;
   final MessagingClient _client;
   final StreamController<MessageStreamChunk> _controller;
+  var closed = false;
 
   Stream<MessageStreamChunk> get incoming {
     return _controller.stream;
   }
 
   void write(MessageStreamChunk chunk) async {
+    if (closed) {
+      throw RoomServerException("cannot write a closed MessageStream");
+    }
     await _client.sendMessage(
       to: to,
       type: "stream.chunk",
@@ -1310,10 +1314,14 @@ class MessageStream {
     );
   }
 
-  void close() async {
-    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
-
+  void _close() {
     _controller.close();
+    closed = true;
+  }
+
+  void close() async {
+    _close();
+    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
   }
 }
 
@@ -1447,7 +1455,18 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onParticipantDisabled(RoomMessage message) {
-    _participants.remove(message.message["id"]);
+    final part = _participants.remove(message.message["id"]);
+
+    for (final entry in _streams.entries.toList()) {
+      final streamId = entry.key;
+      final stream = entry.value;
+
+      if (stream.to == part) {
+        stream._close();
+        _streams.remove(streamId);
+      }
+    }
+
     notifyListeners();
   }
 
