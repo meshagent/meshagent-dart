@@ -124,8 +124,9 @@ class _QueuedSync {
 }
 
 abstract class Requirement {
-  Requirement({required this.name});
+  Requirement({required this.name, this.callable = true});
 
+  final bool callable;
   final String name;
 
   Map<String, dynamic> toJson();
@@ -205,10 +206,9 @@ class AgentDescription {
   }
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
-    final requires =
-        a["requires"] == null
-            ? <Requirement>[]
-            : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
+    final requires = a["requires"] == null
+        ? <Requirement>[]
+        : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
 
     return AgentDescription(
       description: a["description"] ?? "",
@@ -982,7 +982,7 @@ class SyncClient extends ChangeEmitter {
     if (_connectedDocuments.containsKey(path)) {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
-      DocumentRuntime.instance.applyBackendChanges(documentId: doc.ref.id, base64: base64);
+      DocumentRuntime.instance!.applyBackendChanges(documentId: doc.ref.id, base64: base64);
 
       if (!doc.ref._synchronized.isCompleted) {
         doc.ref._synchronized.complete(true);
@@ -1047,7 +1047,7 @@ class SyncClient extends ChangeEmitter {
     if (doc.count == 0) {
       _connectedDocuments.remove(path);
       await room.sendRequest("room.disconnect", {"path": path});
-      DocumentRuntime.instance.unregisterDocument(doc.ref);
+      DocumentRuntime.instance!.unregisterDocument(doc.ref);
     }
   }
 
@@ -1060,8 +1060,8 @@ class SyncClient extends ChangeEmitter {
 
 class MeshDocument extends RuntimeDocument {
   MeshDocument({super.sendChangesToBackend, required super.schema})
-    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance.sendChanges) {
-    DocumentRuntime.instance.registerDocument(this);
+    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance!.sendChanges) {
+    DocumentRuntime.instance!.registerDocument(this);
   }
 
   final _synchronized = Completer();
@@ -1070,16 +1070,16 @@ class MeshDocument extends RuntimeDocument {
   }
 
   void dispose() {
-    DocumentRuntime.instance.unregisterDocument(this);
+    DocumentRuntime.instance!.unregisterDocument(this);
   }
 }
 
 class ToolkitDescription {
   ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.thumbnailUrl});
 
-  final String title;
+  final String? title;
   final String name;
-  final String description;
+  final String? description;
   final String? thumbnailUrl;
 
   late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
@@ -1096,21 +1096,20 @@ class ToolkitDescription {
       "description": description,
       "title": title,
       "thumbnail_url": thumbnailUrl,
-      "tools":
-          tools
-              .map(
-                (tool) => {
-                  "name": tool.name,
-                  "title": tool.title,
-                  "description": tool.description,
-                  "input_schema": tool.inputSchema,
-                  "thumbnail_url": tool.thumbnailUrl,
-                  "defs": tool.defs,
-                  "pricing": tool.pricing,
-                  "supports_context": tool.supportsContext,
-                },
-              )
-              .toList(),
+      "tools": tools
+          .map(
+            (tool) => {
+              "name": tool.name,
+              "title": tool.title,
+              "description": tool.description,
+              "input_schema": tool.inputSchema,
+              "thumbnail_url": tool.thumbnailUrl,
+              "defs": tool.defs,
+              "pricing": tool.pricing,
+              "supports_context": tool.supportsContext,
+            },
+          )
+          .toList(),
     };
   }
 
@@ -1196,18 +1195,17 @@ class StorageClient extends ChangeEmitter {
   Future<List<StorageEntry>> list(String path) async {
     final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
     return (response.json["files"] as List).map((f) {
-        return StorageEntry(
-          name: f["name"],
-          isFolder: f["is_folder"],
-          createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
-          updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
-        );
-      }).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+      return StorageEntry(
+        name: f["name"],
+        isFolder: f["is_folder"],
+        createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
+        updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
+      );
+    }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  Future<void> delete(String path) async {
-    (await room.sendRequest("storage.delete", {"path": path}) as JsonResponse);
+  Future<void> delete(String path, {bool? recursive = false}) async {
+    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonResponse);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
@@ -1259,6 +1257,18 @@ class DeveloperClient extends ChangeEmitter {
     room.protocol.send("developer.log", packMessage({"type": type, "data": data}, null));
   }
 
+  Future<void> info(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.info", packMessage({"message": message, "extra": extra ?? {}}, null));
+  }
+
+  Future<void> warning(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.warning", packMessage({"message": message, "extra": extra ?? {}}, null));
+  }
+
+  Future<void> error(String message, {Map<String, dynamic>? extra}) async {
+    room.protocol.send("developer.error", packMessage({"message": message, "extra": extra ?? {}}, null));
+  }
+
   Future<void> enable() async {
     room.protocol.send("developer.watch", packMessage({}, null));
   }
@@ -1268,52 +1278,55 @@ class DeveloperClient extends ChangeEmitter {
   }
 }
 
-class MessageStreamWriter {
-  const MessageStreamWriter._({required String streamId, required Participant to, required MessagingClient client})
-    : _streamId = streamId,
-      _to = to,
-      _client = client;
+class MessageStream {
+  MessageStream._({
+    required String streamId,
+    required this.header,
+    required this.to,
+    required MessagingClient client,
+    required StreamController<MessageStreamChunk> controller,
+  }) : _streamId = streamId,
+       _client = client,
+       _controller = controller;
 
+  final Map<String, dynamic> header;
+  final Participant to;
+
+  // ignore: unused_field
   final String _streamId;
-  final Participant _to;
   final MessagingClient _client;
+  final StreamController<MessageStreamChunk> _controller;
+  var closed = false;
+
+  Stream<MessageStreamChunk> get incoming {
+    return _controller.stream;
+  }
 
   void write(MessageStreamChunk chunk) async {
+    if (closed) {
+      throw RoomServerException("cannot write a closed MessageStream");
+    }
     await _client.sendMessage(
-      to: _to,
+      to: to,
       type: "stream.chunk",
       message: {"stream_id": _streamId, "header": chunk.header},
       attachment: chunk.data,
     );
   }
 
+  void _close() {
+    _controller.close();
+    closed = true;
+  }
+
   void close() async {
-    await _client.sendMessage(to: _to, type: "stream.close", message: {"stream_id": _streamId});
+    _close();
+    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
   }
 }
 
-class MessageStreamReader {
-  const MessageStreamReader._({
-    required String streamId,
-    required Participant to,
-    required MessagingClient client,
-    required StreamController controller,
-  }) : _streamId = streamId,
-       _to = to,
-       _client = client,
-       _controller = controller;
-
-  // ignore: unused_field
-  final String _streamId;
-  // ignore: unused_field
-  final Participant _to;
-  // ignore: unused_field
-  final MessagingClient _client;
-  final StreamController _controller;
-}
-
 class MessageStreamChunk {
-  MessageStreamChunk({required this.header, required this.data});
+  MessageStreamChunk({required this.header, this.data});
 
   final Map<String, dynamic> header;
   final Uint8List? data;
@@ -1332,18 +1345,27 @@ class MessagingClient extends ChangeEmitter {
   }
 
   final RoomClient room;
-  final Map<String, Completer<MessageStreamWriter>> _streamWriters = {};
-  final Map<String, MessageStreamReader> _streamReaders = {};
+  final Map<String, Completer> pendingStreams = {};
+  final Map<String, MessageStream> _streams = {};
 
-  Future<MessageStreamWriter> createStream({required Participant to, required Map<String, dynamic> header}) async {
+  Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
 
-    final completer = Completer<MessageStreamWriter>();
-    _streamWriters[streamId] = completer;
+    final stream = MessageStream._(
+      header: header,
+      streamId: streamId,
+      to: to,
+      client: this,
+      controller: StreamController<MessageStreamChunk>(),
+    );
+    final completer = Completer();
+    pendingStreams[streamId] = completer;
+    _streams[streamId] = stream;
+    await completer.future;
 
     await sendMessage(to: to, type: "stream.open", message: {"stream_id": streamId, "header": header});
 
-    return await completer.future;
+    return stream;
   }
 
   Future<void> sendMessage({
@@ -1355,9 +1377,9 @@ class MessagingClient extends ChangeEmitter {
     await room.sendRequest("messaging.send", {"to_participant_id": to.id, "type": type, "message": message}, data: attachment);
   }
 
-  void Function(MessageStreamReader reader)? _onStreamAcceptCallback;
+  void Function(MessageStream reader)? _onStreamAcceptCallback;
 
-  Future<void> enable({void Function(MessageStreamReader reader)? onStreamAccept}) async {
+  Future<void> enable({void Function(MessageStream reader)? onStreamAccept}) async {
     await room.sendRequest("messaging.enable", {});
 
     _onStreamAcceptCallback = onStreamAccept;
@@ -1433,7 +1455,18 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onParticipantDisabled(RoomMessage message) {
-    _participants.remove(message.message["id"]);
+    final part = _participants.remove(message.message["id"]);
+
+    for (final entry in _streams.entries.toList()) {
+      final streamId = entry.key;
+      final stream = entry.value;
+
+      if (stream.to == part) {
+        stream._close();
+        _streams.remove(streamId);
+      }
+    }
+
     notifyListeners();
   }
 
@@ -1453,7 +1486,7 @@ class MessagingClient extends ChangeEmitter {
     final from = remoteParticipants.where((x) => x.id == message.fromParticipantId).first;
     final streamId = message.message["stream_id"];
     final controller = StreamController<MessageStreamChunk>();
-    final reader = MessageStreamReader._(streamId: streamId, to: from, client: this, controller: controller);
+    final reader = MessageStream._(header: message.message["header"], streamId: streamId, to: from, client: this, controller: controller);
     try {
       if (_onStreamAcceptCallback == null) {
         throw Exception("streams are not allowed by this client");
@@ -1464,32 +1497,30 @@ class MessagingClient extends ChangeEmitter {
       sendMessage(to: from, type: "stream.reject", message: {"stream_id": streamId, "error": e.toString()});
     }
 
-    _streamReaders[streamId] = reader;
+    _streams[streamId] = reader;
     notifyListeners();
   }
 
   void _onStreamAccept(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    // TODO: add hook for accept / reject from client
-    _streamWriters[streamId]!.complete(
-      MessageStreamWriter._(streamId: streamId, to: remoteParticipants.where((x) => x.id == message.fromParticipantId).first, client: this),
-    );
+    pendingStreams[streamId]!.complete(true);
   }
 
   void _onStreamReject(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamWriters[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
+    _streams.remove(streamId);
+    pendingStreams[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
   }
 
   void _onStreamChunk(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamReaders[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
+    _streams[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
   }
 
   void _onStreamClose(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streamReaders[streamId]!._controller.close();
-    _streamReaders.remove(streamId);
+    _streams[streamId]!._controller.close();
+    _streams.remove(streamId);
   }
 }
 
@@ -1846,8 +1877,9 @@ class MCPEndpointSpec {
     return MCPEndpointSpec(
       label: json['label'] as String,
       description: json['description'] as String?,
-      allowedTools:
-          json['allowed_tools'] == null ? null : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
+      allowedTools: json['allowed_tools'] == null
+          ? null
+          : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
       headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
       requireApproval: json['require_approval'] as String?,
       oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson(json['oauth']),
@@ -1923,7 +1955,7 @@ class PortSpec {
   final List<EndpointSpec> endpoints;
   final String? liveness;
 
-  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness}) : endpoints = endpoints ?? const [];
+  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness}) : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
@@ -2122,14 +2154,13 @@ class ContainerTemplateSpec {
       command: command,
       image: img,
       environment: env,
-      storage:
-          storage == null
-              ? null
-              : ServiceStorageMountsSpec(
-                room: storage!.room,
-                // If you later add `project` to ServiceTemplateMountSpec, map it here:
-                // project: storage!.project,
-              ),
+      storage: storage == null
+          ? null
+          : ServiceStorageMountsSpec(
+              room: storage!.room,
+              // If you later add `project` to ServiceTemplateMountSpec, map it here:
+              // project: storage!.project,
+            ),
     );
   }
 }
@@ -2405,7 +2436,7 @@ class ContainerSpec {
     return {
       if (command != null) 'command': command,
       'image': image,
-      if (environment.isNotEmpty) 'environment': environment,
+      if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
       if (secrets.isNotEmpty) 'secrets': secrets,
       if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
@@ -2447,8 +2478,8 @@ class ServiceSpec {
     this.container,
     this.external,
     List<AgentSpec>? agents,
-  }) : ports = ports ?? const [],
-       agents = agents ?? const [];
+  }) : ports = ports ?? [],
+       agents = agents ?? [];
 
   final ExternalServiceSpec? external;
 

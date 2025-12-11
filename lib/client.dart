@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:meshagent/meshagent.dart';
 
@@ -1562,6 +1562,10 @@ class Meshagent {
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"client": client}));
 
     if (response.statusCode >= 400) {
+      if (response.statusCode == 404) {
+        throw NotFoundException('Room not found');
+      }
+
       throw MeshagentException(
         'Failed to connect room. '
         'Status code: ${response.statusCode}, body: ${response.body}',
@@ -1793,14 +1797,13 @@ class ProjectRoomGrantCount {
 
   factory ProjectRoomGrantCount.fromJson(Map<String, dynamic> json) {
     final dynamic c = json['count'];
-    final int parsedCount =
-        c is int
-            ? c
-            : c is num
-            ? c.toInt()
-            : c is String
-            ? int.tryParse(c) ?? 0
-            : 0;
+    final int parsedCount = c is int
+        ? c
+        : c is num
+        ? c.toInt()
+        : c is String
+        ? int.tryParse(c) ?? 0
+        : 0;
     return ProjectRoomGrantCount(room: Room.fromJson(json['room']), count: parsedCount);
   }
 
@@ -1818,14 +1821,13 @@ class ProjectUserGrantCount {
 
   factory ProjectUserGrantCount.fromJson(Map<String, dynamic> json) {
     final dynamic c = json['count'];
-    final int parsedCount =
-        c is int
-            ? c
-            : c is num
-            ? c.toInt()
-            : c is String
-            ? int.tryParse(c) ?? 0
-            : 0;
+    final int parsedCount = c is int
+        ? c
+        : c is num
+        ? c.toInt()
+        : c is String
+        ? int.tryParse(c) ?? 0
+        : 0;
 
     return ProjectUserGrantCount(
       userId: json['user_id'] as String,

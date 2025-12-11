@@ -27,8 +27,8 @@ class AgentsClient extends ChangeEmitter {
     }
   }
 
-  Future<List<ToolkitDescription>> listToolkits() async {
-    final result = (await room.sendRequest("agent.list_toolkits", {})) as JsonResponse;
+  Future<List<ToolkitDescription>> listToolkits({String? participantId}) async {
+    final result = (await room.sendRequest("agent.list_toolkits", {"participant_id": participantId})) as JsonResponse;
 
     final toolkits = <ToolkitDescription>[];
     final tools = result.json["tools"];
@@ -54,7 +54,19 @@ class AgentsClient extends ChangeEmitter {
     return agents;
   }
 
-  Future<Response> invokeTool({required String toolkit, required String tool, required Map<String, dynamic> arguments}) async {
-    return await room.sendRequest("agent.invoke_tool", {"toolkit": toolkit, "tool": tool, "arguments": arguments});
+  Future<Response> invokeTool({
+    required String toolkit,
+    required String tool,
+    required Map<String, dynamic> arguments,
+    String? participantId,
+    String? onBehalfOfId,
+  }) async {
+    return await room.sendRequest("agent.invoke_tool", {
+      "toolkit": toolkit,
+      "tool": tool,
+      "arguments": arguments,
+      "participant_id": participantId,
+      "on_behalf_of_id": onBehalfOfId,
+    });
   }
 }

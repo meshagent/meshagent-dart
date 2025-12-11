@@ -114,8 +114,9 @@ abstract class ElementProperty {
 class ValueProperty extends ElementProperty {
   final SimpleValue type;
   final List<dynamic>? enumValues;
+  final bool required;
 
-  ValueProperty({required super.name, super.description, required this.type, this.enumValues});
+  ValueProperty({required super.name, super.description, required this.type, this.enumValues, this.required = false});
 
   @override
   void validate(MeshSchema schema) {
@@ -128,7 +129,12 @@ class ValueProperty extends ElementProperty {
   @override
   Map toJson() {
     return {
-      name: {"type": type.value, if (description != null) "description": description, if (enumValues != null) "enum": enumValues},
+      name: {
+        if (required) "type": type.value,
+        if (!required) "type": [type.value, "null"],
+        if (description != null) "description": description,
+        if (enumValues != null) "enum": enumValues,
+      },
     };
   }
 }
@@ -254,9 +260,25 @@ class ElementType {
     propMap.forEach((propName, p) {
       final pMap = p as Map;
       final propDescription = pMap["description"] as String?;
-      final pType = pMap["type"];
 
-      if (pType == "array") {
+      final dynamic rawType = pMap["type"];
+      bool required;
+      String baseType;
+
+      if (rawType is List) {
+        if (rawType.isEmpty) {
+          throw MeshSchemaValidationException("Empty type array for property $propName");
+        }
+        baseType = rawType.first as String;
+        required = false;
+      } else if (rawType is String) {
+        baseType = rawType;
+        required = true;
+      } else {
+        throw MeshSchemaValidationException("Invalid type for property $propName");
+      }
+
+      if (baseType == "array") {
         if (pMap["items"] != null && pMap["items"] is Map && pMap["items"]["anyOf"] != null) {
           // handle ChildProperty
           final items = pMap["items"] as Map;
@@ -292,14 +314,15 @@ class ElementType {
       } else {
         // handle ValueProperty
         // pType should be a string matching SimpleValue
-        final valTypeStr = pType as String;
-        final valType = SimpleValue.fromString(valTypeStr);
+        final valType = SimpleValue.fromString(baseType);
         if (valType == null) {
-          throw MeshSchemaValidationException("Invalid value type: $valTypeStr");
+          throw MeshSchemaValidationException("Invalid value type: $baseType");
         }
 
         final enumValue = pMap["enum"] as List<dynamic>?;
-        properties.add(ValueProperty(name: propName, description: propDescription, type: valType, enumValues: enumValue));
+        properties.add(
+          ValueProperty(name: propName, description: propDescription, type: valType, enumValues: enumValue, required: required),
+        );
       }
     });
 
@@ -346,5 +369,10 @@ class ElementType {
       throw Exception("Property is not in schema: $name");
     }
     return prop;
+  }
+
+  bool hasProperty(String name) {
+    final prop = _propertyLookup[name];
+    return prop != null;
   }
 }
