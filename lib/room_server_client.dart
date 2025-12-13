@@ -996,7 +996,7 @@ class SyncClient extends ChangeEmitter {
     await room.sendRequest("room.create", {"path": path, "json": json});
   }
 
-  Future<MeshDocument> open(String path, {bool create = true}) async {
+  Future<MeshDocument> open(String path, {bool create = true, Map<String, dynamic>? initialJson, MeshSchema? schema}) async {
     final pending = _connectingDocuments[path];
 
     if (pending != null) {
@@ -1015,9 +1015,16 @@ class SyncClient extends ChangeEmitter {
     final c = Completer<_RefCount<MeshDocument>>();
     _connectingDocuments[path] = c.future;
     try {
-      final result = (await room.sendRequest("room.connect", {"path": path, "create": create})) as JsonResponse;
+      final result =
+          (await room.sendRequest("room.connect", {
+                "path": path,
+                "create": create,
+                "initial_json": initialJson,
+                "schema": schema?.toJson(),
+              }))
+              as JsonResponse;
 
-      MeshSchema schema = MeshSchema.fromJson(result.json["schema"]);
+      schema = MeshSchema.fromJson(result.json["schema"]);
 
       final doc = MeshDocument(
         schema: schema,
@@ -1071,6 +1078,10 @@ class MeshDocument extends RuntimeDocument {
 
   void dispose() {
     DocumentRuntime.instance!.unregisterDocument(this);
+  }
+
+  Uri getShareUri(String path) {
+    return Uri(scheme: "meshdoc", host: "v1", path: "/$path", queryParameters: {"initial_json": root.toJson(), "schema": schema.toJson()});
   }
 }
 
