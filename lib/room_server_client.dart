@@ -1080,8 +1080,8 @@ class MeshDocument extends RuntimeDocument {
     DocumentRuntime.instance!.unregisterDocument(this);
   }
 
-  Uri getShareUri(String path) {
-    return Uri(scheme: "meshdoc", host: "v1", path: "/$path", queryParameters: {"initial_json": root.toJson(), "schema": schema.toJson()});
+  String encode() {
+    return base64.encode(utf8.encode(jsonEncode({"initial_json": root.toJson(), "schema": schema.toJson()})));
   }
 }
 
