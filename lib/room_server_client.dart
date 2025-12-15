@@ -180,6 +180,7 @@ class AgentDescription {
     List<Requirement>? requires,
     required this.supportsTools,
     List<String>? labels,
+    this.annotations,
   }) : requires = List<Requirement>.of(requires ?? const <Requirement>[]),
        labels = List<String>.of(labels ?? const <String>[]);
 
@@ -191,15 +192,17 @@ class AgentDescription {
   final List<Requirement>? requires;
   final List<String>? labels;
   final bool supportsTools;
+  final Map<String, dynamic>? annotations;
 
   Map<String, dynamic> toJson() {
     return {
       "name": name,
       "title": title,
       "description": description,
-      "input_schema": inputSchema,
-      "output_schema": outputSchema,
-      "labels": labels,
+      if (inputSchema != null) "input_schema": inputSchema,
+      if (outputSchema != null) "output_schema": outputSchema,
+      if (labels != null) "labels": labels,
+      if (annotations != null) "annotations": labels,
       "supports_tools": supportsTools,
       "requires": requires?.map((requirement) => requirement.toJson()).toList(),
     };
@@ -219,6 +222,7 @@ class AgentDescription {
       requires: requires,
       supportsTools: a["supports_tools"] == true,
       labels: a["labels"]?.whereType<String>().toList(),
+      annotations: (a["annotations"] as Map?)?.cast<String, dynamic>(),
     );
   }
 }
