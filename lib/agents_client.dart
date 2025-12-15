@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:meshagent/document.dart';
 import 'package:meshagent/room_server_client.dart';
 
@@ -60,6 +62,7 @@ class AgentsClient extends ChangeEmitter {
     required Map<String, dynamic> arguments,
     String? participantId,
     String? onBehalfOfId,
+    Uint8List? attachment,
   }) async {
     return await room.sendRequest("agent.invoke_tool", {
       "toolkit": toolkit,
@@ -67,6 +70,6 @@ class AgentsClient extends ChangeEmitter {
       "arguments": arguments,
       "participant_id": participantId,
       "on_behalf_of_id": onBehalfOfId,
-    });
+    }, data: attachment);
   }
 }
