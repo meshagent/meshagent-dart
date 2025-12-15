@@ -12,18 +12,26 @@ class AgentsClient extends ChangeEmitter {
     await room.sendRequest("agent.call", {"name": name, "url": url, "arguments": arguments});
   }
 
-  Future<Map<String, dynamic>> ask({
+  Future<Response> ask({
     required String agentName,
     List<Requirement> requires = const [],
     required Map<String, dynamic> arguments,
+    Uint8List? attachment,
   }) async {
     try {
       final requiresJson = [for (final t in requires) t.toJson()];
 
       final result =
-          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson})) as JsonResponse;
+          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson}, data: attachment))
+              as JsonResponse;
 
-      return result.json["answer"];
+      if (result.json["answer"] is String) {
+        return TextResponse(text: result.json["answer"]);
+      } else if (result.json["answer"] is Map) {
+        return JsonResponse(json: result.json["answer"]);
+      } else {
+        throw RoomServerException("invalid response");
+      }
     } catch (err) {
       rethrow;
     }
