@@ -1081,7 +1081,7 @@ class MeshDocument extends RuntimeDocument {
   }
 
   String encode() {
-    return base64.encode(utf8.encode(jsonEncode({"initial_json": root.toJson(), "schema": schema.toJson()})));
+    return jsonEncode({"initial_json": root.toJson(), "schema": schema.toJson()});
   }
 }
 
