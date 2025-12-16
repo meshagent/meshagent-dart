@@ -1,3 +1,10 @@
+## [0.14.0]
+- Breaking change: `AgentsClient.ask` now accepts optional attachment bytes and returns a `Response` (`TextResponse`/`JsonResponse`) instead of a raw `Map`
+- Agent descriptions now surface `annotations` metadata for capability hints (e.g., attachment format)
+- Breaking change: `MeshDocument.encode()` now returns raw JSON instead of base64-encoded JSON
+- Luau/Flutter widgets can now create tar attachments from in-app file picks and pass them through `agents.ask`, plus expose a `LuauConsoleScope` for console output
+- Improved Luau error/console reporting (script/line metadata) and added a `Uint8List` → Luau buffer convenience conversion
+
 ## [0.13.0]
 - Added support for sending binary attachments when invoking agent tools from the Dart client API
 - Breaking change: updated the Luau scripting surface from method-style calls and a `room` module to function-style calls and an `agents` module (e.g., `agents.ask`, `agents.invokeTool`, `log.info`)
