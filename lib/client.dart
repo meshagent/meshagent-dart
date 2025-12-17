@@ -921,6 +921,18 @@ class Meshagent {
     };
   }
 
+  Future<bool> canCreateRooms(String projectId) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/role');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final canCreateRooms = (jsonDecode(response.body) as Map<String, dynamic>)["can_create_rooms"] ?? false;
+
+    return canCreateRooms;
+  }
+
   /// Corresponds to: GET /accounts/projects
   /// Returns JSON like { "projects": [...] } on success.
   Future<Map<String, dynamic>> getProject(String projectId) async {
