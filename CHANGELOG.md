@@ -1,3 +1,9 @@
+## [0.15.0]
+- Added a Dart client helper to query whether a user can create rooms for a given project.
+- Added `tabs`/`tab` UI components (including initial tab selection, active styling, and visibility control) and expanded editing support to handle boolean properties.
+- Added per-script Luau environments (optional `envIndex`) and per-function globals, with updated native/WASM bindings and APIs to support metatable/fenv operations.
+- Updated the web Luau runtime asset hosting path to use versioned artifacts (`.../luau/0.15.0/`).
+
 ## [0.14.0]
 - Breaking change: `AgentsClient.ask` now accepts optional attachment bytes and returns a `Response` (`TextResponse`/`JsonResponse`) instead of a raw `Map`
 - Agent descriptions now surface `annotations` metadata for capability hints (e.g., attachment format)
