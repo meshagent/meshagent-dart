@@ -179,6 +179,26 @@ class Meshagent {
     }
   }
 
+  /// GET /accounts/projects/{project_id}/mailboxes/{address}
+  Future<Mailbox> getMailbox({required String projectId, required String address}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes/$address');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Mailbox not found: $address');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get mailbox.'
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return Mailbox.fromJson(data["mailbox"]);
+  }
+
   /// GET /accounts/projects/{project_id}/mailboxes
   /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
   Future<List<Mailbox>> listMailboxes(String projectId) async {
