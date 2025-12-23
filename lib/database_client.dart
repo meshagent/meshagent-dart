@@ -32,8 +32,8 @@ class DatabaseClient {
 
   /// List all tables in the database.
   /// @returns A future resolving to an array of table names.
-  Future<List<String>> listTables() async {
-    final response = (await room.sendRequest("database.list_tables", {}) as JsonResponse);
+  Future<List<String>> listTables({List<String>? namespace}) async {
+    final response = (await room.sendRequest("database.list_tables", {"namespace": namespace}) as JsonResponse);
 
     // Safely extract tables from response JSON
     final tables = response.json["tables"] as List<dynamic>? ?? [];
@@ -47,6 +47,7 @@ class DatabaseClient {
     List<Map<String, dynamic>>? data,
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
+    List<String>? namespace,
   }) async {
     Map<String, dynamic>? schemaDict;
 
@@ -57,68 +58,90 @@ class DatabaseClient {
       });
     }
 
-    final payload = <String, dynamic>{"name": name, "data": data, "schema": schemaDict, "mode": mode.value};
+    final payload = <String, dynamic>{"name": name, "data": data, "schema": schemaDict, "mode": mode.value, "namespace": namespace};
 
     await room.sendRequest("database.create_table", payload);
   }
 
   /// Create a new table with a specific schema.
-  Future<void> createTableWithSchema({required String name, required Map<String, DataType> schema, CreateMode mode = CreateMode.create}) {
-    return _createTable(name: name, schema: schema, mode: mode);
+  Future<void> createTableWithSchema({
+    required String name,
+    required Map<String, DataType> schema,
+    CreateMode mode = CreateMode.create,
+    List<String>? namespace,
+  }) {
+    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace);
   }
 
   /// Create a table from initial data, optionally specifying a mode.
-  Future<void> createTableFromData({required String name, required List<Map<String, dynamic>> data, CreateMode mode = CreateMode.create}) {
-    return _createTable(name: name, data: data, mode: mode);
+  Future<void> createTableFromData({
+    required String name,
+    required List<Map<String, dynamic>> data,
+    CreateMode mode = CreateMode.create,
+    List<String>? namespace,
+  }) {
+    return _createTable(name: name, data: data, mode: mode, namespace: namespace);
   }
 
   /// Drop (delete) a table by name.
-  Future<void> dropTable({required String name, bool ignoreMissing = false}) async {
-    await room.sendRequest("database.drop_table", {"name": name, "ignoreMissing": ignoreMissing});
+  Future<void> dropTable({required String name, bool ignoreMissing = false, List<String>? namespace}) async {
+    await room.sendRequest("database.drop_table", {"name": name, "ignoreMissing": ignoreMissing, "namespace": namespace});
   }
 
   /// Add new columns to an existing table.
-  Future<void> addColumnWithExpression({required String table, required Map<String, String> newColumns}) async {
-    await room.sendRequest("database.add_columns", {"table": table, "new_columns": newColumns});
+  Future<void> addColumnWithExpression({required String table, required Map<String, String> newColumns, List<String>? namespace}) async {
+    await room.sendRequest("database.add_columns", {"table": table, "new_columns": newColumns, "namespace": namespace});
   }
 
   /// Add new columns to an existing table.
-  Future<void> addColumnsOfType({required String table, required Map<String, DataType> newColumns}) async {
+  Future<void> addColumnsOfType({required String table, required Map<String, DataType> newColumns, List<String>? namespace}) async {
     await room.sendRequest("database.add_columns", {
       "table": table,
       "new_columns": {for (final entry in newColumns.entries) entry.key: entry.value.toJson()},
+      "namespace": namespace,
     });
   }
 
   /// Drop columns from an existing table.
-  Future<void> dropColumns({required String table, required List<String> columns}) async {
-    await room.sendRequest("database.drop_columns", {"table": table, "columns": columns});
+  Future<void> dropColumns({required String table, required List<String> columns, List<String>? namespace}) async {
+    await room.sendRequest("database.drop_columns", {"table": table, "columns": columns, "namespace": namespace});
   }
 
   /// Drop columns from an existing table.
-  Future<void> dropIndex({required String table, required String name}) async {
-    await room.sendRequest("database.drop_index", {"table": table, "name": name});
+  Future<void> dropIndex({required String table, required String name, List<String>? namespace}) async {
+    await room.sendRequest("database.drop_index", {"table": table, "name": name, "namespace": namespace});
   }
 
   /// Insert new records into a table.
-  Future<void> insert({required String table, required List<Map<String, dynamic>> records}) async {
-    await room.sendRequest("database.insert", {"table": table, "records": encodeRecords(records)});
+  Future<void> insert({required String table, required List<Map<String, dynamic>> records, List<String>? namespace}) async {
+    await room.sendRequest("database.insert", {"table": table, "records": encodeRecords(records), "namespace": namespace});
   }
 
   /// Update existing records in a table.
-  Future<void> update({required String table, required String where, Map<String, dynamic>? values, Map<String, String>? valuesSql}) async {
-    final payload = <String, dynamic>{"table": table, "where": where, "values": values, "valuesSql": valuesSql};
+  Future<void> update({
+    required String table,
+    required String where,
+    Map<String, dynamic>? values,
+    Map<String, String>? valuesSql,
+    List<String>? namespace,
+  }) async {
+    final payload = <String, dynamic>{"table": table, "where": where, "values": values, "valuesSql": valuesSql, "namespace": namespace};
     await room.sendRequest("database.update", payload);
   }
 
   /// Delete records from a table.
-  Future<void> delete({required String table, required String where}) async {
-    await room.sendRequest("database.delete", {"table": table, "where": where});
+  Future<void> delete({required String table, required String where, List<String>? namespace}) async {
+    await room.sendRequest("database.delete", {"table": table, "where": where, "namespace": namespace});
   }
 
   /// Merge (upsert) records into a table.
-  Future<void> merge({required String table, required String on, required List<Map<String, dynamic>> records}) async {
-    await room.sendRequest("database.merge", {"table": table, "on": on, "records": records});
+  Future<void> merge({
+    required String table,
+    required String on,
+    required List<Map<String, dynamic>> records,
+    List<String>? namespace,
+  }) async {
+    await room.sendRequest("database.merge", {"table": table, "on": on, "records": records, "namespace": namespace});
   }
 
   /// Search for records in a table.
@@ -130,6 +153,7 @@ class DatabaseClient {
     int? offset,
     int? limit,
     List<String>? select,
+    List<String>? namespace,
   }) async {
     // If 'where' is a Map, convert it to an AND-joined string.
     String? whereClause;
@@ -158,6 +182,8 @@ class DatabaseClient {
       payload["vector"] = vector;
     }
 
+    payload["namespace"] = namespace;
+
     final response = (await room.sendRequest("database.search", payload) as JsonResponse);
 
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
@@ -174,51 +200,53 @@ class DatabaseClient {
   }
 
   /// Optimize (compact/prune) a table.
-  Future<void> optimize({required String table}) async {
-    await room.sendRequest("database.optimize", {"table": table});
+  Future<void> optimize({required String table, List<String>? namespace}) async {
+    await room.sendRequest("database.optimize", {"table": table, "namespace": namespace});
   }
 
   /// Restore a previous version of a table
-  Future<void> restore({required String table, required int version}) async {
-    await room.sendRequest("database.restore", {"table": table, "version": version});
+  Future<void> restore({required String table, required int version, List<String>? namespace}) async {
+    await room.sendRequest("database.restore", {"table": table, "version": version, "namespace": namespace});
   }
 
   /// Restore a previous version of a table
-  Future<Map<String, DataType>> inspect(String table) async {
-    final json = (await room.sendRequest("database.inspect", {"table": table}) as JsonResponse);
+  Future<Map<String, DataType>> inspect(String table, {List<String>? namespace}) async {
+    final json = (await room.sendRequest("database.inspect", {"table": table, "namespace": namespace}) as JsonResponse);
     final schema = json.json["schema"] as Map;
     return {for (final k in schema.keys) k: DataType.fromJson(schema[k])};
   }
 
   /// Checkout a version of a table (will put the table in a read only mode)
-  Future<void> checkout({required String table, required int version}) async {
-    await room.sendRequest("database.checkout", {"table": table, "version": version});
+  Future<void> checkout({required String table, required int version, List<String>? namespace}) async {
+    await room.sendRequest("database.checkout", {"table": table, "version": version, "namespace": namespace});
   }
 
   /// List versions of a table
-  Future<List<TableVersion>> listVersions(String table) async {
-    final versions = (await room.sendRequest("database.list_versions", {"table": table}) as JsonResponse).json["versions"] as List;
+  Future<List<TableVersion>> listVersions(String table, {List<String>? namespace}) async {
+    final versions =
+        (await room.sendRequest("database.list_versions", {"table": table, "namespace": namespace}) as JsonResponse).json["versions"]
+            as List;
     return versions.map((v) => TableVersion(version: (v["version"] as num).toInt(), timestamp: DateTime.parse(v["timestamp"]))).toList();
   }
 
   /// Create a vector index on a given column.
-  Future<void> createVectorIndex({required String table, required String column}) async {
-    await room.sendRequest("database.create_vector_index", {"table": table, "column": column});
+  Future<void> createVectorIndex({required String table, required String column, List<String>? namespace}) async {
+    await room.sendRequest("database.create_vector_index", {"table": table, "column": column, "namespace": namespace});
   }
 
   /// Create a scalar index on a given column.
-  Future<void> createScalarIndex({required String table, required String column}) async {
-    await room.sendRequest("database.create_scalar_index", {"table": table, "column": column});
+  Future<void> createScalarIndex({required String table, required String column, List<String>? namespace}) async {
+    await room.sendRequest("database.create_scalar_index", {"table": table, "column": column, "namespace": namespace});
   }
 
   /// Create a full-text search index on a given text column.
-  Future<void> createFullTextSearchIndex({required String table, required String column}) async {
-    await room.sendRequest("database.create_full_text_search_index", {"table": table, "column": column});
+  Future<void> createFullTextSearchIndex({required String table, required String column, List<String>? namespace}) async {
+    await room.sendRequest("database.create_full_text_search_index", {"table": table, "column": column, "namespace": namespace});
   }
 
   /// List all indexes on a table.
-  Future<List<TableIndex>> listIndexes(String table) async {
-    final response = await room.sendRequest("database.list_indexes", {"table": table}) as JsonResponse;
+  Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace}) async {
+    final response = await room.sendRequest("database.list_indexes", {"table": table, "namespace": namespace}) as JsonResponse;
     final indexes = response.json["indexes"] as List;
 
     return [...indexes.map((m) => TableIndex.fromJson(m))];
