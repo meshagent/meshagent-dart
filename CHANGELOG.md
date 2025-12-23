@@ -1,3 +1,6 @@
+## [0.16.0]
+- Add optional `namespace` support across database client operations (list/inspect/create/drop/index/etc.) to target namespaced tables
+
 ## [0.15.0]
 - Added a Dart client helper to query whether a user can create rooms for a given project.
 - Added `tabs`/`tab` UI components (including initial tab selection, active styling, and visibility control) and expanded editing support to handle boolean properties.
