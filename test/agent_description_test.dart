@@ -15,7 +15,6 @@ void main() {
         description: 'An example agent.',
         inputSchema: const {'type': 'object'},
         outputSchema: outputSchema,
-        requires: requires,
         supportsTools: supportsTools,
         labels: labels,
       );
@@ -25,7 +24,6 @@ void main() {
       final agent = createAgent();
 
       expect(agent.outputSchema, isNull);
-      expect(agent.requires, isEmpty);
       expect(agent.supportsTools, isFalse);
       expect(agent.labels, isEmpty);
     });
@@ -34,15 +32,11 @@ void main() {
       final agent1 = createAgent(requires: null, labels: null);
       final agent2 = createAgent(requires: null, labels: null);
 
-      expect(agent1.requires, isEmpty);
       expect(agent1.labels, isEmpty);
-      expect(identical(agent1.requires, agent2.requires), isFalse);
       expect(identical(agent1.labels, agent2.labels), isFalse);
 
-      agent1.requires?.add(RequiredSchema(name: 'schema'));
       agent1.labels?.add('primary');
 
-      expect(agent2.requires, isEmpty);
       expect(agent2.labels, isEmpty);
     });
 
@@ -55,7 +49,6 @@ void main() {
       });
 
       expect(agent.outputSchema, isNull);
-      expect(agent.requires, isEmpty);
       expect(agent.supportsTools, isFalse);
       expect(agent.labels, isEmpty);
     });
@@ -79,13 +72,6 @@ void main() {
         },
         'labels': ['beta', 'demo'],
         'supports_tools': true,
-        'requires': [
-          {
-            'toolkit': 'example',
-            'tools': ['tool-a'],
-          },
-          {'schema': 'schema'},
-        ],
       };
 
       final description = AgentDescription.fromJson(source);
