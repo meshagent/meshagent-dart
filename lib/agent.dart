@@ -128,18 +128,10 @@ class RemoteToolkit extends Toolkit {
 
 /// Install (create + index + optimize) a RequiredTable in the current room.
 ///
-/// Mirrors the Python logic:
 /// - create_table_with_schema(mode=create_if_not_exists)
 /// - list_indexes + index_exists(column in i.columns)
 /// - create missing indexes (vector / full-text / scalar), each guarded w/ try/catch
 /// - optimize(table)
-///
-/// Notes:
-/// - This assumes your DatabaseClient exposes the methods used below with the same
-///   parameter names (or close). If your method names differ, keep the structure
-///   and swap the calls.
-/// - `listIndexes()` is assumed to return items that either have a `columns`
-///   field (List<String>) or a JSON map containing `columns`.
 
 Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger, bool optimize = true}) async {
   logger ??= Logger.root;
