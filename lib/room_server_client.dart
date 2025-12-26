@@ -154,6 +154,39 @@ class RequiredSchema extends Requirement {
   }
 }
 
+class RequiredTable extends Requirement {
+  RequiredTable({
+    required super.name,
+    required this.schema,
+    this.namespace,
+    this.scalarIndexes,
+    this.fullTextSearchIndexes,
+    this.vectorIndexes,
+  });
+
+  /// Column name -> datatype
+  final Map<String, DataType> schema;
+
+  /// Optional namespace path
+  final List<String>? namespace;
+
+  final List<String>? scalarIndexes;
+  final List<String>? fullTextSearchIndexes;
+  final List<String>? vectorIndexes;
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'table': name,
+      'schema': schema.map((key, value) => MapEntry(key, value.toJson())),
+      'namespace': namespace,
+      'scalar_indexes': scalarIndexes,
+      'full_text_search_indexes': fullTextSearchIndexes,
+      'vector_indexes': vectorIndexes,
+    };
+  }
+}
+
 class RequiredToolkit extends Requirement {
   // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredToolkit({required super.name, this.tools});
