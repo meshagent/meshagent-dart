@@ -205,10 +205,6 @@ class AgentDescription {
   }
 
   static AgentDescription fromJson(Map<String, dynamic> a) {
-    final requires = a["requires"] == null
-        ? <Requirement>[]
-        : [...(a["requires"] as List).map((e) => e["toolkit"] != null ? RequiredToolkit.fromJson(e) : RequiredSchema.fromJson(e))];
-
     return AgentDescription(
       description: a["description"] ?? "",
       title: a["title"] ?? "",
