@@ -185,6 +185,19 @@ class RequiredTable extends Requirement {
       'vector_indexes': vectorIndexes,
     };
   }
+
+  static RequiredTable fromJson(Map<String, dynamic> json) {
+    final rawSchema = json['schema'] as Map<String, dynamic>;
+
+    return RequiredTable(
+      name: json['table'] as String,
+      schema: rawSchema.map((key, value) => MapEntry(key, DataType.fromJson(value as Map<String, dynamic>))),
+      namespace: (json['namespace'] as List?)?.cast<String>(),
+      scalarIndexes: (json['scalar_indexes'] as List?)?.cast<String>(),
+      fullTextSearchIndexes: (json['full_text_search_indexes'] as List?)?.cast<String>(),
+      vectorIndexes: (json['vector_indexes'] as List?)?.cast<String>(),
+    );
+  }
 }
 
 class RequiredToolkit extends Requirement {
