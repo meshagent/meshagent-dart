@@ -136,6 +136,8 @@ abstract class Requirement {
       return RequiredToolkit.fromJson(json);
     } else if (json["schema"] != null) {
       return RequiredSchema.fromJson(json);
+    } else if (json["table"] != null) {
+      return RequiredTable.fromJson(json);
     }
     throw Exception("Unexpected requirement");
   }
