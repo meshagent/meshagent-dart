@@ -154,6 +154,52 @@ class RequiredSchema extends Requirement {
   }
 }
 
+class RequiredTable extends Requirement {
+  RequiredTable({
+    required super.name,
+    required this.schema,
+    this.namespace,
+    this.scalarIndexes,
+    this.fullTextSearchIndexes,
+    this.vectorIndexes,
+  });
+
+  /// Column name -> datatype
+  final Map<String, DataType> schema;
+
+  /// Optional namespace path
+  final List<String>? namespace;
+
+  final List<String>? scalarIndexes;
+  final List<String>? fullTextSearchIndexes;
+  final List<String>? vectorIndexes;
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'table': name,
+      'schema': schema.map((key, value) => MapEntry(key, value.toJson())),
+      'namespace': namespace,
+      'scalar_indexes': scalarIndexes,
+      'full_text_search_indexes': fullTextSearchIndexes,
+      'vector_indexes': vectorIndexes,
+    };
+  }
+
+  static RequiredTable fromJson(Map<String, dynamic> json) {
+    final rawSchema = json['schema'] as Map<String, dynamic>;
+
+    return RequiredTable(
+      name: json['table'] as String,
+      schema: rawSchema.map((key, value) => MapEntry(key, DataType.fromJson(value as Map<String, dynamic>))),
+      namespace: (json['namespace'] as List?)?.cast<String>(),
+      scalarIndexes: (json['scalar_indexes'] as List?)?.cast<String>(),
+      fullTextSearchIndexes: (json['full_text_search_indexes'] as List?)?.cast<String>(),
+      vectorIndexes: (json['vector_indexes'] as List?)?.cast<String>(),
+    );
+  }
+}
+
 class RequiredToolkit extends Requirement {
   // Required toolkits, set tools to null to require all the tools in the toolkit
   RequiredToolkit({required super.name, this.tools});

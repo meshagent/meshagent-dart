@@ -230,18 +230,28 @@ class DatabaseClient {
   }
 
   /// Create a vector index on a given column.
-  Future<void> createVectorIndex({required String table, required String column, List<String>? namespace}) async {
-    await room.sendRequest("database.create_vector_index", {"table": table, "column": column, "namespace": namespace});
+  Future<void> createVectorIndex({required String table, required String column, List<String>? namespace, bool replace = false}) async {
+    await room.sendRequest("database.create_vector_index", {"table": table, "column": column, "namespace": namespace, "replace": replace});
   }
 
   /// Create a scalar index on a given column.
-  Future<void> createScalarIndex({required String table, required String column, List<String>? namespace}) async {
-    await room.sendRequest("database.create_scalar_index", {"table": table, "column": column, "namespace": namespace});
+  Future<void> createScalarIndex({required String table, required String column, List<String>? namespace, bool replace = false}) async {
+    await room.sendRequest("database.create_scalar_index", {"table": table, "column": column, "namespace": namespace, "replace": replace});
   }
 
   /// Create a full-text search index on a given text column.
-  Future<void> createFullTextSearchIndex({required String table, required String column, List<String>? namespace}) async {
-    await room.sendRequest("database.create_full_text_search_index", {"table": table, "column": column, "namespace": namespace});
+  Future<void> createFullTextSearchIndex({
+    required String table,
+    required String column,
+    List<String>? namespace,
+    bool replace = false,
+  }) async {
+    await room.sendRequest("database.create_full_text_search_index", {
+      "table": table,
+      "column": column,
+      "namespace": namespace,
+      "replace": replace,
+    });
   }
 
   /// List all indexes on a table.
