@@ -120,6 +120,132 @@ class Mailbox {
   Map<String, dynamic> toJson() => {'address': address, 'room': room, 'queue': queue};
 }
 
+// ---------------------------
+// Scheduled Tasks models
+// ---------------------------
+
+class ScheduledTask {
+  ScheduledTask({
+    required this.id,
+    required this.projectId,
+    required this.roomName,
+    required this.queueName,
+    required this.payload,
+    required this.schedule,
+    required this.active,
+    required this.once,
+    this.lastRunId,
+    this.lastStartTime,
+    this.lastEndTime,
+    this.lastStatus,
+    this.lastReturnMessage,
+  });
+
+  final String id;
+  final String projectId;
+  final String roomName;
+  final String queueName;
+
+  /// Server-side payload is commonly a JSON-string or opaque string.
+  /// Keep it as dynamic if you want to allow either Map or String.
+  final Map<String, dynamic> payload;
+
+  final String schedule;
+  final bool active;
+  final bool once;
+
+  final int? lastRunId;
+  final DateTime? lastStartTime;
+  final DateTime? lastEndTime;
+  final String? lastStatus;
+  final String? lastReturnMessage;
+
+  factory ScheduledTask.fromJson(Map<String, dynamic> json) => ScheduledTask(
+    id: json['id'] as String,
+    projectId: json['project_id'] as String,
+    roomName: json['room_name'] as String,
+    queueName: json['queue_name'] as String,
+    payload: json['payload'],
+    schedule: json['schedule'] as String,
+    active: (json['active'] as bool?) ?? true,
+    once: (json['once'] as bool?) ?? false,
+    lastRunId: (json['last_run_id'] as num?)?.toInt(),
+    lastStartTime: json['last_start_time'] == null ? null : DateTime.parse(json['last_start_time'] as String),
+    lastEndTime: json['last_end_time'] == null ? null : DateTime.parse(json['last_end_time'] as String),
+    lastStatus: json['last_status'] as String?,
+    lastReturnMessage: json['last_return_message'] as String?,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'project_id': projectId,
+    'room_name': roomName,
+    'queue_name': queueName,
+    'payload': payload,
+    'schedule': schedule,
+    'active': active,
+    'once': once,
+    if (lastRunId != null) 'last_run_id': lastRunId,
+    if (lastStartTime != null) 'last_start_time': lastStartTime!.toIso8601String(),
+    if (lastEndTime != null) 'last_end_time': lastEndTime!.toIso8601String(),
+    if (lastStatus != null) 'last_status': lastStatus,
+    if (lastReturnMessage != null) 'last_return_message': lastReturnMessage,
+  };
+}
+
+class CreateScheduledTaskRequest {
+  CreateScheduledTaskRequest({
+    this.id,
+    required this.roomName,
+    required this.queueName,
+    required this.payload,
+    required this.schedule,
+    this.active = true,
+    this.once = false,
+  });
+
+  final String? id;
+  final String roomName;
+  final String queueName;
+  final bool once;
+
+  /// dict or json-string
+  final Map<String, dynamic> payload;
+
+  final String schedule;
+  final bool active;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'room_name': roomName,
+    'queue_name': queueName,
+    'payload': payload,
+    'schedule': schedule,
+    'active': active,
+    'once': once,
+  };
+}
+
+class UpdateScheduledTaskRequest {
+  UpdateScheduledTaskRequest({this.roomName, this.queueName, this.payload, this.schedule, this.active});
+
+  final String? roomName;
+  final String? queueName;
+  final Map<String, dynamic>? payload;
+  final String? schedule;
+  final bool? active;
+
+  Map<String, dynamic> toJson() {
+    final out = <String, dynamic>{};
+    if (roomName != null) out['room_name'] = roomName;
+    if (queueName != null) out['queue_name'] = queueName;
+    if (payload != null) out['payload'] = payload;
+    if (schedule != null) out['schedule'] = schedule;
+    if (active != null) out['active'] = active;
+    return out;
+  }
+}
+
 /// A client to interact with the accounts routes.
 class Meshagent {
   final String baseUrl;
@@ -1742,6 +1868,119 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+  }
+
+  /// POST /accounts/projects/{project_id}/scheduled-tasks
+  /// Returns { "task_id": "<uuid>" }
+  Future<String> createScheduledTask({
+    required String projectId,
+    required String roomName,
+    required String queueName,
+    required dynamic payload,
+    required String schedule,
+    bool active = true,
+    bool once = false,
+    String? taskId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks');
+
+    final body = CreateScheduledTaskRequest(
+      id: taskId,
+      roomName: roomName,
+      queueName: queueName,
+      payload: payload,
+      schedule: schedule,
+      active: active,
+      once: once,
+    ).toJson();
+
+    final resp = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+
+    if (resp.statusCode >= 400) {
+      // mirror your python client’s "ensure_success" style
+      throw MeshagentException('Failed to create scheduled task. Status code: ${resp.statusCode}, body: ${resp.body}');
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final tid = data['task_id'];
+    if (tid is! String) {
+      throw MeshagentException('Invalid create scheduled task response: missing "task_id"');
+    }
+    return tid;
+  }
+
+  /// PUT /accounts/projects/{project_id}/scheduled-tasks/{task_id}
+  Future<void> updateScheduledTask({
+    required String projectId,
+    required String taskId,
+    String? roomName,
+    String? queueName,
+    dynamic payload,
+    String? schedule,
+    bool? active,
+  }) async {
+    final tid = Uri.encodeComponent(taskId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks/$tid');
+
+    final body = UpdateScheduledTaskRequest(
+      roomName: roomName,
+      queueName: queueName,
+      payload: payload,
+      schedule: schedule,
+      active: active,
+    ).toJson();
+
+    final resp = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+
+    if (resp.statusCode >= 400) {
+      throw MeshagentException('Failed to update scheduled task. Status code: ${resp.statusCode}, body: ${resp.body}');
+    }
+  }
+
+  /// DELETE /accounts/projects/{project_id}/scheduled-tasks/{task_id}
+  /// Returns 204 or {} on success.
+  Future<void> deleteScheduledTask({required String projectId, required String taskId}) async {
+    final tid = Uri.encodeComponent(taskId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks/$tid');
+
+    final resp = await http.delete(uri, headers: _getHeaders());
+
+    if (resp.statusCode >= 400) {
+      throw MeshagentException('Failed to delete scheduled task. Status code: ${resp.statusCode}, body: ${resp.body}');
+    }
+  }
+
+  /// GET /accounts/projects/{project_id}/scheduled-tasks?room_name=&task_id=&active=&limit=&offset=
+  /// Returns { "tasks": [ ... ] }
+  Future<List<ScheduledTask>> listScheduledTasks({
+    required String projectId,
+    String? roomName,
+    String? taskId,
+    bool? active,
+    int limit = 200,
+    int offset = 0,
+  }) async {
+    final qp = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    if (roomName != null) qp['room_name'] = roomName;
+    if (taskId != null) qp['task_id'] = taskId;
+    if (active != null) qp['active'] = active ? 'true' : 'false';
+
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks').replace(queryParameters: qp);
+
+    final resp = await http.get(uri, headers: _getHeaders());
+
+    if (resp.statusCode >= 400) {
+      throw MeshagentException('Failed to list scheduled tasks. Status code: ${resp.statusCode}, body: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final tasksRaw = decoded['tasks'];
+
+    if (tasksRaw is! List) {
+      throw MeshagentException("Invalid scheduled-tasks payload: expected 'tasks' to be a list");
+    }
+
+    return tasksRaw.whereType<Map>().map((m) => ScheduledTask.fromJson(m.cast<String, dynamic>())).toList();
   }
 }
 
