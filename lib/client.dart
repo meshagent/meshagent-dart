@@ -134,6 +134,7 @@ class ScheduledTask {
     required this.schedule,
     required this.active,
     required this.once,
+    required this.annotations,
     this.lastRunId,
     this.lastStartTime,
     this.lastEndTime,
@@ -159,6 +160,7 @@ class ScheduledTask {
   final DateTime? lastEndTime;
   final String? lastStatus;
   final String? lastReturnMessage;
+  final Map<String, String> annotations;
 
   factory ScheduledTask.fromJson(Map<String, dynamic> json) => ScheduledTask(
     id: json['id'] as String,
@@ -169,6 +171,7 @@ class ScheduledTask {
     schedule: json['schedule'] as String,
     active: (json['active'] as bool?) ?? true,
     once: (json['once'] as bool?) ?? false,
+    annotations: (json['annotations'] as Map).cast<String, String>(),
     lastRunId: (json['last_run_id'] as num?)?.toInt(),
     lastStartTime: json['last_start_time'] == null ? null : DateTime.parse(json['last_start_time'] as String),
     lastEndTime: json['last_end_time'] == null ? null : DateTime.parse(json['last_end_time'] as String),
@@ -185,6 +188,7 @@ class ScheduledTask {
     'schedule': schedule,
     'active': active,
     'once': once,
+    'annotations': annotations,
     if (lastRunId != null) 'last_run_id': lastRunId,
     if (lastStartTime != null) 'last_start_time': lastStartTime!.toIso8601String(),
     if (lastEndTime != null) 'last_end_time': lastEndTime!.toIso8601String(),
@@ -193,8 +197,8 @@ class ScheduledTask {
   };
 }
 
-class CreateScheduledTaskRequest {
-  CreateScheduledTaskRequest({
+class _CreateScheduledTaskRequest {
+  _CreateScheduledTaskRequest({
     this.id,
     required this.roomName,
     required this.queueName,
@@ -202,6 +206,7 @@ class CreateScheduledTaskRequest {
     required this.schedule,
     this.active = true,
     this.once = false,
+    required this.annotations,
   });
 
   final String? id;
@@ -211,6 +216,8 @@ class CreateScheduledTaskRequest {
 
   /// dict or json-string
   final Map<String, dynamic> payload;
+
+  final Map<String, String> annotations;
 
   final String schedule;
   final bool active;
@@ -223,17 +230,19 @@ class CreateScheduledTaskRequest {
     'schedule': schedule,
     'active': active,
     'once': once,
+    'annotations': annotations,
   };
 }
 
-class UpdateScheduledTaskRequest {
-  UpdateScheduledTaskRequest({this.roomName, this.queueName, this.payload, this.schedule, this.active});
+class _UpdateScheduledTaskRequest {
+  _UpdateScheduledTaskRequest({this.roomName, this.queueName, this.payload, this.schedule, this.active, required this.annotations});
 
   final String? roomName;
   final String? queueName;
   final Map<String, dynamic>? payload;
   final String? schedule;
   final bool? active;
+  final Map<String, String> annotations;
 
   Map<String, dynamic> toJson() {
     final out = <String, dynamic>{};
@@ -242,6 +251,7 @@ class UpdateScheduledTaskRequest {
     if (payload != null) out['payload'] = payload;
     if (schedule != null) out['schedule'] = schedule;
     if (active != null) out['active'] = active;
+    out["annotations"] = annotations;
     return out;
   }
 }
@@ -1881,10 +1891,11 @@ class Meshagent {
     bool active = true,
     bool once = false,
     String? taskId,
+    Map<String, String> annotations = const {},
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks');
 
-    final body = CreateScheduledTaskRequest(
+    final body = _CreateScheduledTaskRequest(
       id: taskId,
       roomName: roomName,
       queueName: queueName,
@@ -1892,6 +1903,7 @@ class Meshagent {
       schedule: schedule,
       active: active,
       once: once,
+      annotations: annotations,
     ).toJson();
 
     final resp = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
@@ -1918,16 +1930,18 @@ class Meshagent {
     dynamic payload,
     String? schedule,
     bool? active,
+    Map<String, String> annotations = const {},
   }) async {
     final tid = Uri.encodeComponent(taskId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks/$tid');
 
-    final body = UpdateScheduledTaskRequest(
+    final body = _UpdateScheduledTaskRequest(
       roomName: roomName,
       queueName: queueName,
       payload: payload,
       schedule: schedule,
       active: active,
+      annotations: annotations,
     ).toJson();
 
     final resp = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
