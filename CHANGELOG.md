@@ -1,3 +1,6 @@
+## [0.17.1]
+- Clarified the scheduled-task creation response shape in the Dart client documentation.
+
 ## [0.17.0]
 - Added scheduled tasks API client support (models + create/update/list/delete helpers)
 - Added `RequiredTable` requirement type and `installTable` helper to create tables, indexes, and optimize
