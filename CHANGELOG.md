@@ -1,3 +1,10 @@
+## [0.17.0]
+- Added scheduled tasks API client support (models + create/update/list/delete helpers)
+- Added `RequiredTable` requirement type and `installTable` helper to create tables, indexes, and optimize
+- Added `replace` option for database index creation APIs (scalar/full-text/vector) to support idempotent index updates
+- Breaking: removed `AgentDescription.requires` from Dart room client models/JSON serialization
+- Updated Dart dependency: `http` to `^1.6.0`
+
 ## [0.16.0]
 - Add optional `namespace` support across database client operations (list/inspect/create/drop/index/etc.) to target namespaced tables
 
