@@ -1871,7 +1871,7 @@ class Meshagent {
   }
 
   /// POST /accounts/projects/{project_id}/scheduled-tasks
-  /// Returns { "task_id": "<uuid>" }
+  /// Returns { "task_id" }
   Future<String> createScheduledTask({
     required String projectId,
     required String roomName,
