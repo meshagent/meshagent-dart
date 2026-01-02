@@ -630,7 +630,6 @@ class _RunRequest {
     this.ports = const {},
     this.credentials = const [],
     this.requestId,
-    this.variables,
     this.name,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
@@ -645,7 +644,6 @@ class _RunRequest {
   final String? participantName;
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
-  final Map<String, String>? variables;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -658,7 +656,6 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
-    'variables': variables,
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
@@ -722,19 +719,17 @@ class BuildInfo {
 
 /// Lightweight image description (from `containers.list_images`)
 class ContainerImage {
-  ContainerImage({required this.id, required this.tags, required this.size, required this.labels, this.manifest});
+  ContainerImage({required this.id, required this.tags, required this.size, required this.labels});
 
   final String id;
   final List<String> tags;
   final int? size; // bytes
   final Map<String, dynamic> labels;
-  final ServiceTemplateSpec? manifest;
 
   factory ContainerImage.fromJson(Map<String, dynamic> json) => ContainerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
-    manifest: json['manifest'] == null ? null : ServiceTemplateSpec.fromJson(json['manifest']),
     labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
   );
 }
@@ -858,7 +853,6 @@ class ContainersClient extends ChangeEmitter {
     String? role,
     String? participantName,
     Map<int, int> ports = const {},
-    Map<String, String>? variables,
     List<DockerSecret> credentials = const [],
     String? name,
   }) async {
@@ -882,7 +876,6 @@ class ContainersClient extends ChangeEmitter {
         participantName: participantName,
         ports: ports,
         credentials: credentials,
-        variables: variables,
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
@@ -971,18 +964,18 @@ class ParticipantInfo {
 }
 
 class RoomContainer {
-  RoomContainer({required this.id, required this.image, required this.startedBy, required this.state, this.manifest});
+  RoomContainer({required this.id, required this.image, this.name, required this.startedBy, required this.state});
   final String id;
   final String image;
+  final String? name;
   final ParticipantInfo startedBy;
-  final Map<String, dynamic>? manifest;
   final String state;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
       id: json["id"],
       image: json["image"],
-      manifest: json["manifest"],
+      name: json["name"],
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
     );
@@ -2121,12 +2114,14 @@ class RoomStorageMountSpec {
 /// Wrapper for all storage mounts on a template (currently only `room`).
 class ServiceTemplateMountSpec {
   final List<RoomStorageMountSpec>? room;
+  final List<ImageStorageMountSpec>? images;
 
-  ServiceTemplateMountSpec({this.room});
+  ServiceTemplateMountSpec({this.room, this.images});
 
   factory ServiceTemplateMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      images: (json['room'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
@@ -2363,15 +2358,46 @@ class ProjectStorageMountSpec {
   }
 }
 
+class ImageStorageMountSpec {
+  final String image;
+  final String path;
+  final String? subpath;
+  final bool readOnly;
+
+  const ImageStorageMountSpec({required this.path, this.subpath, this.readOnly = true, required this.image});
+
+  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly, 'image': image};
+
+  static ImageStorageMountSpec fromJson(Map<String, dynamic> json) {
+    return ImageStorageMountSpec(
+      path: json['path'] as String,
+      subpath: json['subpath'] as String?,
+      readOnly: (json['read_only'] as bool?) ?? true,
+      image: json['image'] as String,
+    );
+  }
+
+  ImageStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
+    return ImageStorageMountSpec(
+      path: path ?? this.path,
+      subpath: subpath ?? this.subpath,
+      readOnly: readOnly ?? this.readOnly,
+      image: image,
+    );
+  }
+}
+
 class ServiceStorageMountsSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ProjectStorageMountSpec>? project;
+  final List<ImageStorageMountSpec>? images;
 
-  const ServiceStorageMountsSpec({this.room, this.project});
+  const ServiceStorageMountsSpec({this.room, this.project, this.images});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
     if (project != null && project!.isNotEmpty) 'project': project!.map((e) => e.toJson()).toList(),
+    if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
   };
 
   static ServiceStorageMountsSpec? fromJson(Map<String, dynamic>? json) {
@@ -2379,6 +2405,7 @@ class ServiceStorageMountsSpec {
     return ServiceStorageMountsSpec(
       room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
