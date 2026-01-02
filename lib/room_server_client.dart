@@ -416,46 +416,6 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
-  Future<Map<String, dynamic>> exec({
-    required String name,
-    required String image,
-    required String? command,
-    required String? pullSecret,
-    String? participantName,
-    String? role,
-    Map<String, String>? env,
-    String? roomStoragePath,
-  }) async {
-    final ws = (protocol.channel as WebSocketProtocolChannel);
-    final baseUrl = ws.url.toString();
-
-    final uri = Uri.parse('$baseUrl/exec').replace(scheme: ws.url.scheme.replaceAll("ws", "http"));
-
-    final response = await post(
-      uri,
-      headers: {"Authorization": "Bearer ${ws.jwt}"},
-      body: jsonEncode({
-        "image": image,
-        "name": name,
-        "command": command,
-        "pull_secret": pullSecret,
-        "env": env,
-        "room_storage_path": roomStoragePath,
-        "participant_name": participantName,
-        "role": role,
-      }),
-    );
-
-    if (response.statusCode >= 400) {
-      throw Exception(
-        'Failed to execute. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  }
-
   Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
     protocol.start(onDone: onDone, onError: onError);
 
@@ -737,8 +697,8 @@ class ContainerImage {
   );
 }
 
-class ContainerRun {
-  ContainerRun._(this._client, this._requestId, this.command);
+class ExecSession {
+  ExecSession._(this._client, this._requestId, this.command);
 
   final String command;
   final RoomClient _client;
@@ -784,7 +744,7 @@ class ContainersClient extends ChangeEmitter {
     room.protocol.addHandler("containers.progress", _handleProgress);
   }
 
-  final Map<String, ContainerRun> _ttys = {};
+  final Map<String, ExecSession> _ttys = {};
 
   Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final chunk = unpackMessage(bytes).header;
@@ -891,12 +851,12 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
-  ContainerRun exec({required String containerId, required String command, bool tty = false, String? name}) {
+  ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
     final requestId = Uuid().v4().toString();
 
     final req = _ExecRequest(containerId: containerId, requestId: requestId, command: command, tty: tty);
 
-    final container = ContainerRun._(room, requestId, command);
+    final container = ExecSession._(room, requestId, command);
     _ttys[requestId] = container;
 
     room
