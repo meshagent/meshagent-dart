@@ -14,8 +14,6 @@ import "runtime.dart";
 import "database_client.dart";
 import "livekit_client.dart";
 
-import "package:http/http.dart";
-
 class RoomServerException implements Exception {
   RoomServerException(this.message);
 
