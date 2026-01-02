@@ -631,6 +631,7 @@ class _RunRequest {
     this.credentials = const [],
     this.requestId,
     this.name,
+    this.mounts,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
@@ -644,6 +645,7 @@ class _RunRequest {
   final String? participantName;
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
+  final ContainerMountSpec? mounts;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -656,6 +658,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    if (mounts != null) 'mounts': mounts!.toJson(),
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
@@ -855,6 +858,7 @@ class ContainersClient extends ChangeEmitter {
     Map<int, int> ports = const {},
     List<DockerSecret> credentials = const [],
     String? name,
+    ContainerMountSpec? mounts,
   }) async {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -876,6 +880,7 @@ class ContainersClient extends ChangeEmitter {
         participantName: participantName,
         ports: ports,
         credentials: credentials,
+        mounts: mounts,
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
@@ -2112,14 +2117,14 @@ class RoomStorageMountSpec {
 }
 
 /// Wrapper for all storage mounts on a template (currently only `room`).
-class ServiceTemplateMountSpec {
+class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ImageStorageMountSpec>? images;
 
-  ServiceTemplateMountSpec({this.room, this.images});
+  ServiceTemplateContainerMountSpec({this.room, this.images});
 
-  factory ServiceTemplateMountSpec.fromJson(Map<String, dynamic> json) {
-    return ServiceTemplateMountSpec(
+  factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
+    return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['room'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
@@ -2167,7 +2172,7 @@ class ContainerTemplateSpec {
   final String? image;
   final String? command;
   final List<EnvironmentVariable>? environment;
-  final ServiceTemplateMountSpec? storage;
+  final ServiceTemplateContainerMountSpec? storage;
 
   static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
     return ContainerTemplateSpec(
@@ -2175,7 +2180,7 @@ class ContainerTemplateSpec {
 
       image: json['image'] as String?,
       command: json['command'] as String?,
-      storage: json['storage'] == null ? null : ServiceTemplateMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
+      storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
     );
   }
 
@@ -2208,9 +2213,9 @@ class ContainerTemplateSpec {
       environment: env,
       storage: storage == null
           ? null
-          : ServiceStorageMountsSpec(
+          : ContainerMountSpec(
               room: storage!.room,
-              // If you later add `project` to ServiceTemplateMountSpec, map it here:
+              // If you later add `project` to ServiceTemplateContainerMountSpec, map it here:
               // project: storage!.project,
             ),
     );
@@ -2387,12 +2392,12 @@ class ImageStorageMountSpec {
   }
 }
 
-class ServiceStorageMountsSpec {
+class ContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
 
-  const ServiceStorageMountsSpec({this.room, this.project, this.images});
+  const ContainerMountSpec({this.room, this.project, this.images});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
@@ -2400,9 +2405,9 @@ class ServiceStorageMountsSpec {
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
   };
 
-  static ServiceStorageMountsSpec? fromJson(Map<String, dynamic>? json) {
+  static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
-    return ServiceStorageMountsSpec(
+    return ContainerMountSpec(
       room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
@@ -2501,7 +2506,7 @@ class ContainerSpec {
   final List<EnvironmentVariable> environment;
   final List<String> secrets;
   final String? pullSecret;
-  final ServiceStorageMountsSpec? storage;
+  final ContainerMountSpec? storage;
   final ServiceApiKeySpec? apiKey;
 
   static ContainerSpec fromJson(Map<String, dynamic> json) {
@@ -2511,7 +2516,7 @@ class ContainerSpec {
       environment: json['environment'] == null ? null : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList(),
       secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
       pullSecret: json['pull_secret'] as String?,
-      storage: ServiceStorageMountsSpec.fromJson(json['storage'] as Map<String, dynamic>?),
+      storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
       apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
     );
   }
