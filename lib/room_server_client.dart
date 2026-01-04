@@ -590,6 +590,7 @@ class _RunRequest {
     this.requestId,
     this.name,
     this.mounts,
+    this.writableRootFs,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
@@ -604,6 +605,7 @@ class _RunRequest {
   final Map<int, int> ports;
   final List<DockerSecret> credentials;
   final ContainerMountSpec? mounts;
+  final bool? writableRootFs;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -616,6 +618,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    if (writableRootFs != null) 'writable_root_fs': writableRootFs,
     if (mounts != null) 'mounts': mounts!.toJson(),
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
@@ -817,6 +820,7 @@ class ContainersClient extends ChangeEmitter {
     List<DockerSecret> credentials = const [],
     String? name,
     ContainerMountSpec? mounts,
+    bool? writableRootFs,
   }) async {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -839,6 +843,7 @@ class ContainersClient extends ChangeEmitter {
         ports: ports,
         credentials: credentials,
         mounts: mounts,
+        writableRootFs: writableRootFs,
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
