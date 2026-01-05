@@ -2171,7 +2171,7 @@ class ContainerTemplateSpec {
       throw ArgumentError('ServiceTemplateSpec.image is required to build a ServiceSpec');
     }
     return ContainerSpec(
-      command: command,
+      command: command?.formatWith(values),
       image: img,
       environment: env,
       storage: storage == null
