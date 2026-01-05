@@ -2089,7 +2089,7 @@ class ServiceTemplateContainerMountSpec {
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      images: (json['room'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
