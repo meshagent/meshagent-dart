@@ -334,6 +334,16 @@ class SecretsGrant {
   );
 }
 
+class TunnelsGrant {
+  final List<String>? ports;
+
+  TunnelsGrant({this.ports});
+
+  Map<String, dynamic> toJson() => {if (ports != null) 'ports': ports};
+
+  factory TunnelsGrant.fromJson(Map<String, dynamic> j) => TunnelsGrant(ports: (j['ports'] as List?)?.cast<String>());
+}
+
 /// ---------------------------
 /// ApiScope (mirror Python)
 /// ---------------------------
@@ -350,6 +360,7 @@ class ApiScope {
   final AgentsGrant? agents;
   final AdminGrant? admin;
   final SecretsGrant? secrets;
+  final TunnelsGrant? tunnels;
 
   ApiScope({
     this.livekit,
@@ -363,6 +374,7 @@ class ApiScope {
     this.agents,
     this.admin,
     this.secrets,
+    this.tunnels,
   });
 
   static ApiScope agentDefault() => ApiScope(
@@ -402,6 +414,7 @@ class ApiScope {
     agents: AgentsGrant(),
     admin: AdminGrant(),
     secrets: SecretsGrant(),
+    tunnels: TunnelsGrant(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -416,6 +429,7 @@ class ApiScope {
     if (agents != null) 'agents': agents!.toJson(),
     if (admin != null) 'admin': admin!.toJson(),
     if (secrets != null) 'secrets': secrets!.toJson(),
+    if (tunnels != null) 'tunnels': tunnels!.toJson(),
   };
 
   factory ApiScope.fromJson(Map<String, dynamic> j) => ApiScope(
@@ -430,6 +444,7 @@ class ApiScope {
     agents: j['agents'] != null ? AgentsGrant.fromJson(j['agents'] as Map<String, dynamic>) : null,
     admin: j['admin'] != null ? AdminGrant.fromJson(j['admin'] as Map<String, dynamic>) : null,
     secrets: j['secrets'] != null ? SecretsGrant.fromJson(j['secrets'] as Map<String, dynamic>) : null,
+    tunnels: j['tunnels'] != null ? TunnelsGrant.fromJson(j['tunnels'] as Map<String, dynamic>) : null,
   );
 }
 
