@@ -1,3 +1,9 @@
+## [0.18.0]
+- Added `ApiScope.tunnels` (with allowed `ports`) to participant tokens for tunnel authorization
+- Added `writableRootFs` support to container run requests
+- Fixed service mount-spec JSON parsing for `images`
+- Service template commands now support variable formatting/substitution
+
 ## [0.17.1]
 - Clarified the scheduled-task creation response shape in the Dart client documentation.
 
