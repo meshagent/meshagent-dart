@@ -1,3 +1,6 @@
+## [0.18.1]
+- Stability
+
 ## [0.18.0]
 - Added `ApiScope.tunnels` (with allowed `ports`) to participant tokens for tunnel authorization
 - Added `writableRootFs` support to container run requests
