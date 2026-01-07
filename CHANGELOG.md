@@ -1,3 +1,8 @@
+## [0.19.0]
+- Add optional transcription support for voice calls, including sending a transcript path in the voice session request
+- Add a localization toolkit with a “get local time” tool that returns current time and timezone
+- Add dependency `flutter_timezone` ^5.0.1 (resolved to 5.0.1)
+
 ## [0.18.2]
 - Stability
 
