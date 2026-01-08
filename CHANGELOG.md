@@ -1,3 +1,6 @@
+## [0.19.1]
+- Add `host_port` support to the Dart room server client port specification JSON model (`host_port`) so clients can represent host-side port mappings
+
 ## [0.19.0]
 - Add optional transcription support for voice calls, including sending a transcript path in the voice session request
 - Add a localization toolkit with a “get local time” tool that returns current time and timezone
