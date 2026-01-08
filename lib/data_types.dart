@@ -13,6 +13,7 @@ final Map<String, DataTypeConstructor> _dataTypes = {
   "float": (data) => FloatDataType.fromJson(data),
   "timestamp": (data) => TimestampDataType.fromJson(data),
   "binary": (data) => BinaryDataType.fromJson(data),
+  "bool": (data) => BoolDataType.fromJson(data),
 };
 
 /// Abstract base class for data types.
@@ -31,6 +32,28 @@ abstract class DataType {
       throw Exception("Unknown data type: $type");
     }
     return constructor(data);
+  }
+}
+
+/// IntDataType
+class BoolDataType extends DataType {
+  BoolDataType() : super();
+
+  static BoolDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'bool') {
+      throw Exception("Expected type 'bool', got '${data['type']}'");
+    }
+    return BoolDataType();
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': 'bool'};
+  }
+
+  @override
+  String toString() {
+    return "bool";
   }
 }
 

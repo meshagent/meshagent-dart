@@ -154,6 +154,7 @@ class DatabaseClient {
     int? limit,
     List<String>? select,
     List<String>? namespace,
+    List<String>? columns,
   }) async {
     // If 'where' is a Map, convert it to an AND-joined string.
     String? whereClause;
@@ -180,6 +181,9 @@ class DatabaseClient {
     }
     if (vector != null) {
       payload["vector"] = vector;
+    }
+    if (columns != null) {
+      payload["columns"] = columns;
     }
 
     payload["namespace"] = namespace;
