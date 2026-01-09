@@ -2014,8 +2014,17 @@ class ServiceTemplateVariable {
   final bool optional;
   final String? type;
   final List<String>? enumValues; // mapped to `enum` in JSON
+  final Map<String, String>? annotations;
 
-  ServiceTemplateVariable({required this.name, this.description, this.obscure = false, this.optional = false, this.enumValues, this.type});
+  ServiceTemplateVariable({
+    required this.name,
+    this.description,
+    this.obscure = false,
+    this.optional = false,
+    this.enumValues,
+    this.type,
+    this.annotations,
+  });
 
   factory ServiceTemplateVariable.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateVariable(
@@ -2025,6 +2034,7 @@ class ServiceTemplateVariable {
       optional: json['optional'] ?? false,
       type: json['type'],
       enumValues: (json['enum'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
+      annotations: (json["annotations"] as Map?)?.cast<String, String>(),
     );
   }
 
@@ -2035,6 +2045,7 @@ class ServiceTemplateVariable {
     'optional': optional,
     'type': type,
     if (enumValues != null) 'enum': enumValues,
+    if (annotations != null) 'annotations': annotations,
   };
 }
 
