@@ -2505,7 +2505,7 @@ class ContainerSpec {
 class ExternalServiceSpec {
   ExternalServiceSpec({required this.url});
 
-  final String url;
+  final String? url;
 
   static ExternalServiceSpec fromJson(Map<String, dynamic> json) {
     return ExternalServiceSpec(url: json["url"]);
