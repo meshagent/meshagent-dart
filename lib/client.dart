@@ -111,13 +111,14 @@ class Mailbox {
   final String address;
   final String room;
   final String queue;
+  final bool public;
 
-  Mailbox({required this.address, required this.room, required this.queue});
+  Mailbox({required this.address, required this.room, required this.queue, required this.public});
 
   factory Mailbox.fromJson(Map<String, dynamic> json) =>
-      Mailbox(address: json['address'] as String, room: json['room'] as String, queue: json['queue'] as String);
+      Mailbox(address: json['address'] as String, room: json['room'] as String, queue: json['queue'] as String, public: json['public']);
 
-  Map<String, dynamic> toJson() => {'address': address, 'room': room, 'queue': queue};
+  Map<String, dynamic> toJson() => {'address': address, 'room': room, 'queue': queue, 'public': public};
 }
 
 // ---------------------------
@@ -276,9 +277,15 @@ class Meshagent {
   /// POST /accounts/projects/{project_id}/mailboxes
   /// Body: { "address", "room", "queue" }
   /// Returns {} on success.
-  Future<void> createMailbox({required String projectId, required String address, required String room, required String queue}) async {
+  Future<void> createMailbox({
+    required String projectId,
+    required String address,
+    required String room,
+    required String queue,
+    bool public = false,
+  }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes');
-    final body = {'address': address, 'room': room, 'queue': queue};
+    final body = {'address': address, 'room': room, 'queue': queue, 'public': public};
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
 
@@ -300,10 +307,16 @@ class Meshagent {
   /// PUT /accounts/projects/{project_id}/mailboxes/{address}
   /// Body: { "room", "queue" }
   /// Returns {} on success.
-  Future<void> updateMailbox({required String projectId, required String address, required String room, required String queue}) async {
+  Future<void> updateMailbox({
+    required String projectId,
+    required String address,
+    required String room,
+    required String queue,
+    bool public = false,
+  }) async {
     final encodedAddress = Uri.encodeComponent(address);
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes/$encodedAddress');
-    final body = {'room': room, 'queue': queue};
+    final body = {'room': room, 'queue': queue, 'public': public};
 
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
 
