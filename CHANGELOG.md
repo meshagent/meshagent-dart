@@ -1,3 +1,8 @@
+## [0.19.2]
+- Add boolean data type support in Dart schema types.
+- Dart schema JSON now includes `nullable` and `metadata` for type round-tripping.
+- BREAKING: MCP server config parsing now requires snake_case keys and no longer accepts camelCase fallbacks.
+
 ## [0.19.1]
 - Add `host_port` support to the Dart room server client port specification JSON model (`host_port`) so clients can represent host-side port mappings
 
