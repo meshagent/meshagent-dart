@@ -57,14 +57,14 @@ class MCPServer {
 
   factory MCPServer.fromJson(Map<String, dynamic> json) {
     return MCPServer(
-      serverLabel: json['server_label'] ?? json['serverLabel'],
-      authorization: json['authorization'] ?? json['authorization'],
-      serverUrl: json['server_url'] ?? json['serverUrl'],
-      allowedTools: (json['allowed_tools'] ?? json['allowedTools'])?.cast<String>(),
+      serverLabel: json['server_label'],
+      authorization: json['authorization'],
+      serverUrl: json['server_url'],
+      allowedTools: (json['allowed_tools'])?.cast<String>(),
       headers: json['headers'] != null ? Map<String, dynamic>.from(json['headers']) : null,
-      requireApproval: json['require_approval'] ?? json['requireApproval'],
-      alwaysRequireApproval: (json['always_require_approval'] ?? json['alwaysRequireApproval'])?.cast<String>(),
-      neverRequireApproval: (json['never_require_approval'] ?? json['neverRequireApproval'])?.cast<String>(),
+      requireApproval: json['require_approval'],
+      alwaysRequireApproval: (json['always_require_approval'])?.cast<String>(),
+      neverRequireApproval: (json['never_require_approval'])?.cast<String>(),
       openaiConnectorId: json['openai_connector_id'] ?? json['openaiConnectorId'],
     );
   }

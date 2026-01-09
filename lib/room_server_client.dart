@@ -1784,7 +1784,7 @@ class ConnectorRef {
   ConnectorRef({this.openaiConnectorId, this.serverUrl});
 
   factory ConnectorRef.fromJson(Map<String, dynamic> json) {
-    return ConnectorRef(serverUrl: json['server_url'] as String, openaiConnectorId: json['openai_connector_id'] as String?);
+    return ConnectorRef(serverUrl: json['server_url'] as String?, openaiConnectorId: json['openai_connector_id'] as String?);
   }
 
   Map<String, dynamic> toJson() => {

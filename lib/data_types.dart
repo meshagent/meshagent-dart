@@ -18,10 +18,15 @@ final Map<String, DataTypeConstructor> _dataTypes = {
 
 /// Abstract base class for data types.
 abstract class DataType {
-  DataType();
+  DataType({this.nullable, this.metadata});
+
+  bool? nullable;
+  Map<String, dynamic>? metadata;
 
   /// Convert this data type instance to a JSON object.
-  Map<String, dynamic> toJson();
+  Map<String, dynamic> toJson() {
+    return {"nullable": nullable, "metadata": metadata};
+  }
 
   /// Factory method: parse a JSON representation into a concrete [DataType].
   /// Looks up the correct subclass in [_dataTypes].
@@ -37,18 +42,18 @@ abstract class DataType {
 
 /// IntDataType
 class BoolDataType extends DataType {
-  BoolDataType() : super();
+  BoolDataType({super.nullable, super.metadata}) : super();
 
   static BoolDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'bool') {
       throw Exception("Expected type 'bool', got '${data['type']}'");
     }
-    return BoolDataType();
+    return BoolDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'bool'};
+    return {'type': 'bool', ...super.toJson()};
   }
 
   @override
@@ -59,18 +64,18 @@ class BoolDataType extends DataType {
 
 /// IntDataType
 class IntDataType extends DataType {
-  IntDataType() : super();
+  IntDataType({super.nullable, super.metadata}) : super();
 
   static IntDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'int') {
       throw Exception("Expected type 'int', got '${data['type']}'");
     }
-    return IntDataType();
+    return IntDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'int'};
+    return {'type': 'int', ...super.toJson()};
   }
 
   @override
@@ -81,18 +86,18 @@ class IntDataType extends DataType {
 
 /// DateDataType
 class DateDataType extends DataType {
-  DateDataType() : super();
+  DateDataType({super.nullable, super.metadata}) : super();
 
   static DateDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'date') {
       throw Exception("Expected type 'date', got '${data['type']}'");
     }
-    return DateDataType();
+    return DateDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'date'};
+    return {'type': 'date', ...super.toJson()};
   }
 
   @override
@@ -103,18 +108,18 @@ class DateDataType extends DataType {
 
 /// FloatDataType
 class FloatDataType extends DataType {
-  FloatDataType() : super();
+  FloatDataType({super.nullable, super.metadata}) : super();
 
   static FloatDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'float') {
       throw Exception("Expected type 'float', got '${data['type']}'");
     }
-    return FloatDataType();
+    return FloatDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'float'};
+    return {'type': 'float', ...super.toJson()};
   }
 
   @override
@@ -125,18 +130,18 @@ class FloatDataType extends DataType {
 
 /// FloatDataType
 class TimestampDataType extends DataType {
-  TimestampDataType() : super();
+  TimestampDataType({super.nullable, super.metadata}) : super();
 
   static TimestampDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'timestamp') {
       throw Exception("Expected type 'float', got '${data['type']}'");
     }
-    return TimestampDataType();
+    return TimestampDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'timestamp'};
+    return {'type': 'timestamp', ...super.toJson()};
   }
 
   @override
@@ -150,18 +155,23 @@ class VectorDataType extends DataType {
   final int size;
   final DataType elementType;
 
-  VectorDataType({required this.size, required this.elementType}) : super();
+  VectorDataType({required this.size, required this.elementType, super.nullable, super.metadata}) : super();
 
   static VectorDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'vector') {
       throw Exception("Expected type 'vector', got '${data['type']}'");
     }
-    return VectorDataType(size: data['size'] as int, elementType: DataType.fromJson(data['element_type'] as Map<String, dynamic>));
+    return VectorDataType(
+      nullable: data["nullable"],
+      metadata: data["metadata"],
+      size: data['size'] as int,
+      elementType: DataType.fromJson(data['element_type'] as Map<String, dynamic>),
+    );
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'vector', 'size': size, 'element_type': elementType.toJson()};
+    return {'type': 'vector', 'size': size, 'element_type': elementType.toJson(), ...super.toJson()};
   }
 
   @override
@@ -172,18 +182,18 @@ class VectorDataType extends DataType {
 
 /// TextDataType
 class TextDataType extends DataType {
-  TextDataType() : super();
+  TextDataType({super.nullable, super.metadata}) : super();
 
   static TextDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'text') {
       throw Exception("Expected type 'text', got '${data['type']}'");
     }
-    return TextDataType();
+    return TextDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'text'};
+    return {'type': 'text', ...super.toJson()};
   }
 
   @override
@@ -194,18 +204,18 @@ class TextDataType extends DataType {
 
 /// BinaryDataType
 class BinaryDataType extends DataType {
-  BinaryDataType() : super();
+  BinaryDataType({super.nullable, super.metadata}) : super();
 
   static BinaryDataType fromJson(Map<String, dynamic> data) {
     if (data['type'] != 'binary') {
       throw Exception("Expected type 'binary', got '${data['binary']}'");
     }
-    return BinaryDataType();
+    return BinaryDataType(nullable: data["nullable"], metadata: data["metadata"]);
   }
 
   @override
   Map<String, dynamic> toJson() {
-    return {'type': 'binary'};
+    return {'type': 'binary', ...super.toJson()};
   }
 
   @override

@@ -48,6 +48,7 @@ class DatabaseClient {
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    Map<String, dynamic>? metadata,
   }) async {
     Map<String, dynamic>? schemaDict;
 
@@ -69,8 +70,9 @@ class DatabaseClient {
     required Map<String, DataType> schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace);
+    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace, metadata: metadata);
   }
 
   /// Create a table from initial data, optionally specifying a mode.
@@ -79,8 +81,9 @@ class DatabaseClient {
     required List<Map<String, dynamic>> data,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, data: data, mode: mode, namespace: namespace);
+    return _createTable(name: name, data: data, mode: mode, namespace: namespace, metadata: metadata);
   }
 
   /// Drop (delete) a table by name.
@@ -181,9 +184,6 @@ class DatabaseClient {
     }
     if (vector != null) {
       payload["vector"] = vector;
-    }
-    if (columns != null) {
-      payload["columns"] = columns;
     }
 
     payload["namespace"] = namespace;
