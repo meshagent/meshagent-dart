@@ -739,6 +739,14 @@ class ExecSession {
     _result.completeError(error);
     _stdoutController.close();
   }
+
+  Future<void> stop() async {
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 5});
+  }
+
+  Future<void> kill() async {
+    await _client.sendRequest("containers.stop_exec", {"request_id": _requestId});
+  }
 }
 
 class ContainersClient extends ChangeEmitter {
