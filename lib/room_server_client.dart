@@ -591,6 +591,7 @@ class _RunRequest {
     this.name,
     this.mounts,
     this.writableRootFs,
+    this.private,
   }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
@@ -606,6 +607,7 @@ class _RunRequest {
   final List<DockerSecret> credentials;
   final ContainerMountSpec? mounts;
   final bool? writableRootFs;
+  final bool? private;
 
   Map<String, dynamic> toJson() => {
     if (requestId != null) 'request_id': requestId,
@@ -618,6 +620,7 @@ class _RunRequest {
     'role': role,
     'participant_name': participantName,
     'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
+    if (private != null) 'private': private,
     if (writableRootFs != null) 'writable_root_fs': writableRootFs,
     if (mounts != null) 'mounts': mounts!.toJson(),
     if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
@@ -821,6 +824,7 @@ class ContainersClient extends ChangeEmitter {
     String? name,
     ContainerMountSpec? mounts,
     bool? writableRootFs,
+    bool? private,
   }) async {
     final requestId = Uuid().v4().toString();
     final controller = StreamController<String>();
@@ -844,6 +848,7 @@ class ContainersClient extends ChangeEmitter {
         credentials: credentials,
         mounts: mounts,
         writableRootFs: writableRootFs,
+        private: private,
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
@@ -932,12 +937,13 @@ class ParticipantInfo {
 }
 
 class RoomContainer {
-  RoomContainer({required this.id, required this.image, this.name, required this.startedBy, required this.state});
+  RoomContainer({required this.id, required this.image, this.name, required this.startedBy, required this.state, required this.private});
   final String id;
   final String image;
   final String? name;
   final ParticipantInfo startedBy;
   final String state;
+  final bool private;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
@@ -946,6 +952,7 @@ class RoomContainer {
       name: json["name"],
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
+      private: json["private"],
     );
   }
 }
