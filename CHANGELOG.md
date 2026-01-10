@@ -1,3 +1,10 @@
+## [0.20.0]
+- Breaking: mailbox models now include a required `public` field in serialization/deserialization
+- Mailbox create/update APIs accept a `public` flag (defaulting to false) and send it in requests
+- Service template variables include optional `annotations` metadata
+- External service specs allow an optional base URL
+- Flutter shadcn chat widgets add message context menu actions (copy, save-as, delete) and folder-selection support in the file browser
+
 ## [0.19.5]
 - Stability
 
