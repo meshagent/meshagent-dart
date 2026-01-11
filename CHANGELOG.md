@@ -1,3 +1,6 @@
+## [0.20.1]
+- Stability
+
 ## [0.20.0]
 - Breaking: mailbox models now include a required `public` field in serialization/deserialization
 - Mailbox create/update APIs accept a `public` flag (defaulting to false) and send it in requests
