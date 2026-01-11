@@ -714,6 +714,11 @@ class ExecSession {
     return _result.future;
   }
 
+  bool _closed = false;
+  bool get closed {
+    return _closed;
+  }
+
   Future<void> write(Uint8List data) async {
     await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 1}, data: data);
   }
@@ -732,11 +737,13 @@ class ExecSession {
 
   void _close(int code) {
     _result.complete(code);
+    _closed = true;
     _stdoutController.close();
   }
 
   void _closeError(Object error) {
     _result.completeError(error);
+    _closed = true;
     _stdoutController.close();
   }
 
