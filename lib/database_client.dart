@@ -157,7 +157,6 @@ class DatabaseClient {
     int? limit,
     List<String>? select,
     List<String>? namespace,
-    List<String>? columns,
   }) async {
     // If 'where' is a Map, convert it to an AND-joined string.
     String? whereClause;
@@ -194,6 +193,41 @@ class DatabaseClient {
     // Then parse it accordingly:
     final results = decodeRecords((response.json["results"] as List).cast<Map<String, dynamic>>());
     return results.toList();
+  }
+
+  /// Count records in a table.
+  Future<int> count({
+    required String table,
+    String? text,
+    List<double>? vector,
+    dynamic where, // String or Map<String, dynamic>
+    List<String>? namespace,
+  }) async {
+    // If 'where' is a Map, convert it to an AND-joined string.
+    String? whereClause;
+    if (where is Map<String, dynamic>) {
+      final parts = <String>[];
+      where.forEach((key, value) {
+        parts.add("$key = ${_escapeValue(value)}");
+      });
+      whereClause = parts.join(" AND ");
+    } else if (where is String) {
+      whereClause = where;
+    }
+
+    final payload = <String, dynamic>{"table": table, "where": whereClause, "text": text};
+
+    if (vector != null) {
+      payload["vector"] = vector;
+    }
+
+    payload["namespace"] = namespace;
+
+    final response = (await room.sendRequest("database.count", payload) as JsonResponse);
+
+    // If your sendRequest returns a structure like { "json": { "results": [...] } }
+    // Then parse it accordingly:
+    return (response.json["count"] as num).toInt();
   }
 
   /// A helper to safely convert values to SQL strings (very naive).
