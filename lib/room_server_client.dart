@@ -2606,6 +2606,7 @@ class ServiceSpec {
     Kind? kind,
     String? id,
     List<PortSpec>? ports,
+    List<AgentSpec>? agents,
     ContainerSpec? container,
     ExternalServiceSpec? external,
   }) {
@@ -2615,6 +2616,7 @@ class ServiceSpec {
       kind: kind ?? this.kind,
       id: id ?? this.id,
       ports: ports ?? List<PortSpec>.from(this.ports),
+      agents: agents ?? List<AgentSpec>.from(this.agents),
       container: external != null ? null : container ?? this.container,
       external: container != null ? null : external ?? this.external,
     );
