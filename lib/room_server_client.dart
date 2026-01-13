@@ -874,6 +874,11 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
+  Future<String> runService({required String serviceId}) async {
+    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId});
+    return (res as JsonResponse).json["container_id"];
+  }
+
   ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
     final requestId = Uuid().v4().toString();
 
@@ -2071,17 +2076,35 @@ class ServiceTemplateVariable {
   };
 }
 
-class EnvironmentVariable {
-  final String name;
-  final String value;
+class TokenValue {
+  final String identity;
+  final ApiScope? api;
 
-  EnvironmentVariable({required this.name, required this.value});
+  const TokenValue({required this.identity, this.api});
 
-  factory EnvironmentVariable.fromJson(Map<String, dynamic> json) {
-    return EnvironmentVariable(name: json['name'] as String, value: json['value'] as String);
+  factory TokenValue.fromJson(Map<String, dynamic> json) {
+    return TokenValue(identity: json['identity'] as String, api: json['api'] != null ? ApiScope.fromJson(json['api']) : null);
   }
 
-  Map<String, dynamic> toJson() => {'name': name, 'value': value};
+  Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson()};
+}
+
+class EnvironmentVariable {
+  final String name;
+  final String? value;
+  final TokenValue? token;
+
+  EnvironmentVariable({required this.name, this.value, this.token});
+
+  factory EnvironmentVariable.fromJson(Map<String, dynamic> json) {
+    return EnvironmentVariable(
+      name: json['name'] as String,
+      value: json['value'] as String?,
+      token: json['token'] == null ? null : TokenValue.fromJson(json['token']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, if (value != null) 'value': value, if (token != null) 'token': token?.toJson()};
 }
 
 extension EnvList on List<EnvironmentVariable> {
@@ -2168,17 +2191,20 @@ class ServiceTemplateMetadata {
 }
 
 class ContainerTemplateSpec {
-  ContainerTemplateSpec({this.environment, this.image, this.command, this.storage});
+  ContainerTemplateSpec({this.environment, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
 
   final String? image;
   final String? command;
   final List<EnvironmentVariable>? environment;
   final ServiceTemplateContainerMountSpec? storage;
+  final bool? onDemand;
+  final bool? writableRootFs;
 
   static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
     return ContainerTemplateSpec(
       environment: (json['environment'] as List<dynamic>?)?.map((e) => EnvironmentVariable.fromJson(e as Map<String, dynamic>)).toList(),
-
+      onDemand: json['on_demand'],
+      writableRootFs: json['writable_root_fs'],
       image: json['image'] as String?,
       command: json['command'] as String?,
       storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
@@ -2191,6 +2217,8 @@ class ContainerTemplateSpec {
       if (image != null) 'image': image,
       if (command != null) 'command': command,
       if (storage != null) 'storage': storage!.toJson(),
+      if (onDemand != null) 'on_demand': onDemand,
+      if (writableRootFs != null) 'writable_root_fs': writableRootFs,
     };
   }
 
@@ -2199,7 +2227,7 @@ class ContainerTemplateSpec {
     final env = <EnvironmentVariable>[];
     if (environment != null) {
       for (final e in environment!) {
-        env.add(EnvironmentVariable(name: e.name, value: e.value.formatWith(values)));
+        env.add(EnvironmentVariable(name: e.name, value: e.value?.formatWith(values), token: e.token));
       }
     }
 
@@ -2212,6 +2240,8 @@ class ContainerTemplateSpec {
       command: command?.formatWith(values),
       image: img,
       environment: env,
+      onDemand: onDemand,
+      writableRootFs: writableRootFs,
       storage: storage == null
           ? null
           : ContainerMountSpec(
@@ -2504,6 +2534,8 @@ class ContainerSpec {
     this.pullSecret,
     this.storage,
     this.apiKey,
+    this.onDemand,
+    this.writableRootFs,
   }) : environment = environment ?? [],
        secrets = secrets ?? [];
 
@@ -2514,6 +2546,8 @@ class ContainerSpec {
   final String? pullSecret;
   final ContainerMountSpec? storage;
   final ServiceApiKeySpec? apiKey;
+  final bool? onDemand;
+  final bool? writableRootFs;
 
   static ContainerSpec fromJson(Map<String, dynamic> json) {
     return ContainerSpec(
@@ -2524,6 +2558,8 @@ class ContainerSpec {
       pullSecret: json['pull_secret'] as String?,
       storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
       apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
+      onDemand: json["on_demand"],
+      writableRootFs: json["writable_root_fs"],
     );
   }
 
@@ -2536,6 +2572,8 @@ class ContainerSpec {
       if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
       if (apiKey != null) 'api_key': apiKey!.toJson(),
+      if (onDemand != null) 'on_demand': onDemand,
+      if (writableRootFs != null) "writable_root_fs": writableRootFs,
     };
   }
 }
