@@ -2226,7 +2226,7 @@ class ContainerTemplateSpec {
 class ExternalServiceTemplateSpec {
   ExternalServiceTemplateSpec({required this.url});
 
-  final String url;
+  final String? url;
 
   static ExternalServiceTemplateSpec fromJson(Map<String, dynamic> json) {
     return ExternalServiceTemplateSpec(url: json["url"]);
@@ -2234,6 +2234,10 @@ class ExternalServiceTemplateSpec {
 
   Map<String, dynamic> toJson() {
     return {"url": url};
+  }
+
+  ExternalServiceSpec? toExternalSpec({required Map<String, String> values}) {
+    return ExternalServiceSpec(url: url?.formatWith(values));
   }
 }
 
@@ -2317,6 +2321,7 @@ class ServiceTemplateSpec {
       ),
       ports: ports,
       container: container?.toContainerSpec(values: values),
+      external: external?.toExternalSpec(values: values),
     );
   }
 }
