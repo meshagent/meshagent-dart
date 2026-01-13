@@ -44,11 +44,7 @@ abstract class Participant {
 }
 
 class RemoteParticipant extends Participant {
-  RemoteParticipant({
-    required super.client,
-    required super.id,
-    required this.role,
-  });
+  RemoteParticipant({required super.client, required super.id, required this.role});
 
   final String role;
 }
@@ -58,30 +54,22 @@ class LocalParticipant extends Participant {
 
   void setAttribute(String name, dynamic value) async {
     _attributes[name] = value;
-    client.protocol
-        .send("set_attributes", packMessage({name: value}))
-        .catchError((err) {
-          Logger.root.log(
-            Level.WARNING,
-            "Unable to send attribute changes",
-            err,
-          );
-        });
+    client.protocol.send("set_attributes", packMessage({name: value})).catchError((err) {
+      Logger.root.log(Level.WARNING, "Unable to send attribute changes", err);
+    });
   }
 }
 
 Uint8List splitMessagePayload(Uint8List packet) {
   final data = packet.buffer.asByteData();
-  final headerSize =
-      data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
+  final headerSize = data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
   final payload = Uint8List.sublistView(data, 8 + headerSize, packet.length);
   return payload;
 }
 
 String splitMessageHeader(Uint8List packet) {
   final data = packet.buffer.asByteData();
-  final headerSize =
-      data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
+  final headerSize = data.getUint32(4).toInt() + (data.getUint32(0).toInt() << 32);
 
   final subList = Uint8List.sublistView(data, 8, 8 + headerSize);
   return utf8.decode(subList);
@@ -95,10 +83,7 @@ class Message {
 }
 
 Message unpackMessage(Uint8List message) {
-  return Message(
-    jsonDecode(splitMessageHeader(message)),
-    splitMessagePayload(message),
-  );
+  return Message(jsonDecode(splitMessageHeader(message)), splitMessagePayload(message));
 }
 
 Uint8List packMessage(Map<String, dynamic> header, [Uint8List? data]) {
@@ -206,14 +191,10 @@ class RequiredTable extends Requirement {
 
     return RequiredTable(
       name: json['table'] as String,
-      schema: rawSchema.map(
-        (key, value) =>
-            MapEntry(key, DataType.fromJson(value as Map<String, dynamic>)),
-      ),
+      schema: rawSchema.map((key, value) => MapEntry(key, DataType.fromJson(value as Map<String, dynamic>))),
       namespace: (json['namespace'] as List?)?.cast<String>(),
       scalarIndexes: (json['scalar_indexes'] as List?)?.cast<String>(),
-      fullTextSearchIndexes: (json['full_text_search_indexes'] as List?)
-          ?.cast<String>(),
+      fullTextSearchIndexes: (json['full_text_search_indexes'] as List?)?.cast<String>(),
       vectorIndexes: (json['vector_indexes'] as List?)?.cast<String>(),
     );
   }
@@ -231,10 +212,7 @@ class RequiredToolkit extends Requirement {
   }
 
   static RequiredToolkit fromJson(Map<String, dynamic> from) {
-    return RequiredToolkit(
-      name: from["toolkit"],
-      tools: (from["tools"] as List?)?.whereType<String>().toList(),
-    );
+    return RequiredToolkit(name: from["toolkit"], tools: (from["tools"] as List?)?.whereType<String>().toList());
   }
 }
 
@@ -315,13 +293,7 @@ class RoomStatusEvent extends RoomEvent {
 }
 
 class RoomMessage {
-  RoomMessage({
-    required this.fromParticipantId,
-    required this.type,
-    required this.message,
-    this.local = false,
-    this.attachment,
-  });
+  RoomMessage({required this.fromParticipantId, required this.type, required this.message, this.local = false, this.attachment});
 
   final bool local;
   final String fromParticipantId;
@@ -399,10 +371,7 @@ class _RefCount<T> {
 }
 
 class RoomClient extends ChangeEmitter {
-  RoomClient({
-    required this.protocol,
-    OAuthTokenRequestHandler? oauthTokenRequestHandler,
-  }) {
+  RoomClient({required this.protocol, OAuthTokenRequestHandler? oauthTokenRequestHandler}) {
     protocol.addHandler("__response__", _handleResponse);
 
     protocol.addHandler("connected", _handleParticipant);
@@ -420,10 +389,7 @@ class RoomClient extends ChangeEmitter {
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
     containers = ContainersClient(room: this);
-    secrets = SecretsClient(
-      room: this,
-      oauthTokenRequestHandler: oauthTokenRequestHandler,
-    );
+    secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler);
   }
 
   late final LivekitClient livekit;
@@ -448,10 +414,7 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
-  Future<void> start({
-    void Function()? onDone,
-    void Function(Object? error)? onError,
-  }) async {
+  Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
     protocol.start(onDone: onDone, onError: onError);
 
     sync.start();
@@ -466,11 +429,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   // send a request, optionally with a binary trailer
-  Future<Response> sendRequest(
-    String type,
-    Map<String, dynamic> request, {
-    Uint8List? data,
-  }) async {
+  Future<Response> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
     final requestId = protocol.getNextMessageId();
 
     final pr = _PendingRequest();
@@ -489,12 +448,7 @@ class RoomClient extends ChangeEmitter {
     return response;
   }
 
-  Future<void> _handleResponse(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List data,
-  ) async {
+  Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
     final response = unpackResponse(data);
     final requestId = messageId;
 
@@ -506,31 +460,18 @@ class RoomClient extends ChangeEmitter {
         pr._completer.complete(response);
       }
     } else {
-      Logger.root.log(
-        Level.WARNING,
-        "received a response for a request that is not pending $requestId",
-      );
+      Logger.root.log(Level.WARNING, "received a response for a request that is not pending $requestId");
     }
     return;
   }
 
-  Future<void> _handleRoomStatus(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleRoomStatus(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final payload = unpackMessage(bytes).header;
 
     _eventsController.add(RoomStatusEvent.fromJson(payload));
   }
 
-  Future<void> _handleRoomReady(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final init = unpackMessage(bytes).header;
 
     _roomName = init["room_name"];
@@ -560,10 +501,7 @@ class RoomClient extends ChangeEmitter {
     return _localParticipant;
   }
 
-  void _onParticipantInit(
-    String participantId,
-    Map<String, dynamic> attributes,
-  ) {
+  void _onParticipantInit(String participantId, Map<String, dynamic> attributes) {
     _localParticipant = LocalParticipant(client: this, id: participantId);
     for (final k in attributes.keys) {
       _localParticipant!._attributes[k] = attributes[k];
@@ -581,12 +519,7 @@ class RoomClient extends ChangeEmitter {
     return _eventsController.stream.listen(handler);
   }
 
-  Future<void> _handleParticipant(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleParticipant(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final message = unpackMessage(bytes).header;
     final type = message["type"];
 
@@ -600,12 +533,7 @@ class RoomClient extends ChangeEmitter {
 }
 
 class LogProgress {
-  LogProgress({
-    required this.message,
-    required this.current,
-    required this.total,
-    this.layer,
-  });
+  LogProgress({required this.message, required this.current, required this.total, this.layer});
 
   String? layer;
   String message;
@@ -645,11 +573,7 @@ class _ImagePullRequest {
   final String tag;
   final List<DockerSecret> credentials;
 
-  Map<String, dynamic> toJson() => {
-    'tag': tag,
-    if (credentials.isNotEmpty)
-      'credentials': credentials.map((c) => c.toJson()).toList(),
-  };
+  Map<String, dynamic> toJson() => {'tag': tag, if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList()};
 }
 
 class _RunRequest {
@@ -668,10 +592,7 @@ class _RunRequest {
     this.mounts,
     this.writableRootFs,
     this.private,
-  }) : assert(
-         mountPath == null || mountPath.startsWith('/'),
-         'mountPath must start with "/"',
-       );
+  }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
 
   final String? name;
   final String? requestId;
@@ -698,24 +619,16 @@ class _RunRequest {
     'mount_subpath': mountSubpath,
     'role': role,
     'participant_name': participantName,
-    'ports': {
-      for (final e in ports.entries) e.key.toString(): e.value.toString(),
-    },
+    'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
     if (private != null) 'private': private,
     if (writableRootFs != null) 'writable_root_fs': writableRootFs,
     if (mounts != null) 'mounts': mounts!.toJson(),
-    if (credentials.isNotEmpty)
-      'credentials': credentials.map((c) => c.toJson()).toList(),
+    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
   };
 }
 
 class _ExecRequest {
-  _ExecRequest({
-    required this.containerId,
-    required this.command,
-    this.tty = false,
-    this.requestId,
-  });
+  _ExecRequest({required this.containerId, required this.command, this.tty = false, this.requestId});
 
   final String? requestId;
   final String containerId;
@@ -731,12 +644,7 @@ class _ExecRequest {
 }
 
 class DockerSecret {
-  const DockerSecret({
-    required this.username,
-    required this.password,
-    required this.registry,
-    required this.email,
-  });
+  const DockerSecret({required this.username, required this.password, required this.registry, required this.email});
 
   final String username;
   final String password;
@@ -750,12 +658,7 @@ class DockerSecret {
     email: json['email'] as String,
   );
 
-  Map<String, String> toJson() => {
-    'username': username,
-    'password': password,
-    'registry': registry,
-    'email': email,
-  };
+  Map<String, String> toJson() => {'username': username, 'password': password, 'registry': registry, 'email': email};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -764,13 +667,7 @@ class DockerSecret {
 
 /// Single build (as returned by `containers.list_builds`)
 class BuildInfo {
-  BuildInfo({
-    required this.requestId,
-    required this.tag,
-    required this.status,
-    this.error,
-    this.result,
-  });
+  BuildInfo({required this.requestId, required this.tag, required this.status, this.error, this.result});
 
   final String requestId;
   final String tag;
@@ -789,12 +686,7 @@ class BuildInfo {
 
 /// Lightweight image description (from `containers.list_images`)
 class ContainerImage {
-  ContainerImage({
-    required this.id,
-    required this.tags,
-    required this.size,
-    required this.labels,
-  });
+  ContainerImage({required this.id, required this.tags, required this.size, required this.labels});
 
   final String id;
   final List<String> tags;
@@ -828,23 +720,14 @@ class ExecSession {
   }
 
   Future<void> write(Uint8List data) async {
-    await _client.sendRequest("containers.container_input", {
-      "request_id": _requestId,
-      "channel": 1,
-    }, data: data);
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 1}, data: data);
   }
 
   Future<void> resize({required int width, required int height}) async {
-    await _client.sendRequest("containers.container_input", {
-      "request_id": _requestId,
-      "channel": 4,
-      "width": width,
-      "height": height,
-    });
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
   }
 
-  late final _stdoutController = StreamController<Uint8List>.broadcast()
-    ..stream.listen((data) => previousOutput.add(data));
+  late final _stdoutController = StreamController<Uint8List>.broadcast()..stream.listen((data) => previousOutput.add(data));
 
   List<Uint8List> previousOutput = [];
 
@@ -865,16 +748,11 @@ class ExecSession {
   }
 
   Future<void> stop() async {
-    await _client.sendRequest("containers.container_input", {
-      "request_id": _requestId,
-      "channel": 5,
-    });
+    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 5});
   }
 
   Future<void> kill() async {
-    await _client.sendRequest("containers.stop_exec", {
-      "request_id": _requestId,
-    });
+    await _client.sendRequest("containers.stop_exec", {"request_id": _requestId});
   }
 }
 
@@ -887,22 +765,12 @@ class ContainersClient extends ChangeEmitter {
 
   final Map<String, ExecSession> _ttys = {};
 
-  Future<void> _handleLogChunk(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final chunk = unpackMessage(bytes).header;
     _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
   }
 
-  Future<void> _handleContainerOutput(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleContainerOutput(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final message = unpackMessage(bytes);
     String requestId = message.header["request_id"];
     num channel = message.header["channel"];
@@ -917,12 +785,7 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
-  Future<void> _handleProgress(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleProgress(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final chunk = unpackMessage(bytes).header;
     final detail = chunk["detail"] as Map<String, dynamic>?;
     if (detail != null) {
@@ -932,12 +795,7 @@ class ContainersClient extends ChangeEmitter {
       final layer = chunk["layer"] as String?;
 
       _progress[chunk["request_id"]]!.sink.add(
-        LogProgress(
-          layer: layer,
-          message: message,
-          current: current?.toInt(),
-          total: total?.toInt(),
-        ),
+        LogProgress(layer: layer, message: message, current: current?.toInt(), total: total?.toInt()),
       );
     }
   }
@@ -952,12 +810,9 @@ class ContainersClient extends ChangeEmitter {
 
   /// Return *all* local images (similar to `docker images`).
   Future<List<ContainerImage>> listImages() async {
-    final res =
-        await room.sendRequest('containers.list_images', {}) as JsonResponse;
+    final res = await room.sendRequest('containers.list_images', {}) as JsonResponse;
 
-    return (res.json['images'] as List)
-        .map((i) => ContainerImage.fromJson(i as Map<String, dynamic>))
-        .toList();
+    return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
   }
 
   /// Delete an image by tag or ID (force = true on the server).
@@ -965,10 +820,7 @@ class ContainersClient extends ChangeEmitter {
     await room.sendRequest('containers.delete_image', {'image': image});
   }
 
-  Future<void> pullImage({
-    required String tag,
-    List<DockerSecret> credentials = const [],
-  }) async {
+  Future<void> pullImage({required String tag, List<DockerSecret> credentials = const []}) async {
     final req = _ImagePullRequest(tag: tag, credentials: credentials);
 
     await room.sendRequest("containers.pull_image", req.toJson());
@@ -1023,26 +875,14 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<String> runService({required String serviceId}) async {
-    final res = await room.sendRequest("containers.run_service", {
-      "service_id": serviceId,
-    });
+    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId});
     return (res as JsonResponse).json["container_id"];
   }
 
-  ExecSession exec({
-    required String containerId,
-    required String command,
-    bool tty = false,
-    String? name,
-  }) {
+  ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
     final requestId = Uuid().v4().toString();
 
-    final req = _ExecRequest(
-      containerId: containerId,
-      requestId: requestId,
-      command: command,
-      tty: tty,
-    );
+    final req = _ExecRequest(containerId: containerId, requestId: requestId, command: command, tty: tty);
 
     final container = ExecSession._(room, requestId, command);
     _ttys[requestId] = container;
@@ -1065,10 +905,7 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<void> stop({required String containerId, bool force = true}) async {
-    await room.sendRequest("containers.stop_container", {
-      "id": containerId,
-      "force": force,
-    });
+    await room.sendRequest("containers.stop_container", {"id": containerId, "force": force});
   }
 
   Future<void> deleteContainer({required String containerId}) async {
@@ -1081,25 +918,14 @@ class ContainersClient extends ChangeEmitter {
     final completer = Completer();
     final progress = StreamController<LogProgress>();
 
-    final stream = LogStream._(
-      completer,
-      controller.stream,
-      progress.stream,
-      () async {
-        await room.sendRequest('containers.stop_logs', {
-          'request_id': requestId,
-        });
-      },
-    );
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+    });
     _loggers[requestId] = controller;
     _progress[requestId] = progress;
 
     room
-        .sendRequest("containers.logs", {
-          "request_id": requestId,
-          "id": containerId,
-          "follow": follow,
-        })
+        .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
         .then(
           (_) {
             controller.close();
@@ -1117,13 +943,9 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<List<RoomContainer>> list({bool? all}) async {
-    final res =
-        await room.sendRequest("containers.list_containers", {"all": all})
-            as JsonResponse;
+    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonResponse;
 
-    return (res.json["containers"] as List)
-        .map((i) => RoomContainer.fromJson(i as Map<String, dynamic>))
-        .toList();
+    return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
 }
 
@@ -1135,14 +957,7 @@ class ParticipantInfo {
 }
 
 class RoomContainer {
-  RoomContainer({
-    required this.id,
-    required this.image,
-    this.name,
-    required this.startedBy,
-    required this.state,
-    required this.private,
-  });
+  RoomContainer({required this.id, required this.image, this.name, required this.startedBy, required this.state, required this.private});
   final String id;
   final String image;
   final String? name;
@@ -1155,10 +970,7 @@ class RoomContainer {
       id: json["id"],
       image: json["image"],
       name: json["name"],
-      startedBy: ParticipantInfo(
-        id: json["started_by"]["id"],
-        name: json["started_by"]["name"],
-      ),
+      startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],
     );
@@ -1173,9 +985,7 @@ class SyncClient extends ChangeEmitter {
   void start() {
     () async {
       await for (final message in _changesToSync.stream) {
-        room.sendRequest("room.sync", {
-          "path": message.path,
-        }, data: utf8.encode(message.base64));
+        room.sendRequest("room.sync", {"path": message.path}, data: utf8.encode(message.base64));
       }
     }();
   }
@@ -1188,12 +998,7 @@ class SyncClient extends ChangeEmitter {
   final _changesToSync = StreamController<_QueuedSync>();
   final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
 
-  Future<void> _handleSync(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleSync(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final headerStr = splitMessageHeader(bytes);
     final payload = splitMessagePayload(bytes);
 
@@ -1208,18 +1013,13 @@ class SyncClient extends ChangeEmitter {
     if (_connectedDocuments.containsKey(path)) {
       final doc = _connectedDocuments[path]!;
       final base64 = utf8.decode(payload);
-      DocumentRuntime.instance!.applyBackendChanges(
-        documentId: doc.ref.id,
-        base64: base64,
-      );
+      DocumentRuntime.instance!.applyBackendChanges(documentId: doc.ref.id, base64: base64);
 
       if (!doc.ref._synchronized.isCompleted) {
         doc.ref._synchronized.complete(true);
       }
     } else {
-      throw RoomServerException(
-        "received change for a document that is not connected:$path",
-      );
+      throw RoomServerException("received change for a document that is not connected:$path");
     }
   }
 
@@ -1227,12 +1027,7 @@ class SyncClient extends ChangeEmitter {
     await room.sendRequest("room.create", {"path": path, "json": json});
   }
 
-  Future<MeshDocument> open(
-    String path, {
-    bool create = true,
-    Map<String, dynamic>? initialJson,
-    MeshSchema? schema,
-  }) async {
+  Future<MeshDocument> open(String path, {bool create = true, Map<String, dynamic>? initialJson, MeshSchema? schema}) async {
     final pending = _connectingDocuments[path];
 
     if (pending != null) {
@@ -1264,8 +1059,7 @@ class SyncClient extends ChangeEmitter {
 
       final doc = MeshDocument(
         schema: schema,
-        sendChangesToBackend: (base64) =>
-            _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)),
+        sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)),
       );
       final rc = _RefCount(doc);
       _connectedDocuments[path] = rc;
@@ -1304,10 +1098,7 @@ class SyncClient extends ChangeEmitter {
 
 class MeshDocument extends RuntimeDocument {
   MeshDocument({super.sendChangesToBackend, required super.schema})
-    : super(
-        id: const Uuid().v4(),
-        sendChanges: DocumentRuntime.instance!.sendChanges,
-      ) {
+    : super(id: const Uuid().v4(), sendChanges: DocumentRuntime.instance!.sendChanges) {
     DocumentRuntime.instance!.registerDocument(this);
   }
 
@@ -1321,31 +1112,19 @@ class MeshDocument extends RuntimeDocument {
   }
 
   String encode() {
-    return jsonEncode({
-      "initial_json": root.toJson(),
-      "schema": schema.toJson(),
-    });
+    return jsonEncode({"initial_json": root.toJson(), "schema": schema.toJson()});
   }
 }
 
 class ToolkitDescription {
-  ToolkitDescription({
-    required this.title,
-    required this.name,
-    required this.description,
-    required this.tools,
-    this.thumbnailUrl,
-  });
+  ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.thumbnailUrl});
 
   final String? title;
   final String name;
   final String? description;
   final String? thumbnailUrl;
 
-  late final Map<String, ToolDescription> _byName =
-      Map<String, ToolDescription>.fromEntries(
-        tools.map((e) => MapEntry(e.name, e)),
-      );
+  late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
 
   final List<ToolDescription> tools;
 
@@ -1376,10 +1155,7 @@ class ToolkitDescription {
     };
   }
 
-  static ToolkitDescription fromJson(
-    Map<String, dynamic> json, {
-    String? name,
-  }) {
+  static ToolkitDescription fromJson(Map<String, dynamic> json, {String? name}) {
     return ToolkitDescription(
       title: json["title"],
       name: name ?? json["name"],
@@ -1448,69 +1224,34 @@ class StorageClient extends ChangeEmitter {
 
   RoomClient room;
 
-  Future<void> _handleFileUpdated(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleFileUpdated(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = unpackMessage(bytes).header;
-    room._eventsController.add(
-      FileUpdatedEvent(
-        path: data["path"],
-        participantId: data["participant_id"],
-      ),
-    );
+    room._eventsController.add(FileUpdatedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
-  Future<void> _handleFileDeleted(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = unpackMessage(bytes).header;
-    room._eventsController.add(
-      FileDeletedEvent(
-        path: data["path"],
-        participantId: data["participant_id"],
-      ),
-    );
+    room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<List<StorageEntry>> list(String path) async {
-    final response =
-        (await room.sendRequest("storage.list", {"path": path}))
-            as JsonResponse;
+    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
     return (response.json["files"] as List).map((f) {
       return StorageEntry(
         name: f["name"],
         isFolder: f["is_folder"],
-        createdAt: f["created_at"] == null
-            ? null
-            : DateTime.parse(f["created_at"]),
-        updatedAt: f["updated_at"] == null
-            ? null
-            : DateTime.parse(f["updated_at"]),
+        createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
+        updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
       );
     }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
   Future<void> delete(String path, {bool? recursive = false}) async {
-    (await room.sendRequest("storage.delete", {
-          "path": path,
-          "recursive": recursive,
-        })
-        as JsonResponse);
+    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonResponse);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response =
-        (await room.sendRequest("storage.open", {
-              "path": path,
-              "overwrite": overwrite,
-            })
-            as JsonResponse);
+    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonResponse);
 
     return FileHandle(id: response.json["handle"]);
   }
@@ -1530,18 +1271,13 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<FileResponse> download(String path) async {
-    final response =
-        (await room.sendRequest("storage.download", {"path": path})
-            as FileResponse);
+    final response = (await room.sendRequest("storage.download", {"path": path}) as FileResponse);
 
     return response;
   }
 
   Future<String> downloadUrl(String path) async {
-    final response =
-        (await room.sendRequest("storage.download_url", {"path": path})
-                as JsonResponse)
-            .json;
+    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonResponse).json;
 
     return response["url"];
   }
@@ -1553,43 +1289,26 @@ class DeveloperClient extends ChangeEmitter {
   }
 
   RoomClient room;
-  Future<void> _handleDeveloperLog(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final rawJson = unpackMessage(bytes).header;
 
     room._eventsController.add(RoomLogEvent.fromJson(rawJson));
   }
 
   Future<void> log(String type, Map<String, dynamic> data) async {
-    room.protocol.send(
-      "developer.log",
-      packMessage({"type": type, "data": data}, null),
-    );
+    room.protocol.send("developer.log", packMessage({"type": type, "data": data}, null));
   }
 
   Future<void> info(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send(
-      "developer.info",
-      packMessage({"message": message, "extra": extra ?? {}}, null),
-    );
+    room.protocol.send("developer.info", packMessage({"message": message, "extra": extra ?? {}}, null));
   }
 
   Future<void> warning(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send(
-      "developer.warning",
-      packMessage({"message": message, "extra": extra ?? {}}, null),
-    );
+    room.protocol.send("developer.warning", packMessage({"message": message, "extra": extra ?? {}}, null));
   }
 
   Future<void> error(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send(
-      "developer.error",
-      packMessage({"message": message, "extra": extra ?? {}}, null),
-    );
+    room.protocol.send("developer.error", packMessage({"message": message, "extra": extra ?? {}}, null));
   }
 
   Future<void> enable() async {
@@ -1644,11 +1363,7 @@ class MessageStream {
 
   void close() async {
     _close();
-    await _client.sendMessage(
-      to: to,
-      type: "stream.close",
-      message: {"stream_id": _streamId},
-    );
+    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
   }
 }
 
@@ -1675,10 +1390,7 @@ class MessagingClient extends ChangeEmitter {
   final Map<String, Completer> pendingStreams = {};
   final Map<String, MessageStream> _streams = {};
 
-  Future<MessageStream> createStream({
-    required Participant to,
-    required Map<String, dynamic> header,
-  }) async {
+  Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
 
     final stream = MessageStream._(
@@ -1693,11 +1405,7 @@ class MessagingClient extends ChangeEmitter {
     _streams[streamId] = stream;
     await completer.future;
 
-    await sendMessage(
-      to: to,
-      type: "stream.open",
-      message: {"stream_id": streamId, "header": header},
-    );
+    await sendMessage(to: to, type: "stream.open", message: {"stream_id": streamId, "header": header});
 
     return stream;
   }
@@ -1708,18 +1416,12 @@ class MessagingClient extends ChangeEmitter {
     required Map<String, dynamic> message,
     Uint8List? attachment,
   }) async {
-    await room.sendRequest("messaging.send", {
-      "to_participant_id": to.id,
-      "type": type,
-      "message": message,
-    }, data: attachment);
+    await room.sendRequest("messaging.send", {"to_participant_id": to.id, "type": type, "message": message}, data: attachment);
   }
 
   void Function(MessageStream reader)? _onStreamAcceptCallback;
 
-  Future<void> enable({
-    void Function(MessageStream reader)? onStreamAccept,
-  }) async {
+  Future<void> enable({void Function(MessageStream reader)? onStreamAccept}) async {
     await room.sendRequest("messaging.enable", {});
 
     _onStreamAcceptCallback = onStreamAccept;
@@ -1729,15 +1431,8 @@ class MessagingClient extends ChangeEmitter {
     await room.sendRequest("messaging.disable", {});
   }
 
-  Future<void> broadcastMessage({
-    required String type,
-    required Map<String, dynamic> message,
-    Uint8List? attachment,
-  }) async {
-    await room.sendRequest("messaging.broadcast", {
-      "type": type,
-      "message": message,
-    }, data: attachment);
+  Future<void> broadcastMessage({required String type, required Map<String, dynamic> message, Uint8List? attachment}) async {
+    await room.sendRequest("messaging.broadcast", {"type": type, "message": message}, data: attachment);
   }
 
   final _participants = <String, RemoteParticipant>{};
@@ -1745,12 +1440,7 @@ class MessagingClient extends ChangeEmitter {
     return _participants.values;
   }
 
-  Future<void> _handleMessageSend(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleMessageSend(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final headerStr = splitMessageHeader(bytes);
     final payload = splitMessagePayload(bytes);
 
@@ -1788,11 +1478,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onParticipantEnabled(RoomMessage message) {
     final data = message.message;
-    final participant = RemoteParticipant(
-      client: room,
-      id: data["id"],
-      role: data["role"],
-    );
+    final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
     for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
       participant._attributes[k] = data["attributes"][k];
@@ -1828,11 +1514,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onMessagingEnabled(RoomMessage message) {
     for (var data in message.message["participants"]) {
-      final participant = RemoteParticipant(
-        client: room,
-        id: data["id"],
-        role: data["role"],
-      );
+      final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
 
       for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
         participant._attributes[k] = data["attributes"][k];
@@ -1843,34 +1525,18 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onStreamOpen(RoomMessage message) {
-    final from = remoteParticipants
-        .where((x) => x.id == message.fromParticipantId)
-        .first;
+    final from = remoteParticipants.where((x) => x.id == message.fromParticipantId).first;
     final streamId = message.message["stream_id"];
     final controller = StreamController<MessageStreamChunk>();
-    final reader = MessageStream._(
-      header: message.message["header"],
-      streamId: streamId,
-      to: from,
-      client: this,
-      controller: controller,
-    );
+    final reader = MessageStream._(header: message.message["header"], streamId: streamId, to: from, client: this, controller: controller);
     try {
       if (_onStreamAcceptCallback == null) {
         throw Exception("streams are not allowed by this client");
       }
       _onStreamAcceptCallback!(reader);
-      sendMessage(
-        to: from,
-        type: "stream.accept",
-        message: {"stream_id": streamId},
-      );
+      sendMessage(to: from, type: "stream.accept", message: {"stream_id": streamId});
     } catch (e) {
-      sendMessage(
-        to: from,
-        type: "stream.reject",
-        message: {"stream_id": streamId, "error": e.toString()},
-      );
+      sendMessage(to: from, type: "stream.reject", message: {"stream_id": streamId, "error": e.toString()});
     }
 
     _streams[streamId] = reader;
@@ -1885,16 +1551,12 @@ class MessagingClient extends ChangeEmitter {
   void _onStreamReject(RoomMessage message) {
     final streamId = message.message["stream_id"];
     _streams.remove(streamId);
-    pendingStreams[streamId]!.completeError(
-      Exception("The stream was rejected by the remote client"),
-    );
+    pendingStreams[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
   }
 
   void _onStreamChunk(RoomMessage message) {
     final streamId = message.message["stream_id"];
-    _streams[streamId]!._controller.add(
-      MessageStreamChunk(header: message.message, data: message.attachment),
-    );
+    _streams[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
   }
 
   void _onStreamClose(RoomMessage message) {
@@ -1911,12 +1573,7 @@ class FileHandle {
 }
 
 class StorageEntry {
-  StorageEntry({
-    required this.name,
-    required this.isFolder,
-    required this.createdAt,
-    required this.updatedAt,
-  });
+  StorageEntry({required this.name, required this.isFolder, required this.createdAt, required this.updatedAt});
 
   final String name;
   final bool isFolder;
@@ -1937,11 +1594,7 @@ abstract class Response {
 }
 
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
-final Map<
-  String,
-  Response Function(Map<String, dynamic> header, Uint8List payload)
->
-_responseTypes = {
+final Map<String, Response Function(Map<String, dynamic> header, Uint8List payload)> _responseTypes = {
   'link': LinkResponse.unpack,
   'file': FileResponse.unpack,
   'text': TextResponse.unpack,
@@ -1960,10 +1613,7 @@ class LinkResponse extends Response {
   LinkResponse({required this.url, required this.name});
 
   static LinkResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return LinkResponse(
-      url: header['url'] as String,
-      name: header['name'] as String,
-    );
+    return LinkResponse(url: header['url'] as String, name: header['name'] as String);
   }
 
   @override
@@ -1985,27 +1635,15 @@ class FileResponse extends Response {
   final String name;
   final String mimeType;
 
-  FileResponse({
-    required this.data,
-    required this.name,
-    required this.mimeType,
-  });
+  FileResponse({required this.data, required this.name, required this.mimeType});
 
   static FileResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return FileResponse(
-      data: payload,
-      name: header['name'] as String,
-      mimeType: header['mime_type'] as String,
-    );
+    return FileResponse(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
   }
 
   @override
   Uint8List pack() {
-    return packMessage({
-      'type': 'file',
-      'name': name,
-      'mime_type': mimeType,
-    }, data);
+    return packMessage({'type': 'file', 'name': name, 'mime_type': mimeType}, data);
   }
 
   @override
@@ -2158,17 +1796,12 @@ class AllowedMcpToolFilter {
 
   factory AllowedMcpToolFilter.fromJson(Map<String, dynamic> json) {
     return AllowedMcpToolFilter(
-      toolNames: json['tool_names'] == null
-          ? null
-          : List<String>.from(json['tool_names']),
+      toolNames: json['tool_names'] == null ? null : List<String>.from(json['tool_names']),
       readOnly: json['read_only'] as bool?,
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    if (toolNames != null) 'tool_names': toolNames,
-    if (readOnly != null) 'read_only': readOnly,
-  };
+  Map<String, dynamic> toJson() => {if (toolNames != null) 'tool_names': toolNames, if (readOnly != null) 'read_only': readOnly};
 }
 
 class ConnectorRef {
@@ -2178,10 +1811,7 @@ class ConnectorRef {
   ConnectorRef({this.openaiConnectorId, this.serverUrl});
 
   factory ConnectorRef.fromJson(Map<String, dynamic> json) {
-    return ConnectorRef(
-      serverUrl: json['server_url'] as String?,
-      openaiConnectorId: json['openai_connector_id'] as String?,
-    );
+    return ConnectorRef(serverUrl: json['server_url'] as String?, openaiConnectorId: json['openai_connector_id'] as String?);
   }
 
   Map<String, dynamic> toJson() => {
@@ -2238,8 +1868,7 @@ class OAuthClientConfig {
     return OAuthClientConfig(
       clientId: clientId ?? this.clientId,
       clientSecret: clientSecret ?? this.clientSecret,
-      authorizationEndpoint:
-          authorizationEndpoint ?? this.authorizationEndpoint,
+      authorizationEndpoint: authorizationEndpoint ?? this.authorizationEndpoint,
       tokenEndpoint: tokenEndpoint ?? this.tokenEndpoint,
       noPkce: noPkce ?? this.noPkce,
       scopes: scopes ?? this.scopes,
@@ -2292,16 +1921,10 @@ class MCPEndpointSpec {
       description: json['description'] as String?,
       allowedTools: json['allowed_tools'] == null
           ? null
-          : (json['allowed_tools'] as List)
-                .map((e) => AllowedMcpToolFilter.fromJson(e))
-                .toList(),
-      headers: json['headers'] == null
-          ? null
-          : Map<String, String>.from(json['headers']),
+          : (json['allowed_tools'] as List).map((e) => AllowedMcpToolFilter.fromJson(e)).toList(),
+      headers: json['headers'] == null ? null : Map<String, String>.from(json['headers']),
       requireApproval: json['require_approval'] as String?,
-      oauth: json['oauth'] == null
-          ? null
-          : OAuthClientConfig.fromJson(json['oauth']),
+      oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson(json['oauth']),
       openaiConnectorId: json['openai_connector_id'] as String?,
     );
   }
@@ -2309,8 +1932,7 @@ class MCPEndpointSpec {
   Map<String, dynamic> toJson() => {
     'label': label,
     'description': description,
-    if (allowedTools != null)
-      'allowed_tools': allowedTools!.map((e) => e.toJson()).toList(),
+    if (allowedTools != null) 'allowed_tools': allowedTools!.map((e) => e.toJson()).toList(),
     if (headers != null) 'headers': headers,
     if (requireApproval != null) 'require_approval': requireApproval,
     if (oauth != null) 'oauth': oauth!.toJson(),
@@ -2325,22 +1947,13 @@ class MeshagentEndpointSpec {
   final ApiScope? api;
 
   factory MeshagentEndpointSpec.fromJson(Map<String, dynamic> json) {
-    return MeshagentEndpointSpec(
-      identity: json['identity'] as String,
-      api: json["api"] == null ? null : ApiScope.fromJson(json["api"]),
-    );
+    return MeshagentEndpointSpec(identity: json['identity'] as String, api: json["api"] == null ? null : ApiScope.fromJson(json["api"]));
   }
 
-  Map<String, dynamic> toJson() => {
-    'identity': identity,
-    if (api != null) 'api': api?.toJson(),
-  };
+  Map<String, dynamic> toJson() => {'identity': identity, if (api != null) 'api': api?.toJson()};
 
   MeshagentEndpointSpec copyWith({String? identity, ApiScope? api}) {
-    return MeshagentEndpointSpec(
-      identity: identity ?? this.identity,
-      api: api ?? this.api,
-    );
+    return MeshagentEndpointSpec(identity: identity ?? this.identity, api: api ?? this.api);
   }
 }
 
@@ -2354,9 +1967,7 @@ class EndpointSpec {
   factory EndpointSpec.fromJson(Map<String, dynamic> json) {
     return EndpointSpec(
       path: json['path'] as String,
-      meshagent: json['meshagent'] == null
-          ? null
-          : MeshagentEndpointSpec.fromJson(json['meshagent']),
+      meshagent: json['meshagent'] == null ? null : MeshagentEndpointSpec.fromJson(json['meshagent']),
       mcp: json['mcp'] == null ? null : MCPEndpointSpec.fromJson(json['mcp']),
     );
   }
@@ -2367,11 +1978,7 @@ class EndpointSpec {
     if (mcp != null) 'mcp': mcp!.toJson(),
   };
 
-  EndpointSpec copyWith({
-    String? path,
-    MeshagentEndpointSpec? meshagent,
-    MCPEndpointSpec? mcp,
-  }) {
+  EndpointSpec copyWith({String? path, MeshagentEndpointSpec? meshagent, MCPEndpointSpec? mcp}) {
     return EndpointSpec(
       path: path ?? this.path,
       meshagent: mcp != null ? null : meshagent ?? this.meshagent,
@@ -2391,21 +1998,13 @@ class PortSpec {
   final String? liveness;
   final int? hostPort;
 
-  PortSpec({
-    required this.num,
-    this.type,
-    List<EndpointSpec>? endpoints,
-    this.liveness,
-    this.hostPort,
-  }) : endpoints = endpoints ?? [];
+  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness, this.hostPort}) : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
       num: PortNum.fromJson(json['num']),
       type: json['type'] as String?,
-      endpoints: (json['endpoints'] as List<dynamic>? ?? [])
-          .map((e) => EndpointSpec.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      endpoints: (json['endpoints'] as List<dynamic>? ?? []).map((e) => EndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
       liveness: json['liveness'] as String?,
       hostPort: json['host_port'] as int?,
     );
@@ -2415,19 +2014,12 @@ class PortSpec {
     'num': num.toJson(),
 
     if (type != null) 'type': type,
-    if (endpoints.isNotEmpty)
-      'endpoints': endpoints.map((e) => e.toJson()).toList(),
+    if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
     if (liveness != null) 'liveness': liveness,
     if (hostPort != null) 'host_port': hostPort,
   };
 
-  PortSpec copyWith({
-    PortNum? num,
-    String? type,
-    List<EndpointSpec>? endpoints,
-    String? liveness,
-    int? hostPort,
-  }) {
+  PortSpec copyWith({PortNum? num, String? type, List<EndpointSpec>? endpoints, String? liveness, int? hostPort}) {
     return PortSpec(
       num: num ?? this.num,
       type: type ?? this.type,
@@ -2468,9 +2060,7 @@ class ServiceTemplateVariable {
       obscure: json['obscure'] ?? false,
       optional: json['optional'] ?? false,
       type: json['type'],
-      enumValues: (json['enum'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList(),
+      enumValues: (json['enum'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
       annotations: (json["annotations"] as Map?)?.cast<String, String>(),
     );
   }
@@ -2493,10 +2083,7 @@ class TokenValue {
   const TokenValue({required this.identity, this.api});
 
   factory TokenValue.fromJson(Map<String, dynamic> json) {
-    return TokenValue(
-      identity: json['identity'] as String,
-      api: json['api'] != null ? ApiScope.fromJson(json['api']) : null,
-    );
+    return TokenValue(identity: json['identity'] as String, api: json['api'] != null ? ApiScope.fromJson(json['api']) : null);
   }
 
   Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson()};
@@ -2517,11 +2104,7 @@ class EnvironmentVariable {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    if (value != null) 'value': value,
-    if (token != null) 'token': token?.toJson(),
-  };
+  Map<String, dynamic> toJson() => {'name': name, if (value != null) 'value': value, if (token != null) 'token': token?.toJson()};
 }
 
 extension EnvList on List<EnvironmentVariable> {
@@ -2547,29 +2130,13 @@ class RoomStorageMountSpec {
   RoomStorageMountSpec({required this.path, this.subpath, this.readOnly});
 
   factory RoomStorageMountSpec.fromJson(Map<String, dynamic> json) {
-    return RoomStorageMountSpec(
-      path: json['path'] as String,
-      subpath: json['subpath'] as String?,
-      readOnly: json['read_only'],
-    );
+    return RoomStorageMountSpec(path: json['path'] as String, subpath: json['subpath'] as String?, readOnly: json['read_only']);
   }
 
-  Map<String, dynamic> toJson() => {
-    'path': path,
-    if (subpath != null) 'subpath': subpath,
-    if (readOnly != null) 'read_only': readOnly,
-  };
+  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, if (readOnly != null) 'read_only': readOnly};
 
-  RoomStorageMountSpec copyWith({
-    String? path,
-    String? subpath,
-    bool? readOnly,
-  }) {
-    return RoomStorageMountSpec(
-      path: path ?? this.path,
-      subpath: subpath ?? this.subpath,
-      readOnly: readOnly ?? this.readOnly,
-    );
+  RoomStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
+    return RoomStorageMountSpec(path: path ?? this.path, subpath: subpath ?? this.subpath, readOnly: readOnly ?? this.readOnly);
   }
 }
 
@@ -2580,24 +2147,14 @@ class ServiceTemplateContainerMountSpec {
 
   ServiceTemplateContainerMountSpec({this.room, this.images});
 
-  factory ServiceTemplateContainerMountSpec.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
-      room: (json['room'] as List<dynamic>?)
-          ?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      images: (json['images'] as List<dynamic>?)
-          ?.map(
-            (e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
+      room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    if (room != null) 'room': room!.map((e) => e.toJson()).toList(),
-  };
+  Map<String, dynamic> toJson() => {if (room != null) 'room': room!.map((e) => e.toJson()).toList()};
 }
 
 /// ---------------------------------------------------------------------------
@@ -2605,13 +2162,8 @@ class ServiceTemplateContainerMountSpec {
 /// ---------------------------------------------------------------------------
 
 class ServiceTemplateMetadata {
-  ServiceTemplateMetadata({
-    required this.name,
-    this.description,
-    this.icon,
-    this.repo,
-    Map<String, String>? annotations,
-  }) : annotations = annotations ?? {};
+  ServiceTemplateMetadata({required this.name, this.description, this.icon, this.repo, Map<String, String>? annotations})
+    : annotations = annotations ?? {};
 
   final String name;
   final String? description;
@@ -2633,25 +2185,13 @@ class ServiceTemplateMetadata {
       description: json['description'] as String?,
       repo: json['repo'] as String?,
       icon: json['icon'] as String?,
-      annotations: json['annotations'] != null
-          ? {
-              for (final entry in (json['annotations'] as Map).entries)
-                entry.key: entry.value,
-            }
-          : {},
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
     );
   }
 }
 
 class ContainerTemplateSpec {
-  ContainerTemplateSpec({
-    this.environment,
-    this.image,
-    this.command,
-    this.storage,
-    this.onDemand,
-    this.writableRootFs,
-  });
+  ContainerTemplateSpec({this.environment, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
 
   final String? image;
   final String? command;
@@ -2662,25 +2202,18 @@ class ContainerTemplateSpec {
 
   static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
     return ContainerTemplateSpec(
-      environment: (json['environment'] as List<dynamic>?)
-          ?.map((e) => EnvironmentVariable.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      environment: (json['environment'] as List<dynamic>?)?.map((e) => EnvironmentVariable.fromJson(e as Map<String, dynamic>)).toList(),
       onDemand: json['on_demand'],
       writableRootFs: json['writable_root_fs'],
       image: json['image'] as String?,
       command: json['command'] as String?,
-      storage: json['storage'] == null
-          ? null
-          : ServiceTemplateContainerMountSpec.fromJson(
-              json['storage'] as Map<String, dynamic>,
-            ),
+      storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      if (environment != null)
-        'environment': environment!.map((e) => e.toJson()).toList(),
+      if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
       if (image != null) 'image': image,
       if (command != null) 'command': command,
       if (storage != null) 'storage': storage!.toJson(),
@@ -2694,22 +2227,14 @@ class ContainerTemplateSpec {
     final env = <EnvironmentVariable>[];
     if (environment != null) {
       for (final e in environment!) {
-        env.add(
-          EnvironmentVariable(
-            name: e.name,
-            value: e.value?.formatWith(values),
-            token: e.token,
-          ),
-        );
+        env.add(EnvironmentVariable(name: e.name, value: e.value?.formatWith(values), token: e.token));
       }
     }
 
     // Image is required on ServiceSpec; enforce like Pydantic would.
     final img = image;
     if (img == null || img.isEmpty) {
-      throw ArgumentError(
-        'ServiceTemplateSpec.image is required to build a ServiceSpec',
-      );
+      throw ArgumentError('ServiceTemplateSpec.image is required to build a ServiceSpec');
     }
     return ContainerSpec(
       command: command?.formatWith(values),
@@ -2747,34 +2272,21 @@ class ExternalServiceTemplateSpec {
 }
 
 class AgentSpec {
-  AgentSpec({
-    required this.name,
-    this.description,
-    Map<String, dynamic>? annotations,
-  }) : annotations = annotations ?? {};
+  AgentSpec({required this.name, this.description, Map<String, dynamic>? annotations}) : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final Map<String, dynamic> annotations;
 
   Map<String, dynamic> toJson() {
-    return {
-      "name": name,
-      if (description != null) "description": description,
-      "annotations": annotations,
-    };
+    return {"name": name, if (description != null) "description": description, "annotations": annotations};
   }
 
   static AgentSpec fromJson(Map<String, dynamic> json) {
     return AgentSpec(
       name: json["name"],
       description: json["description"],
-      annotations: json['annotations'] != null
-          ? {
-              for (final entry in (json['annotations'] as Map).entries)
-                entry.key: entry.value,
-            }
-          : {},
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
     );
   }
 }
@@ -2805,32 +2317,19 @@ class ServiceTemplateSpec {
     return ServiceTemplateSpec(
       version: json['version'] as String? ?? 'v1',
       kind: json['kind'] as String? ?? 'ServiceTemplate',
-      variables: (json['variables'] as List<dynamic>?)
-          ?.map(
-            (e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
+      variables: (json['variables'] as List<dynamic>?)?.map((e) => ServiceTemplateVariable.fromJson(e as Map<String, dynamic>)).toList(),
       metadata: ServiceTemplateMetadata.fromJson(json['metadata']),
-      ports: (json['ports'] as List<dynamic>? ?? [])
-          .map((e) => PortSpec.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      container: json['container'] == null
-          ? null
-          : ContainerTemplateSpec.fromJson(json['container']),
-      external: json['external'] == null
-          ? null
-          : ExternalServiceTemplateSpec.fromJson(json['external']),
-      agents: (json['agents'] as List<dynamic>? ?? [])
-          .map((e) => AgentSpec.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      ports: (json['ports'] as List<dynamic>? ?? []).map((e) => PortSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      container: json['container'] == null ? null : ContainerTemplateSpec.fromJson(json['container']),
+      external: json['external'] == null ? null : ExternalServiceTemplateSpec.fromJson(json['external']),
+      agents: (json['agents'] as List<dynamic>? ?? []).map((e) => AgentSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'version': version,
     'kind': kind,
-    if (variables != null)
-      'variables': variables!.map((e) => e.toJson()).toList(),
+    if (variables != null) 'variables': variables!.map((e) => e.toJson()).toList(),
     'metadata': metadata.toJson(),
     if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
     if (container != null) 'container': container?.toJson(),
@@ -2883,17 +2382,9 @@ class ProjectStorageMountSpec {
   final String? subpath;
   final bool readOnly;
 
-  const ProjectStorageMountSpec({
-    required this.path,
-    this.subpath,
-    this.readOnly = true,
-  });
+  const ProjectStorageMountSpec({required this.path, this.subpath, this.readOnly = true});
 
-  Map<String, dynamic> toJson() => {
-    'path': path,
-    if (subpath != null) 'subpath': subpath,
-    'read_only': readOnly,
-  };
+  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly};
 
   static ProjectStorageMountSpec fromJson(Map<String, dynamic> json) {
     return ProjectStorageMountSpec(
@@ -2903,16 +2394,8 @@ class ProjectStorageMountSpec {
     );
   }
 
-  ProjectStorageMountSpec copyWith({
-    String? path,
-    String? subpath,
-    bool? readOnly,
-  }) {
-    return ProjectStorageMountSpec(
-      path: path ?? this.path,
-      subpath: subpath ?? this.subpath,
-      readOnly: readOnly ?? this.readOnly,
-    );
+  ProjectStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
+    return ProjectStorageMountSpec(path: path ?? this.path, subpath: subpath ?? this.subpath, readOnly: readOnly ?? this.readOnly);
   }
 }
 
@@ -2922,19 +2405,9 @@ class ImageStorageMountSpec {
   final String? subpath;
   final bool readOnly;
 
-  const ImageStorageMountSpec({
-    required this.path,
-    this.subpath,
-    this.readOnly = true,
-    required this.image,
-  });
+  const ImageStorageMountSpec({required this.path, this.subpath, this.readOnly = true, required this.image});
 
-  Map<String, dynamic> toJson() => {
-    'path': path,
-    if (subpath != null) 'subpath': subpath,
-    'read_only': readOnly,
-    'image': image,
-  };
+  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly, 'image': image};
 
   static ImageStorageMountSpec fromJson(Map<String, dynamic> json) {
     return ImageStorageMountSpec(
@@ -2945,11 +2418,7 @@ class ImageStorageMountSpec {
     );
   }
 
-  ImageStorageMountSpec copyWith({
-    String? path,
-    String? subpath,
-    bool? readOnly,
-  }) {
+  ImageStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
     return ImageStorageMountSpec(
       path: path ?? this.path,
       subpath: subpath ?? this.subpath,
@@ -2967,30 +2436,17 @@ class ContainerMountSpec {
   const ContainerMountSpec({this.room, this.project, this.images});
 
   Map<String, dynamic> toJson() => {
-    if (room != null && room!.isNotEmpty)
-      'room': room!.map((e) => e.toJson()).toList(),
-    if (project != null && project!.isNotEmpty)
-      'project': project!.map((e) => e.toJson()).toList(),
-    if (images != null && images!.isNotEmpty)
-      'images': images!.map((e) => e.toJson()).toList(),
+    if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
+    if (project != null && project!.isNotEmpty) 'project': project!.map((e) => e.toJson()).toList(),
+    if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
   };
 
   static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
     return ContainerMountSpec(
-      room: (json['room'] as List?)
-          ?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      project: (json['project'] as List?)
-          ?.map(
-            (e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
-      images: (json['images'] as List?)
-          ?.map(
-            (e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
+      room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -3000,11 +2456,7 @@ class ServiceApiKeySpec {
   final String name;
   final bool? autoProvision; // default True in Python
 
-  const ServiceApiKeySpec({
-    this.role = ApiKeyRole.admin,
-    required this.name,
-    this.autoProvision = true,
-  });
+  const ServiceApiKeySpec({this.role = ApiKeyRole.admin, required this.name, this.autoProvision = true});
 
   Map<String, dynamic> toJson() => {
     'role': _apiKeyRoleToString(role), // always "admin"
@@ -3028,13 +2480,8 @@ class ServiceMetadata {
   final String? icon;
 
   final Map<String, String> annotations;
-  ServiceMetadata({
-    required this.name,
-    this.description,
-    this.repo,
-    this.icon,
-    Map<String, String>? annotations,
-  }) : annotations = annotations ?? {};
+  ServiceMetadata({required this.name, this.description, this.repo, this.icon, Map<String, String>? annotations})
+    : annotations = annotations ?? {};
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -3050,12 +2497,7 @@ class ServiceMetadata {
       description: json['description'] as String?,
       repo: json['repo'] as String?,
       icon: json['icon'] as String?,
-      annotations: json['annotations'] != null
-          ? {
-              for (final entry in (json['annotations'] as Map).entries)
-                entry.key: entry.value,
-            }
-          : {},
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
     );
   }
 }
@@ -3111,21 +2553,11 @@ class ContainerSpec {
     return ContainerSpec(
       command: json['command'] as String?,
       image: json['image'] as String,
-      environment: json['environment'] == null
-          ? null
-          : (json['environment'] as List)
-                .map((e) => EnvironmentVariable.fromJson(e))
-                .toList(),
-      secrets:
-          (json['secrets'] as List?)?.whereType<String>().toList() ??
-          const <String>[],
+      environment: json['environment'] == null ? null : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList(),
+      secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
       pullSecret: json['pull_secret'] as String?,
-      storage: ContainerMountSpec.fromJson(
-        json['storage'] as Map<String, dynamic>?,
-      ),
-      apiKey: (json['api_key'] == null)
-          ? null
-          : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
+      storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
+      apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
       onDemand: json["on_demand"],
       writableRootFs: json["writable_root_fs"],
     );
@@ -3135,8 +2567,7 @@ class ContainerSpec {
     return {
       if (command != null) 'command': command,
       'image': image,
-      if (environment.isNotEmpty)
-        'environment': environment.map((x) => x.toJson()).toList(),
+      if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
       if (secrets.isNotEmpty) 'secrets': secrets,
       if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
@@ -3203,26 +2634,12 @@ class ServiceSpec {
       version: _versionFromString(json['version'] as String?),
       kind: _kindFromString(json['kind'] as String?),
       id: json['id'] as String?,
-      metadata: ServiceMetadata.fromJson(
-        json['metadata'] as Map<String, dynamic>,
-      ),
-      ports:
-          (json['ports'] as List?)
-              ?.map((e) => PortSpec.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          const <PortSpec>[],
-      agents:
-          (json['agents'] as List?)
-              ?.map((e) => AgentSpec.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          const <AgentSpec>[],
+      metadata: ServiceMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
+      ports: (json['ports'] as List?)?.map((e) => PortSpec.fromJson(e as Map<String, dynamic>)).toList() ?? const <PortSpec>[],
+      agents: (json['agents'] as List?)?.map((e) => AgentSpec.fromJson(e as Map<String, dynamic>)).toList() ?? const <AgentSpec>[],
 
-      container: json['container'] != null
-          ? ContainerSpec.fromJson(json['container'])
-          : null,
-      external: json['external'] != null
-          ? ExternalServiceSpec.fromJson(json['external'])
-          : null,
+      container: json['container'] != null ? ContainerSpec.fromJson(json['container']) : null,
+      external: json['external'] != null ? ExternalServiceSpec.fromJson(json['external']) : null,
     );
   }
 
@@ -3254,12 +2671,7 @@ class ServiceSpec {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class OAuthCredentials {
-  OAuthCredentials({
-    required this.accessToken,
-    this.refreshToken,
-    this.expiration,
-    this.scopes,
-  });
+  OAuthCredentials({required this.accessToken, this.refreshToken, this.expiration, this.scopes});
 
   final String accessToken;
   final String? refreshToken;
@@ -3270,9 +2682,7 @@ class OAuthCredentials {
     return OAuthCredentials(
       accessToken: json['access_token'] as String,
       refreshToken: json['refresh_token'] as String?,
-      expiration: json['expiration'] == null
-          ? null
-          : DateTime.parse(json['expiration'] as String),
+      expiration: json['expiration'] == null ? null : DateTime.parse(json['expiration'] as String),
       scopes: (json['scopes'] as List?)?.whereType<String>().toList(),
     );
   }
@@ -3309,10 +2719,7 @@ typedef OAuthTokenRequestHandler = void Function(OAuthTokenRequest request);
 class SecretsClient extends ChangeEmitter {
   SecretsClient({required this.room, this.oauthTokenRequestHandler}) {
     // Server -> client: another participant (or the server) requests us to obtain an OAuth token.
-    room.protocol.addHandler(
-      "secrets.request_oauth_token",
-      _handleClientOAuthTokenRequest,
-    );
+    room.protocol.addHandler("secrets.request_oauth_token", _handleClientOAuthTokenRequest);
   }
 
   final RoomClient room;
@@ -3320,12 +2727,7 @@ class SecretsClient extends ChangeEmitter {
   final OAuthTokenRequestHandler? oauthTokenRequestHandler;
 
   // Server sent us a request asking the local user/client to authorize and supply a token.
-  Future<void> _handleClientOAuthTokenRequest(
-    Protocol protocol,
-    int messageId,
-    String type,
-    Uint8List bytes,
-  ) async {
+  Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final header = unpackMessage(bytes).header;
 
     // Expected shape (matches Python):
@@ -3369,19 +2771,13 @@ class SecretsClient extends ChangeEmitter {
   }
 
   /// Client -> server: Provide the OAuth token in response to a prior inbound request.
-  Future<void> provideOAuthAuthorization({
-    required String requestId,
-    required String code,
-  }) async {
+  Future<void> provideOAuthAuthorization({required String requestId, required String code}) async {
     final payload = {"request_id": requestId, "code": code};
     await room.sendRequest("secrets.provide_oauth_authorization", payload);
   }
 
   /// Client -> server: reject an OAuth token request in response to a prior inbound request.
-  Future<void> rejectOAuthAuthorization({
-    required String requestId,
-    required String error,
-  }) async {
+  Future<void> rejectOAuthAuthorization({required String requestId, required String error}) async {
     final payload = {"request_id": requestId, "error": error};
     await room.sendRequest("secrets.provide_oauth_authorization", payload);
   }
@@ -3408,9 +2804,7 @@ class SecretsClient extends ChangeEmitter {
       "delegate_to": delegateTo,
     };
 
-    final res =
-        await room.sendRequest("secrets.request_oauth_token", req)
-            as JsonResponse;
+    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonResponse;
     final accessToken = (res.json["access_token"] as String?) ?? "";
     if (accessToken.isEmpty) {
       throw RoomServerException("Invalid response: missing access_token");
@@ -3440,9 +2834,7 @@ class SecretsClient extends ChangeEmitter {
       }
       return token;
     } else {
-      throw RoomServerException(
-        'Invalid response received, expected JsonResponse',
-      );
+      throw RoomServerException('Invalid response received, expected JsonResponse');
     }
   }
 }
