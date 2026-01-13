@@ -1,3 +1,7 @@
+## [0.21.0]
+- Add token-backed environment variables in service specs so Dart clients can inject participant tokens instead of static values.
+- Expose `on_demand` and `writable_root_fs` flags on container specs to control per-request services and filesystem mutability.
+
 ## [0.20.6]
 - Stability
 
