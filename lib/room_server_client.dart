@@ -12,7 +12,6 @@ import "package:uuid/uuid.dart";
 
 import "runtime.dart";
 import "database_client.dart";
-import "livekit_client.dart";
 
 class RoomServerException implements Exception {
   RoomServerException(this.message);
@@ -371,7 +370,7 @@ class _RefCount<T> {
 }
 
 class RoomClient extends ChangeEmitter {
-  RoomClient({required this.protocol, OAuthTokenRequestHandler? oauthTokenRequestHandler}) {
+  RoomClient({required this.protocol, OAuthTokenRequestHandler? oauthTokenRequestHandler, SecretRequestHandler? secretRequestHandler}) {
     protocol.addHandler("__response__", _handleResponse);
 
     protocol.addHandler("connected", _handleParticipant);
@@ -385,14 +384,11 @@ class RoomClient extends ChangeEmitter {
     developer = DeveloperClient(room: this);
     messaging = MessagingClient(room: this);
     agents = AgentsClient(room: this);
-    livekit = LivekitClient(room: this);
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
     containers = ContainersClient(room: this);
-    secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler);
+    secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
   }
-
-  late final LivekitClient livekit;
 
   late final QueuesClient queues;
   late final SyncClient sync;
@@ -2716,15 +2712,30 @@ class OAuthTokenRequest {
 /// Optional: if you want a typedef for clarity
 typedef OAuthTokenRequestHandler = void Function(OAuthTokenRequest request);
 
+class SecretRequest {
+  SecretRequest({required this.requestId, required this.url, required this.type, this.delegateTo});
+
+  final String requestId;
+  final String url;
+  final String type;
+  final String? delegateTo;
+}
+
+typedef SecretRequestHandler = void Function(SecretRequest request);
+
 class SecretsClient extends ChangeEmitter {
-  SecretsClient({required this.room, this.oauthTokenRequestHandler}) {
+  SecretsClient({required this.room, this.oauthTokenRequestHandler, this.secretRequestHandler}) {
     // Server -> client: another participant (or the server) requests us to obtain an OAuth token.
     room.protocol.addHandler("secrets.request_oauth_token", _handleClientOAuthTokenRequest);
+
+    // Server -> client: another participant (or the server) requests a secret.
+    room.protocol.addHandler("secrets.request_secret", _handleClientSecretRequest);
   }
 
   final RoomClient room;
 
   final OAuthTokenRequestHandler? oauthTokenRequestHandler;
+  final SecretRequestHandler? secretRequestHandler;
 
   // Server sent us a request asking the local user/client to authorize and supply a token.
   Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -2770,6 +2781,32 @@ class SecretsClient extends ChangeEmitter {
     }();
   }
 
+  Future<void> _handleClientSecretRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final header = unpackMessage(bytes).header;
+
+    final String requestId = header["request_id"] as String;
+    final req = header["request"] as Map<String, dynamic>;
+
+    if (secretRequestHandler == null) {
+      throw RoomServerException("No secret handler registered");
+    }
+
+    final secretReq = SecretRequest(
+      requestId: requestId,
+      url: req["url"] as String,
+      type: req["type"] as String,
+      delegateTo: req["delegate_to"] as String?,
+    );
+
+    () async {
+      try {
+        secretRequestHandler!(secretReq);
+      } catch (e, st) {
+        Logger.root.warning("Secret request handler threw", e, st);
+      }
+    }();
+  }
+
   /// Client -> server: Provide the OAuth token in response to a prior inbound request.
   Future<void> provideOAuthAuthorization({required String requestId, required String code}) async {
     final payload = {"request_id": requestId, "code": code};
@@ -2780,6 +2817,86 @@ class SecretsClient extends ChangeEmitter {
   Future<void> rejectOAuthAuthorization({required String requestId, required String error}) async {
     final payload = {"request_id": requestId, "error": error};
     await room.sendRequest("secrets.provide_oauth_authorization", payload);
+  }
+
+  Future<void> provideSecret({required String requestId, required Uint8List data}) async {
+    final payload = {"request_id": requestId};
+    await room.sendRequest("secrets.provide_secret", payload, data: data);
+  }
+
+  Future<void> rejectSecret({required String requestId, required String error}) async {
+    final payload = {"request_id": requestId, "error": error};
+    await room.sendRequest("secrets.provide_secret", payload);
+  }
+
+  Future<Uint8List> requestSecret({
+    required String fromParticipantId,
+    required String url,
+    required String type,
+    int timeout = 60 * 5,
+    String? delegateTo,
+  }) async {
+    final req = <String, dynamic>{
+      "url": url,
+      "type": type,
+      "participant_id": fromParticipantId,
+      "timeout": timeout,
+      if (delegateTo != null) "delegate_to": delegateTo,
+    };
+
+    final res = await room.sendRequest("secrets.request_secret", req);
+    if (res is FileResponse) {
+      return res.data;
+    }
+    throw RoomServerException("Invalid response received, expected FileResponse");
+  }
+
+  Future<FileResponse?> getSecret({required String secretId, String? delegatedTo}) async {
+    final req = <String, dynamic>{"secret_id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
+
+    final res = await room.sendRequest("secrets.get_secret", req);
+    if (res is EmptyResponse) {
+      return null;
+    }
+    if (res is FileResponse) {
+      return res;
+    }
+    throw RoomServerException("Invalid response received, expected FileResponse or EmptyResponse");
+  }
+
+  Future<void> setSecret({required String secretId, required Uint8List data, String? mimeType, String? name, String? delegatedTo}) async {
+    final req = <String, dynamic>{
+      "secret_id": secretId,
+      if (mimeType != null) "type": mimeType,
+      if (name != null) "name": name,
+      if (delegatedTo != null) "delegated_to": delegatedTo,
+    };
+
+    final res = await room.sendRequest("secrets.set_secret", req, data: data);
+    if (res is EmptyResponse || res is JsonResponse) {
+      return;
+    }
+    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+  }
+
+  Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
+    final req = <String, dynamic>{"id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
+
+    final res = await room.sendRequest("secrets.delete_secret", req);
+    if (res is EmptyResponse || res is JsonResponse) {
+      return;
+    }
+    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+  }
+
+  Future<void> deleteRequestedSecret({required String url, required String type, String? delegatedTo}) async {
+    final req = <String, dynamic>{"url": url, "type": type, if (delegatedTo != null) "delegated_to": delegatedTo};
+
+    final res = await room.sendRequest("secrets.delete_requested_secret", req);
+    if (res is EmptyResponse || res is JsonResponse) {
+      return;
+    }
+    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
   }
 
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
