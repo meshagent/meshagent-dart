@@ -1079,7 +1079,7 @@ class Meshagent {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to get project role. Status code: ${response.statusCode}, body: ${response.body}');
     }
     final role = (jsonDecode(response.body) as Map<String, dynamic>)["role"];
 
@@ -1095,7 +1095,7 @@ class Meshagent {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to create room. Status code: ${response.statusCode}, body: ${response.body}');
     }
     final canCreateRooms = (jsonDecode(response.body) as Map<String, dynamic>)["can_create_rooms"] ?? false;
 
@@ -1109,7 +1109,7 @@ class Meshagent {
     final response = await http.get(uri, headers: _getHeaders());
 
     if (response.statusCode >= 400) {
-      throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
+      throw MeshagentException('Failed to get project. Status code: ${response.statusCode}, body: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
