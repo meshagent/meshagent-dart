@@ -547,7 +547,7 @@ class Meshagent {
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<String> createService({required String projectId, required ServiceSpec service}) async {
+  Future<ServiceSpec> createService({required String projectId, required ServiceSpec service}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
@@ -559,13 +559,13 @@ class Meshagent {
       );
     }
 
-    return jsonDecode(response.body)["id"];
+    return ServiceSpec.fromJson(jsonDecode(response.body));
   }
 
   /// Corresponds to: POST /accounts/projects/:project_id/
   /// Body: { "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
-  Future<void> updateService({required String projectId, required String serviceId, required ServiceSpec service}) async {
+  Future<ServiceSpec> updateService({required String projectId, required String serviceId, required ServiceSpec service}) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
 
     final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
@@ -576,6 +576,52 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
+  }
+
+  /// Corresponds to: PUT /accounts/projects/:project_id/rooms/:room_name/services/:service_id
+  /// Body: { "template": <spec>, "values": { ... } }
+  Future<ServiceSpec> updateServiceFromTemplate({
+    required String projectId,
+    required String serviceId,
+    required ServiceTemplateSpec template,
+    required Map<String, String> values,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
+
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update room service from template. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
+  }
+
+  /// Corresponds to: POST /accounts/projects/:project_id/rooms/:room_name/services
+  /// Body: { "template": <spec>, "values": { ... } }
+  /// Returns JSON like { "id" } on success.
+  Future<ServiceSpec> createServiceFromTemplate({
+    required String projectId,
+    required ServiceTemplateSpec template,
+    required Map<String, String> values,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create room service from template. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
   }
 
   /// --------------------------------
@@ -655,6 +701,29 @@ class Meshagent {
     return jsonDecode(response.body)["id"];
   }
 
+  /// Corresponds to: POST /accounts/projects/:project_id/rooms/:room_name/services
+  /// Body: { "template": <spec>, "values": { ... } }
+  /// Returns JSON like { "id" } on success.
+  Future<ServiceSpec> createRoomServiceFromTemplate({
+    required String projectId,
+    required String roomName,
+    required ServiceTemplateSpec template,
+    required Map<String, String> values,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create room service from template. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
+  }
+
   /// Corresponds to: POST /accounts/projects/:project_id/
   /// Body: { "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
@@ -674,6 +743,29 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+  }
+
+  /// Corresponds to: PUT /accounts/projects/:project_id/rooms/:room_name/services/:service_id
+  /// Body: { "template": <spec>, "values": { ... } }
+  Future<ServiceSpec> updateRoomServiceFromTemplate({
+    required String projectId,
+    required String roomName,
+    required String serviceId,
+    required ServiceTemplateSpec template,
+    required Map<String, String> values,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
+
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update room service from template. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
   }
 
   /// --------------------------------
