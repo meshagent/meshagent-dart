@@ -366,6 +366,24 @@ class Meshagent {
     return list.whereType<Map<String, dynamic>>().map(Mailbox.fromJson).toList();
   }
 
+  /// GET /accounts/projects/{project_id}/rooms/{room_name}/mailboxes
+  /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
+  Future<List<Mailbox>> listRoomMailboxes({required String projectId, required String roomName}) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/mailboxes');
+    final response = await http.get(uri, headers: _getHeaders());
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room mailboxes. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['mailboxes'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Mailbox.fromJson).toList();
+  }
+
   /// DELETE /accounts/projects/{project_id}/mailboxes/{address}
   /// Returns {} on success.
   Future<void> deleteMailbox({required String projectId, required String address}) async {
