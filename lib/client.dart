@@ -977,14 +977,6 @@ class Meshagent {
     return data["enabled"] == true;
   }
 
-  Future<bool> isLowBalance(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/status');
-    final response = await http.get(uri, headers: _getHeaders());
-
-    final data = (jsonDecode(response.body) as Map<String, dynamic>);
-    return data["low_balance"] == true;
-  }
-
   Future<Balance> getBalance(String projectId) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/balance');
     final response = await http.get(uri, headers: _getHeaders());
