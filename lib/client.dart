@@ -581,7 +581,7 @@ class Meshagent {
   }
 
   /// Corresponds to: PUT /accounts/projects/:project_id/rooms/:room_name/services/:service_id
-  /// Body: { "template": <spec>, "values": { ... } }
+  /// Body: { "template": {}, "values": { ... } }
   Future<ServiceSpec> updateServiceFromTemplate({
     required String projectId,
     required String serviceId,
@@ -603,7 +603,7 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /accounts/projects/:project_id/rooms/:room_name/services
-  /// Body: { "template": <spec>, "values": { ... } }
+  /// Body: { "template": {}, "values": { ... } }
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> createServiceFromTemplate({
     required String projectId,
@@ -702,7 +702,7 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /accounts/projects/:project_id/rooms/:room_name/services
-  /// Body: { "template": <spec>, "values": { ... } }
+  /// Body: { "template": {}, "values": { ... } }
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> createRoomServiceFromTemplate({
     required String projectId,
@@ -746,7 +746,7 @@ class Meshagent {
   }
 
   /// Corresponds to: PUT /accounts/projects/:project_id/rooms/:room_name/services/:service_id
-  /// Body: { "template": <spec>, "values": { ... } }
+  /// Body: { "template": {}, "values": { ... } }
   Future<ServiceSpec> updateRoomServiceFromTemplate({
     required String projectId,
     required String roomName,
