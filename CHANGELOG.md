@@ -1,3 +1,10 @@
+## [0.22.0]
+- Breaking: Livekit client removed from meshagent-dart and moved to meshagent-flutter with livekit_client ^2.4.0 and a Livekit protocol channel helper.
+- Breaking: createService/updateService now return ServiceSpec objects; service template create/update APIs added for project and room services.
+- Added room mailbox listing plus secret request/response APIs (request/provide/get/set/delete/delete-requested) with SecretRequestHandler support in RoomClient and Flutter RoomConnectionScope.
+- Added meshagent_git_credentials helper for Git credential lookup via room secrets (crypto ^3.0.6).
+- Dependency updates across SDK Flutter packages: shadcn_ui ^0.43.2 and super_clipboard ^0.9.1.
+
 ## [0.21.0]
 - Add token-backed environment variables in service specs so Dart clients can inject participant tokens instead of static values.
 - Expose `on_demand` and `writable_root_fs` flags on container specs to control per-request services and filesystem mutability.
