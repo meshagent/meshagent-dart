@@ -1,3 +1,6 @@
+## [0.22.1]
+- Stability
+
 ## [0.22.0]
 - Breaking: Livekit client removed from meshagent-dart and moved to meshagent-flutter with livekit_client ^2.4.0 and a Livekit protocol channel helper.
 - Breaking: createService/updateService now return ServiceSpec objects; service template create/update APIs added for project and room services.
