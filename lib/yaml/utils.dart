@@ -10,8 +10,7 @@ import 'package:source_span/source_span.dart';
 /// Print a warning.
 ///
 /// If [span] is passed, associates the warning with that span.
-void warn(String message, [SourceSpan? span]) =>
-    yamlWarningCallback(message, span);
+void warn(String message, [SourceSpan? span]) => yamlWarningCallback(message, span);
 
 /// A callback for emitting a warning.
 ///

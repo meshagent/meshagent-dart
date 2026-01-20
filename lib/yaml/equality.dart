@@ -12,8 +12,7 @@ import 'package:collection/collection.dart';
 import 'yaml_node.dart';
 
 /// Returns a [Map] that compares its keys based on [deepEquals].
-Map<K, V> deepEqualsMap<K, V>() =>
-    LinkedHashMap(equals: deepEquals, hashCode: deepHashCode);
+Map<K, V> deepEqualsMap<K, V>() => LinkedHashMap(equals: deepEquals, hashCode: deepHashCode);
 
 /// Returns whether two objects are structurally equivalent.
 ///
@@ -110,8 +109,7 @@ int deepHashCode(Object? obj) {
     try {
       if (value is Map) {
         var equality = const UnorderedIterableEquality<Object?>();
-        return equality.hash(value.keys.map(deepHashCodeInner)) ^
-            equality.hash(value.values.map(deepHashCodeInner));
+        return equality.hash(value.keys.map(deepHashCodeInner)) ^ equality.hash(value.values.map(deepHashCodeInner));
       } else if (value is Iterable) {
         return const IterableEquality<Object?>().hash(value.map(deepHashCode));
       } else if (value is YamlScalar) {

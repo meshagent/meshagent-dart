@@ -15,9 +15,7 @@ import 'style.dart';
 import 'yaml_node.dart';
 
 /// A wrapper that makes a normal Dart map behave like a [YamlMap].
-class YamlMapWrapper extends MapBase
-    with pkg_collection.UnmodifiableMapMixin
-    implements YamlMap {
+class YamlMapWrapper extends MapBase with pkg_collection.UnmodifiableMapMixin implements YamlMap {
   @override
   final CollectionStyle style;
 
@@ -35,13 +33,10 @@ class YamlMapWrapper extends MapBase
   @override
   Iterable get keys => _dartMap.keys;
 
-  YamlMapWrapper(Map dartMap, Object? sourceUrl,
-      {CollectionStyle style = CollectionStyle.ANY})
-      : this._(dartMap, NullSpan(sourceUrl), style: style);
+  YamlMapWrapper(Map dartMap, Object? sourceUrl, {CollectionStyle style = CollectionStyle.ANY})
+    : this._(dartMap, NullSpan(sourceUrl), style: style);
 
-  YamlMapWrapper._(Map dartMap, this.span, {this.style = CollectionStyle.ANY})
-      : _dartMap = dartMap,
-        nodes = _YamlMapNodes(dartMap, span) {
+  YamlMapWrapper._(Map dartMap, this.span, {this.style = CollectionStyle.ANY}) : _dartMap = dartMap, nodes = _YamlMapNodes(dartMap, span) {
     ArgumentError.checkNotNull(style, 'style');
   }
 
@@ -57,21 +52,18 @@ class YamlMapWrapper extends MapBase
   int get hashCode => _dartMap.hashCode;
 
   @override
-  bool operator ==(Object other) =>
-      other is YamlMapWrapper && other._dartMap == _dartMap;
+  bool operator ==(Object other) => other is YamlMapWrapper && other._dartMap == _dartMap;
 }
 
 /// The implementation of [YamlMapWrapper.nodes] as a wrapper around the Dart
 /// map.
-class _YamlMapNodes extends MapBase<dynamic, YamlNode>
-    with pkg_collection.UnmodifiableMapMixin<dynamic, YamlNode> {
+class _YamlMapNodes extends MapBase<dynamic, YamlNode> with pkg_collection.UnmodifiableMapMixin<dynamic, YamlNode> {
   final Map _dartMap;
 
   final SourceSpan _span;
 
   @override
-  Iterable get keys =>
-      _dartMap.keys.map((key) => YamlScalar.internalWithSpan(key, _span));
+  Iterable get keys => _dartMap.keys.map((key) => YamlScalar.internalWithSpan(key, _span));
 
   _YamlMapNodes(this._dartMap, this._span);
 
@@ -87,8 +79,7 @@ class _YamlMapNodes extends MapBase<dynamic, YamlNode>
   int get hashCode => _dartMap.hashCode;
 
   @override
-  bool operator ==(Object other) =>
-      other is _YamlMapNodes && other._dartMap == _dartMap;
+  bool operator ==(Object other) => other is _YamlMapNodes && other._dartMap == _dartMap;
 }
 
 // TODO(nweiz): Use UnmodifiableListMixin when issue 18970 is fixed.
@@ -116,14 +107,12 @@ class YamlListWrapper extends ListBase implements YamlList {
     throw UnsupportedError('Cannot modify an unmodifiable List.');
   }
 
-  YamlListWrapper(List dartList, Object? sourceUrl,
-      {CollectionStyle style = CollectionStyle.ANY})
-      : this._(dartList, NullSpan(sourceUrl), style: style);
+  YamlListWrapper(List dartList, Object? sourceUrl, {CollectionStyle style = CollectionStyle.ANY})
+    : this._(dartList, NullSpan(sourceUrl), style: style);
 
-  YamlListWrapper._(List dartList, this.span,
-      {this.style = CollectionStyle.ANY})
-      : _dartList = dartList,
-        nodes = _YamlListNodes(dartList, span) {
+  YamlListWrapper._(List dartList, this.span, {this.style = CollectionStyle.ANY})
+    : _dartList = dartList,
+      nodes = _YamlListNodes(dartList, span) {
     ArgumentError.checkNotNull(style, 'style');
   }
 
@@ -144,8 +133,7 @@ class YamlListWrapper extends ListBase implements YamlList {
   int get hashCode => _dartList.hashCode;
 
   @override
-  bool operator ==(Object other) =>
-      other is YamlListWrapper && other._dartList == _dartList;
+  bool operator ==(Object other) => other is YamlListWrapper && other._dartList == _dartList;
 }
 
 // TODO(nweiz): Use UnmodifiableListMixin when issue 18970 is fixed.
@@ -178,8 +166,7 @@ class _YamlListNodes extends ListBase<YamlNode> {
   int get hashCode => _dartList.hashCode;
 
   @override
-  bool operator ==(Object other) =>
-      other is _YamlListNodes && other._dartList == _dartList;
+  bool operator ==(Object other) => other is _YamlListNodes && other._dartList == _dartList;
 }
 
 YamlNode _nodeForValue(Object? value, SourceSpan span) {

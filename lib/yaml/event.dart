@@ -39,11 +39,8 @@ class DocumentStartEvent implements Event {
   /// `===` sequence).
   final bool isImplicit;
 
-  DocumentStartEvent(this.span,
-      {this.versionDirective,
-      List<TagDirective>? tagDirectives,
-      this.isImplicit = true})
-      : tagDirectives = tagDirectives ?? [];
+  DocumentStartEvent(this.span, {this.versionDirective, List<TagDirective>? tagDirectives, this.isImplicit = true})
+    : tagDirectives = tagDirectives ?? [];
 
   @override
   String toString() => 'DOCUMENT_START';
@@ -157,15 +154,4 @@ class MappingStartEvent extends _ValueEvent {
 }
 
 /// The types of [Event] objects.
-enum EventType {
-  streamStart,
-  streamEnd,
-  documentStart,
-  documentEnd,
-  alias,
-  scalar,
-  sequenceStart,
-  sequenceEnd,
-  mappingStart,
-  mappingEnd
-}
+enum EventType { streamStart, streamEnd, documentStart, documentEnd, alias, scalar, sequenceStart, sequenceEnd, mappingStart, mappingEnd }

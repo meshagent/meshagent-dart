@@ -81,14 +81,11 @@ class YamlMap extends YamlNode with collection.MapMixin, UnmodifiableMapMixin {
   /// passed, it's used as the [SourceSpan.sourceUrl].
   ///
   /// [sourceUrl] may be either a [String], a [Uri], or `null`.
-  factory YamlMap.wrap(Map dartMap,
-          {Object? sourceUrl, CollectionStyle style = CollectionStyle.ANY}) =>
+  factory YamlMap.wrap(Map dartMap, {Object? sourceUrl, CollectionStyle style = CollectionStyle.ANY}) =>
       YamlMapWrapper(dartMap, sourceUrl, style: style);
 
   /// Users of the library should not use this constructor.
-  YamlMap.internal(Map<dynamic, YamlNode> nodes, super.span, this.style)
-      : nodes = UnmodifiableMapView<dynamic, YamlNode>(nodes),
-        super._();
+  YamlMap.internal(Map<dynamic, YamlNode> nodes, super.span, this.style) : nodes = UnmodifiableMapView<dynamic, YamlNode>(nodes), super._();
 
   @override
   dynamic operator [](Object? key) => nodes[key]?.value;
@@ -131,14 +128,11 @@ class YamlList extends YamlNode with collection.ListMixin {
   /// passed, it's used as the [SourceSpan.sourceUrl].
   ///
   /// [sourceUrl] may be either a [String], a [Uri], or `null`.
-  factory YamlList.wrap(List dartList,
-          {Object? sourceUrl, CollectionStyle style = CollectionStyle.ANY}) =>
+  factory YamlList.wrap(List dartList, {Object? sourceUrl, CollectionStyle style = CollectionStyle.ANY}) =>
       YamlListWrapper(dartList, sourceUrl, style: style);
 
   /// Users of the library should not use this constructor.
-  YamlList.internal(List<YamlNode> nodes, super.span, this.style)
-      : nodes = UnmodifiableListView<YamlNode>(nodes),
-        super._();
+  YamlList.internal(List<YamlNode> nodes, super.span, this.style) : nodes = UnmodifiableListView<YamlNode>(nodes), super._();
 
   @override
   dynamic operator [](int index) => nodes[index].value;
@@ -164,20 +158,15 @@ class YamlScalar extends YamlNode {
   /// [sourceUrl] is passed, it's used as the [SourceSpan.sourceUrl].
   ///
   /// [sourceUrl] may be either a [String], a [Uri], or `null`.
-  YamlScalar.wrap(this.value, {Object? sourceUrl, this.style = ScalarStyle.ANY})
-      : super._(NullSpan(sourceUrl)) {
+  YamlScalar.wrap(this.value, {Object? sourceUrl, this.style = ScalarStyle.ANY}) : super._(NullSpan(sourceUrl)) {
     ArgumentError.checkNotNull(style, 'style');
   }
 
   /// Users of the library should not use this constructor.
-  YamlScalar.internal(this.value, ScalarEvent scalar)
-      : style = scalar.style,
-        super._(scalar.span);
+  YamlScalar.internal(this.value, ScalarEvent scalar) : style = scalar.style, super._(scalar.span);
 
   /// Users of the library should not use this constructor.
-  YamlScalar.internalWithSpan(this.value, SourceSpan span)
-      : style = ScalarStyle.ANY,
-        super._(span);
+  YamlScalar.internalWithSpan(this.value, SourceSpan span) : style = ScalarStyle.ANY, super._(span);
 
   @override
   String toString() => value.toString();

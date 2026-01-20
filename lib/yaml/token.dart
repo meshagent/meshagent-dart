@@ -154,5 +154,5 @@ enum TokenType {
   alias,
   anchor,
   tag,
-  scalar
+  scalar,
 }
