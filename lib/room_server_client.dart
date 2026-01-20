@@ -6,6 +6,7 @@ import "package:meshagent/agents_client.dart";
 import "package:meshagent/meshagent.dart";
 import "package:meshagent/queues_client.dart";
 import "package:logging/logging.dart";
+import "package:meshagent/yaml/yaml.dart";
 
 import 'package:path/path.dart' as path;
 import "package:uuid/uuid.dart";
@@ -2309,6 +2310,10 @@ class ServiceTemplateSpec {
   }) : ports = ports ?? const [],
        agents = agents ?? const [];
 
+  factory ServiceTemplateSpec.fromYaml(String yaml) {
+    return ServiceTemplateSpec.fromJson(jsonDecode(jsonEncode(loadYaml(yaml))));
+  }
+
   factory ServiceTemplateSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateSpec(
       version: json['version'] as String? ?? 'v1',
@@ -2624,6 +2629,10 @@ class ServiceSpec {
     if (ports.isNotEmpty) 'ports': ports.map((e) => e.toJson()).toList(),
     if (agents.isNotEmpty) 'agents': agents.map((e) => e.toJson()).toList(),
   };
+
+  factory ServiceSpec.fromYaml(String yaml) {
+    return ServiceSpec.fromJson(jsonDecode(jsonEncode(loadYaml(yaml))));
+  }
 
   static ServiceSpec fromJson(Map<String, dynamic> json) {
     return ServiceSpec(
