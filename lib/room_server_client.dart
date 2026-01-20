@@ -2910,11 +2910,9 @@ class SecretsClient extends ChangeEmitter {
     final res = await room.sendRequest("secrets.list_secrets", {});
 
     if (res is JsonResponse) {
-      final secrets = (res.json['secrets'] as List<dynamic>?)
-          ?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>))
-          .toList();
+      final secrets = (res.json['secrets'] as List<dynamic>?)?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>)).toList();
 
-        return secrets ?? [];
+      return secrets ?? [];
     }
 
     throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
