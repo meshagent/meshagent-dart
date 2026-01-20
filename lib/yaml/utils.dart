@@ -29,7 +29,6 @@ YamlWarningCallback yamlWarningCallback = (message, [SourceSpan? span]) {
   // TODO(nweiz): Print to stderr with color when issue 6943 is fixed and
   // dart:io is available.
   if (span != null) message = span.message(message);
-  print(message);
 };
 
 /// Whether [codeUnit] is a UTF-16 high surrogate.
