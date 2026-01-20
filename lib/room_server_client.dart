@@ -2723,6 +2723,24 @@ class SecretRequest {
 
 typedef SecretRequestHandler = void Function(SecretRequest request);
 
+class SecretInfo {
+  const SecretInfo({required this.id, required this.type, required this.name, this.delegatedTo});
+
+  final String id;
+  final String type;
+  final String name;
+  final String? delegatedTo;
+
+  factory SecretInfo.fromJson(Map<String, dynamic> json) {
+    return SecretInfo(
+      id: json['id'] as String,
+      type: json['type'] as String,
+      name: json['name'] as String,
+      delegatedTo: json['delegated_to'] as String?,
+    );
+  }
+}
+
 class SecretsClient extends ChangeEmitter {
   SecretsClient({required this.room, this.oauthTokenRequestHandler, this.secretRequestHandler}) {
     // Server -> client: another participant (or the server) requests us to obtain an OAuth token.
@@ -2876,6 +2894,20 @@ class SecretsClient extends ChangeEmitter {
     if (res is EmptyResponse || res is JsonResponse) {
       return;
     }
+    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+  }
+
+  Future<List<SecretInfo>> listSecrets() async {
+    final res = await room.sendRequest("secrets.list_secrets", {});
+
+    if (res is JsonResponse) {
+      final secrets = (res.json['secrets'] as List<dynamic>?)
+          ?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>))
+          .toList();
+
+        return secrets ?? [];
+    }
+
     throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
   }
 
