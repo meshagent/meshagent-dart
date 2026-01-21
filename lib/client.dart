@@ -585,12 +585,12 @@ class Meshagent {
   Future<ServiceSpec> updateServiceFromTemplate({
     required String projectId,
     required String serviceId,
-    required ServiceTemplateSpec template,
+    required String template,
     required Map<String, String> values,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -607,12 +607,12 @@ class Meshagent {
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> createServiceFromTemplate({
     required String projectId,
-    required ServiceTemplateSpec template,
+    required String template,
     required Map<String, String> values,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -707,12 +707,12 @@ class Meshagent {
   Future<ServiceSpec> createRoomServiceFromTemplate({
     required String projectId,
     required String roomName,
-    required ServiceTemplateSpec template,
+    required String template,
     required Map<String, String> values,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -751,12 +751,12 @@ class Meshagent {
     required String projectId,
     required String roomName,
     required String serviceId,
-    required ServiceTemplateSpec template,
+    required String template,
     required Map<String, String> values,
   }) async {
     final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template.toJson(), 'values': values}));
+    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
