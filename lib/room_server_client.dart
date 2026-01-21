@@ -2076,11 +2076,16 @@ class ServiceTemplateVariable {
 class TokenValue {
   final String identity;
   final ApiScope? api;
+  final String? role;
 
-  const TokenValue({required this.identity, this.api});
+  const TokenValue({required this.identity, this.api, this.role});
 
   factory TokenValue.fromJson(Map<String, dynamic> json) {
-    return TokenValue(identity: json['identity'] as String, api: json['api'] != null ? ApiScope.fromJson(json['api']) : null);
+    return TokenValue(
+      identity: json['identity'] as String,
+      api: json['api'] != null ? ApiScope.fromJson(json['api']) : null,
+      role: json['role'],
+    );
   }
 
   Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson()};
