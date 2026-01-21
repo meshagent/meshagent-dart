@@ -2192,19 +2192,39 @@ class ServiceTemplateMetadata {
   }
 }
 
+class TemplateEnvironmentVariable {
+  final String name;
+  final String? value;
+  final TokenValue? token;
+
+  TemplateEnvironmentVariable({required this.name, this.value, this.token});
+
+  factory TemplateEnvironmentVariable.fromJson(Map<String, dynamic> json) {
+    return TemplateEnvironmentVariable(
+      name: json['name'] as String,
+      value: json['value'] as String?,
+      token: json['token'] == null ? null : TokenValue.fromJson(json['token']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, if (value != null) 'value': value, if (token != null) 'token': token?.toJson()};
+}
+
 class ContainerTemplateSpec {
   ContainerTemplateSpec({this.environment, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
 
   final String? image;
   final String? command;
-  final List<EnvironmentVariable>? environment;
+  final List<TemplateEnvironmentVariable>? environment;
   final ServiceTemplateContainerMountSpec? storage;
   final bool? onDemand;
   final bool? writableRootFs;
 
   static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
     return ContainerTemplateSpec(
-      environment: (json['environment'] as List<dynamic>?)?.map((e) => EnvironmentVariable.fromJson(e as Map<String, dynamic>)).toList(),
+      environment: (json['environment'] as List<dynamic>?)
+          ?.map((e) => TemplateEnvironmentVariable.fromJson(e as Map<String, dynamic>))
+          .toList(),
       onDemand: json['on_demand'],
       writableRootFs: json['writable_root_fs'],
       image: json['image'] as String?,
@@ -2293,6 +2313,26 @@ class AgentSpec {
   }
 }
 
+class AgentTemplateSpec {
+  AgentTemplateSpec({required this.name, this.description, Map<String, dynamic>? annotations}) : annotations = annotations ?? {};
+
+  final String name;
+  final String? description;
+  final Map<String, dynamic> annotations;
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, if (description != null) "description": description, "annotations": annotations};
+  }
+
+  static AgentTemplateSpec fromJson(Map<String, dynamic> json) {
+    return AgentTemplateSpec(
+      name: json["name"],
+      description: json["description"],
+      annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
+    );
+  }
+}
+
 class ServiceTemplateSpec {
   final String version; // default "v1"
   final String kind; // default "ServiceTemplate"
@@ -2301,7 +2341,7 @@ class ServiceTemplateSpec {
   final List<PortSpec> ports;
   final ContainerTemplateSpec? container;
   final ExternalServiceTemplateSpec? external;
-  final List<AgentSpec> agents;
+  final List<AgentTemplateSpec> agents;
 
   ServiceTemplateSpec({
     this.version = 'v1',
@@ -2311,7 +2351,7 @@ class ServiceTemplateSpec {
     List<PortSpec>? ports,
     this.container,
     this.external,
-    List<AgentSpec>? agents,
+    List<AgentTemplateSpec>? agents,
   }) : ports = ports ?? const [],
        agents = agents ?? const [];
 
@@ -2328,7 +2368,7 @@ class ServiceTemplateSpec {
       ports: (json['ports'] as List<dynamic>? ?? []).map((e) => PortSpec.fromJson(e as Map<String, dynamic>)).toList(),
       container: json['container'] == null ? null : ContainerTemplateSpec.fromJson(json['container']),
       external: json['external'] == null ? null : ExternalServiceTemplateSpec.fromJson(json['external']),
-      agents: (json['agents'] as List<dynamic>? ?? []).map((e) => AgentSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      agents: (json['agents'] as List<dynamic>? ?? []).map((e) => AgentTemplateSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
@@ -2347,7 +2387,7 @@ class ServiceTemplateSpec {
     return ServiceSpec(
       version: Version.v1,
       kind: Kind.service,
-      agents: agents,
+      agents: [for (final a in agents) AgentSpec(name: a.name, description: a.description, annotations: a.annotations)],
       metadata: ServiceMetadata(
         name: metadata.name,
         description: metadata.description,
@@ -2434,17 +2474,43 @@ class ImageStorageMountSpec {
   }
 }
 
+class FileStorageMountSpec {
+  final String text;
+  final String path;
+  final String? subpath;
+  final bool readOnly;
+
+  const FileStorageMountSpec({required this.path, this.subpath, this.readOnly = true, required this.text});
+
+  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly, 'text': text};
+
+  static FileStorageMountSpec fromJson(Map<String, dynamic> json) {
+    return FileStorageMountSpec(
+      path: json['path'] as String,
+      subpath: json['subpath'] as String?,
+      readOnly: (json['read_only'] as bool?) ?? true,
+      text: json['text'] as String,
+    );
+  }
+
+  FileStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
+    return FileStorageMountSpec(path: path ?? this.path, subpath: subpath ?? this.subpath, readOnly: readOnly ?? this.readOnly, text: text);
+  }
+}
+
 class ContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
+  final List<FileStorageMountSpec>? files;
 
-  const ContainerMountSpec({this.room, this.project, this.images});
+  const ContainerMountSpec({this.room, this.project, this.images, this.files});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
     if (project != null && project!.isNotEmpty) 'project': project!.map((e) => e.toJson()).toList(),
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
+    if (files != null && files!.isNotEmpty) 'files': files!.map((e) => e.toJson()).toList(),
   };
 
   static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
@@ -2453,6 +2519,7 @@ class ContainerMountSpec {
       room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
