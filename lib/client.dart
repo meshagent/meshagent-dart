@@ -544,6 +544,26 @@ class Meshagent {
     return response.bodyBytes;
   }
 
+  /// Corresponds to: POST /templates/render
+  Future<ServiceTemplateSpec> renderTemplate({
+    required String projectId,
+    required String template,
+    required Map<String, String> values,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+
+    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"template": template, "values": values}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create share. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceTemplateSpec.fromJson(jsonDecode(response.body));
+  }
+
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
