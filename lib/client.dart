@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:meshagent/meshagent.dart';
 
-enum ProjectRole { member, developer, admin }
+enum ProjectRole { member, developer, admin, none }
 
 class AuthProvider {
   AuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
@@ -545,12 +545,8 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /templates/render
-  Future<ServiceTemplateSpec> renderTemplate({
-    required String projectId,
-    required String template,
-    required Map<String, String> values,
-  }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+  Future<ServiceTemplateSpec> renderTemplate({required String template, required Map<String, String> values}) async {
+    final uri = Uri.parse('$baseUrl/templates/render');
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"template": template, "values": values}));
 
@@ -1216,7 +1212,8 @@ class Meshagent {
     return switch (role) {
       "admin" => ProjectRole.admin,
       "developer" => ProjectRole.developer,
-      _ => ProjectRole.member,
+      "member" => ProjectRole.member,
+      _ => ProjectRole.none,
     };
   }
 
