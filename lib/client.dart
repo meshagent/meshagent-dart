@@ -804,7 +804,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to list project services keys. '
+        'Failed to list room services keys. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -819,7 +819,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to delete project service'
+        'Failed to delete room service'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
