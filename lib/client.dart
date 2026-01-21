@@ -519,7 +519,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -536,7 +536,7 @@ class Meshagent {
     }
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -550,11 +550,15 @@ class Meshagent {
 
     final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"template": template, "values": values}));
 
-    if (response.statusCode >= 400) {
+    if (response.statusCode > 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Failed to render template. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
+    }
+
+    if (response.statusCode == 400) {
+      throw MeshagentException(jsonDecode(response.body)["error"]);
     }
 
     return ServiceTemplateSpec.fromJson(jsonDecode(response.body));
@@ -570,7 +574,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -588,7 +592,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -709,7 +713,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -755,7 +759,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -853,7 +857,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
