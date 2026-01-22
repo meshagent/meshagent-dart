@@ -1,3 +1,11 @@
+## [0.23.0]
+- Breaking: create/update service from template APIs now accept YAML template strings instead of ServiceTemplateSpec, and a renderTemplate helper is added
+- Added template-specific model support (agent templates and template environment variables) including token roles
+- Added file storage mounts in container specs
+- Added secrets listing in the room server client
+- Project roles now include none
+- Dependency updates: add collection ^1.19.1, source_span ^1.10.1, string_scanner ^1.4.1
+
 ## [0.22.2]
 - Stability
 
