@@ -12,31 +12,6 @@ class AgentsClient extends ChangeEmitter {
     await room.sendRequest("agent.call", {"name": name, "url": url, "arguments": arguments});
   }
 
-  Future<Response> ask({
-    required String agentName,
-    List<Requirement> requires = const [],
-    required Map<String, dynamic> arguments,
-    Uint8List? attachment,
-  }) async {
-    try {
-      final requiresJson = [for (final t in requires) t.toJson()];
-
-      final result =
-          (await room.sendRequest("agent.ask", {"arguments": arguments, "agent": agentName, "requires": requiresJson}, data: attachment))
-              as JsonResponse;
-
-      if (result.json["answer"] is String) {
-        return TextResponse(text: result.json["answer"]);
-      } else if (result.json["answer"] is Map) {
-        return JsonResponse(json: result.json["answer"]);
-      } else {
-        throw RoomServerException("invalid response");
-      }
-    } catch (err) {
-      rethrow;
-    }
-  }
-
   Future<List<ToolkitDescription>> listToolkits({String? participantId}) async {
     final result = (await room.sendRequest("agent.list_toolkits", {"participant_id": participantId})) as JsonResponse;
 
@@ -50,18 +25,6 @@ class AgentsClient extends ChangeEmitter {
     }
 
     return toolkits;
-  }
-
-  Future<List<AgentDescription>> listAgents() async {
-    final result = (await room.sendRequest("agent.list_agents", {}) as JsonResponse);
-
-    final agents = <AgentDescription>[];
-
-    for (final a in result.json["agents"]) {
-      agents.add(AgentDescription.fromJson(a));
-    }
-
-    return agents;
   }
 
   Future<Response> invokeTool({

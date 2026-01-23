@@ -42,7 +42,7 @@ class _TokenProviderClient extends http.BaseClient {
   }
 }
 
-enum ProjectRole { member, developer, admin }
+enum ProjectRole { member, developer, admin, none }
 
 class AuthProvider {
   AuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
@@ -573,7 +573,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -591,7 +591,7 @@ class Meshagent {
     }
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -600,21 +600,20 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /templates/render
-  Future<ServiceTemplateSpec> renderTemplate({
-    required String projectId,
-    required String template,
-    required Map<String, String> values,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
+  Future<ServiceTemplateSpec> renderTemplate({required String template, required Map<String, String> values}) async {
+    final uri = Uri.parse('$baseUrl/templates/render');
 
     final response = await httpClient.post(uri, body: jsonEncode({"template": template, "values": values}));
 
-    if (response.statusCode >= 400) {
+    if (response.statusCode > 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Failed to render template. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
+    }
+
+    if (response.statusCode == 400) {
+      throw MeshagentException(jsonDecode(response.body)["error"]);
     }
 
     return ServiceTemplateSpec.fromJson(jsonDecode(response.body));
@@ -631,7 +630,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -650,7 +649,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -777,7 +776,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -826,7 +825,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -932,7 +931,7 @@ class Meshagent {
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to create share. '
+        'Request failed.'
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -1292,7 +1291,8 @@ class Meshagent {
     return switch (role) {
       "admin" => ProjectRole.admin,
       "developer" => ProjectRole.developer,
-      _ => ProjectRole.member,
+      "member" => ProjectRole.member,
+      _ => ProjectRole.none,
     };
   }
 
