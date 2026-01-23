@@ -3,6 +3,45 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:meshagent/meshagent.dart';
 
+abstract class AccessTokenProvider {
+  Future<String> getToken();
+}
+
+class SimpleAccessTokenProvider implements AccessTokenProvider {
+  SimpleAccessTokenProvider(this.token);
+
+  final String token;
+
+  @override
+  Future<String> getToken() async => token;
+}
+
+class _TokenProviderClient extends http.BaseClient {
+  _TokenProviderClient(this._inner, this.tokenProvider);
+
+  final http.Client _inner;
+  final AccessTokenProvider tokenProvider;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final token = await tokenProvider.getToken();
+
+    request.headers['Authorization'] = 'Bearer $token';
+    request.headers['Accept'] = 'application/json';
+
+    if (!request.headers.containsKey('Content-Type')) {
+      request.headers['Content-Type'] = 'application/json';
+    }
+
+    return _inner.send(request);
+  }
+
+  @override
+  void close() {
+    _inner.close();
+  }
+}
+
 enum ProjectRole { member, developer, admin }
 
 class AuthProvider {
@@ -259,20 +298,20 @@ class _UpdateScheduledTaskRequest {
 
 /// A client to interact with the accounts routes.
 class Meshagent {
-  final String baseUrl;
-
   /// Creates an instance of [Meshagent].
   ///
   /// [baseUrl] is the root URL of your server, e.g. 'http://localhost:8080'.
   /// [token] is your Bearer token for authorization.
-  Meshagent({required this.baseUrl, required this.token});
+  Meshagent({required this.baseUrl, required this.token, AccessTokenProvider? tokenProvider})
+    : httpClient = _TokenProviderClient(http.Client(), tokenProvider ?? SimpleAccessTokenProvider(token));
 
-  final String token;
-
-  /// Returns the default headers including Bearer Authorization.
-  Map<String, String> _getHeaders() {
-    return {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'};
+  factory Meshagent.withTokenProvider({required String baseUrl, required String token, required AccessTokenProvider tokenProvider}) {
+    return Meshagent(baseUrl: baseUrl, token: token, tokenProvider: tokenProvider);
   }
+
+  final String baseUrl;
+  final String token;
+  final http.Client httpClient;
 
   /// POST /accounts/projects/{project_id}/mailboxes
   /// Body: { "address", "room", "queue" }
@@ -284,10 +323,11 @@ class Meshagent {
     required String queue,
     bool public = false,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes');
     final body = {'address': address, 'room': room, 'queue': queue, 'public': public};
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode == 409) {
       throw MeshagentException(
@@ -314,11 +354,12 @@ class Meshagent {
     required String queue,
     bool public = false,
   }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedAddress = Uri.encodeComponent(address);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes/$encodedAddress');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress');
     final body = {'room': room, 'queue': queue, 'public': public};
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -330,8 +371,10 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/mailboxes/{address}
   Future<Mailbox> getMailbox({required String projectId, required String address}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes/$address');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAddress = Uri.encodeComponent(address);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode == 404) {
       throw NotFoundException('Mailbox not found: $address');
@@ -351,8 +394,9 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/mailboxes
   /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
   Future<List<Mailbox>> listMailboxes(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -369,8 +413,11 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/rooms/{room_name}/mailboxes
   /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
   Future<List<Mailbox>> listRoomMailboxes({required String projectId, required String roomName}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/mailboxes');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/mailboxes');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -387,10 +434,11 @@ class Meshagent {
   /// DELETE /accounts/projects/{project_id}/mailboxes/{address}
   /// Returns {} on success.
   Future<void> deleteMailbox({required String projectId, required String address}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedAddress = Uri.encodeComponent(address);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/mailboxes/$encodedAddress');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress');
 
-    final response = await http.delete(uri, headers: _getHeaders());
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -409,10 +457,11 @@ class Meshagent {
     required String type,
     required Map<String, dynamic> data,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets');
     final body = {'name': name, 'type': type, 'data': data};
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -427,7 +476,7 @@ class Meshagent {
   // Corresponds to: GET /pricing
   Future<Map<String, dynamic>> getPricing() async {
     final uri = Uri.parse('$baseUrl/pricing');
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -442,8 +491,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/secrets
   /// Returns JSON like { "secrets": [ { "id": ..., "name": ..., "type": ..., "data": ... } ] }.
   Future<List<Map<String, dynamic>>> listSecrets(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -458,9 +508,9 @@ class Meshagent {
   }
 
   Future<void> updateProjectSettings({required String projectId, required Map<String, dynamic> settings}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/settings');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(settings));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings');
+    final response = await httpClient.put(uri, body: jsonEncode(settings));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -480,10 +530,12 @@ class Meshagent {
     required String type,
     required Map<String, dynamic> data,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets/$secretId');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets/$encodedSecretId');
     final body = {'name': name, 'type': type, 'data': data};
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -498,8 +550,10 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/secrets/{secret_id}
   /// Returns {} or 204 No Content on success.
   Future<void> deleteSecret({required String projectId, required String secretId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/secrets/$secretId');
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets/$encodedSecretId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -513,9 +567,9 @@ class Meshagent {
 
   /// Corresponds to: POST /projects/:project_id/storage/upload
   Future<void> upload({required String projectId, required String path, required Uint8List data}) async {
-    final uri = Uri.parse('$baseUrl/projects/$projectId/storage/upload').replace(queryParameters: {"path": path});
-
-    final response = await http.post(uri, headers: _getHeaders(), body: data);
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/projects/$encodedProjectId/storage/upload').replace(queryParameters: {"path": path});
+    final response = await httpClient.post(uri, body: data);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -527,9 +581,10 @@ class Meshagent {
 
   /// Corresponds to: POST /projects/:project_id/storage/download
   Future<Uint8List> download({required String projectId, required String path}) async {
-    final uri = Uri.parse('$baseUrl/projects/$projectId/storage/download').replace(queryParameters: {"path": path});
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/projects/$encodedProjectId/storage/download').replace(queryParameters: {"path": path});
 
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode == 404) {
       throw NotFoundException("file was not found");
@@ -550,9 +605,10 @@ class Meshagent {
     required String template,
     required Map<String, String> values,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"template": template, "values": values}));
+    final response = await httpClient.post(uri, body: jsonEncode({"template": template, "values": values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -568,9 +624,10 @@ class Meshagent {
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> createService({required String projectId, required ServiceSpec service}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+    final response = await httpClient.post(uri, body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -586,9 +643,10 @@ class Meshagent {
   /// Body: { "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> updateService({required String projectId, required String serviceId, required ServiceSpec service}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services/$encodedServiceId');
+    final response = await httpClient.put(uri, body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -608,9 +666,10 @@ class Meshagent {
     required String template,
     required Map<String, String> values,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services/$encodedServiceId');
+    final response = await httpClient.put(uri, body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -630,9 +689,9 @@ class Meshagent {
     required String template,
     required Map<String, String> values,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
+    final response = await httpClient.post(uri, body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -654,10 +713,10 @@ class Meshagent {
   /// Note: Some servers may return the JSON as a string payload.
   /// This method handles both a Map response and a stringified JSON.
   Future<ServiceSpec> getService({required String projectId, required String serviceId}) async {
-    final sid = Uri.encodeComponent(serviceId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$sid');
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services/$encodedServiceId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -675,8 +734,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
   Future<List<ServiceSpec>> listServices(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -690,8 +750,11 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
   /// Returns 204 No Content on success (no JSON body).
   Future<void> deleteService({required String projectId, required String serviceId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/services/$serviceId');
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services/$encodedServiceId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -707,9 +770,10 @@ class Meshagent {
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
   Future<String> createRoomService({required String projectId, required ServiceSpec service, required String roomName}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services');
+    final response = await httpClient.post(uri, body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -730,9 +794,10 @@ class Meshagent {
     required String template,
     required Map<String, String> values,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services');
+    final response = await httpClient.post(uri, body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -753,9 +818,11 @@ class Meshagent {
     required ServiceSpec service,
     required String roomName,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(service.toJson()));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services/$encodedServiceId');
+    final response = await httpClient.put(uri, body: jsonEncode(service.toJson()));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -774,9 +841,11 @@ class Meshagent {
     required String template,
     required Map<String, String> values,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'template': template, 'values': values}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services/$encodedServiceId');
+    final response = await httpClient.put(uri, body: jsonEncode({'template': template, 'values': values}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -798,10 +867,11 @@ class Meshagent {
   /// Note: Some servers may return the JSON as a string payload.
   /// This method handles both a Map response and a stringified JSON.
   Future<ServiceSpec> getRoomService({required String projectId, required String serviceId, required String roomName}) async {
-    final sid = Uri.encodeComponent(serviceId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$sid');
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services/$encodedServiceId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -819,8 +889,10 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
   Future<List<ServiceSpec>> listRoomServices({required String projectId, required String roomName}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -834,8 +906,11 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
   /// Returns 204 No Content on success (no JSON body).
   Future<void> deleteRoomService({required String projectId, required String serviceId, required String roomName}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$roomName/services/$serviceId');
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceId = Uri.encodeComponent(serviceId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services/$encodedServiceId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -851,9 +926,9 @@ class Meshagent {
   /// Body: { "settings" : \<settings\> }
   /// Returns JSON like { "id" } on success.
   Future<Map<String, dynamic>> createShare(String projectId, {Map<String, dynamic>? settings}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/shares');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'settings': settings ?? {}}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/shares');
+    final response = await httpClient.post(uri, body: jsonEncode({'settings': settings ?? {}}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -868,9 +943,11 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/:project_id/shares/:share_id
   /// No JSON response on success.
   Future<void> deleteShare(String projectId, String shareId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/shares/$shareId');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedShareId = Uri.encodeComponent(shareId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/shares/$encodedShareId');
 
-    final response = await http.delete(uri, headers: _getHeaders());
+    final response = await httpClient.delete(uri);
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete share. '
@@ -884,9 +961,10 @@ class Meshagent {
   /// Body: { "settings": \<settings\> }
   /// No JSON response on success.
   Future<void> updateShare(String projectId, String shareId, {Map<String, dynamic>? settings}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/shares/$shareId');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'settings': settings ?? {}}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedShareId = Uri.encodeComponent(shareId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/shares/$encodedShareId');
+    final response = await httpClient.put(uri, body: jsonEncode({'settings': settings ?? {}}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -900,9 +978,10 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/:project_id/shares
   /// Returns JSON like { "shares": [ { "id", "settings" } ] } on success.
   Future<List<Map<String, dynamic>>> listShares(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/shares');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/shares');
 
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to list shares. '
@@ -920,9 +999,10 @@ class Meshagent {
   /// Body: {}
   /// Returns JSON dict with { "jwt", "room_url" } on success.
   Future<RoomShareConnectionInfo> connectShare(String shareId) async {
-    final uri = Uri.parse('$baseUrl/shares/$shareId/connect');
+    final encodedShareId = Uri.encodeComponent(shareId);
+    final uri = Uri.parse('$baseUrl/shares/$encodedShareId/connect');
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({}));
+    final response = await httpClient.post(uri, body: jsonEncode({}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -939,7 +1019,7 @@ class Meshagent {
   /// Returns JSON like { "id", "owner_user_id", "name" } on success.
   Future<Map<String, dynamic>> createProject(String name) async {
     final uri = Uri.parse('$baseUrl/accounts/projects');
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({'name': name}));
+    final response = await httpClient.post(uri, body: jsonEncode({'name': name}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to create project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -949,12 +1029,9 @@ class Meshagent {
 
   /// Corresponds to: DELETE /accounts/projects/:project_id
   Future<void> deleteProject(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId');
-
-    final request = http.Request('DELETE', uri)..headers.addAll(_getHeaders());
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -971,7 +1048,8 @@ class Meshagent {
     bool isDeveloper = false,
     bool canCreateRooms = false,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
 
     final body = {
       'project_id': projectId,
@@ -981,7 +1059,7 @@ class Meshagent {
       "can_create_rooms": canCreateRooms,
     };
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -990,16 +1068,18 @@ class Meshagent {
   }
 
   Future<bool> getStatus(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/status');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/status');
+    final response = await httpClient.get(uri);
 
     final data = (jsonDecode(response.body) as Map<String, dynamic>);
     return data["enabled"] == true;
   }
 
   Future<Balance> getBalance(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/balance');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/balance');
+    final response = await httpClient.get(uri);
 
     final data = (jsonDecode(response.body) as Map<String, dynamic>);
 
@@ -1013,14 +1093,15 @@ class Meshagent {
   }
 
   Future<List<Transaction>> getRecentTransactions(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/transactions');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/transactions');
+    final response = await httpClient.get(uri);
 
     final data = (jsonDecode(response.body) as Map<String, dynamic>);
 
     List<Transaction> transactions = [];
 
-    for (var transaction in data["transactions"]) {
+    for (final transaction in data["transactions"]) {
       transactions.add(
         Transaction(
           id: transaction["id"],
@@ -1042,40 +1123,27 @@ class Meshagent {
     required double amount,
     required double threshold,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/recharge');
-    final resp = await http.post(
-      uri,
-      headers: _getHeaders(),
-      body: jsonEncode({"enabled": enabled, "amount": amount, "threshold": threshold}),
-    );
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/recharge');
+    final resp = await httpClient.post(uri, body: jsonEncode({"enabled": enabled, "amount": amount, "threshold": threshold}));
+
     if (resp.statusCode != 200) {
       throw Exception("Unable to update autorecharge");
     }
   }
 
   Future<List<Map<String, dynamic>>> getUsage(String projectId, {DateTime? start, DateTime? end, String? interval, String? report}) async {
-    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/usage');
-
-    if (start != null) {
-      uri = uri.replace(queryParameters: {...uri.queryParameters, "start": start.toIso8601String()});
-    }
-
-    if (end != null) {
-      uri = uri.replace(queryParameters: {...uri.queryParameters, "end": end.toIso8601String()});
-    }
-
-    if (interval != null) {
-      uri = uri.replace(queryParameters: {...uri.queryParameters, "interval": interval});
-    }
-
-    if (report != null) {
-      uri = uri.replace(queryParameters: {...uri.queryParameters, "report": report});
-    }
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/usage');
+    final queryParams = <String, String>{
+      if (start != null) "start": start.toIso8601String(),
+      if (end != null) "end": end.toIso8601String(),
+      if (interval != null) "interval": interval,
+      if (report != null) "report": report,
+    };
+    final response = await httpClient.get(uri.replace(queryParameters: queryParams));
 
     List<Map<String, dynamic>> results = [];
-
     for (final map in (jsonDecode(response.body) as Map<String, dynamic>)["usage"]) {
       results.add(map);
     }
@@ -1093,10 +1161,12 @@ class Meshagent {
     required bool isDeveloper,
     required bool canCreateRooms,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users/$userId');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users/$encodedUserId');
     final body = {'is_admin': isAdmin, "is_developer": isDeveloper, "can_create_rooms": canCreateRooms};
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1113,7 +1183,8 @@ class Meshagent {
     bool isDeveloper = false,
     bool canCreateRooms = false,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
     final body = {
       'project_id': projectId,
       'email': email,
@@ -1122,7 +1193,7 @@ class Meshagent {
       "can_create_rooms": canCreateRooms,
     };
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to add user to project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1134,27 +1205,29 @@ class Meshagent {
   /// Body: { "project_id", "user_id" }
   /// Returns JSON like { "ok": true } on success.
   Future<Map<String, dynamic>> removeUserFromProject(String projectId, String userId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users/$userId');
-
-    final request = http.Request('DELETE', uri)..headers.addAll(_getHeaders());
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users/$encodedUserId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to remove user from project. Status code: ${response.statusCode}, body: ${response.body}');
     }
+
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   /// Corresponds to: GET /accounts/projects/:project_id/users
   /// Returns JSON like { "users": [...] } on success.
   Future<List<Map<String, dynamic>>> getUsersInProject(String projectId, {String? email}) async {
-    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/users');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    Uri uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
+
     if (email != null) {
       uri = uri.replace(queryParameters: {"email": email});
     }
-    final response = await http.get(uri, headers: _getHeaders());
+
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get users in project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1166,8 +1239,9 @@ class Meshagent {
   /// Returns user profile JSON, e.g. { "id", "first_name", "last_name", "email" } on success
   /// or throws an error if not found.
   Future<Map<String, dynamic>> getUserProfile(String userId) async {
-    final uri = Uri.parse('$baseUrl/accounts/profiles/$userId');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/profiles/$encodedUserId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get user profile. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1179,10 +1253,11 @@ class Meshagent {
   /// Body: { "first_name", "last_name" }
   /// Returns JSON like { "ok": true } on success.
   Future<Map<String, dynamic>> updateUserProfile(String userId, String firstName, String lastName) async {
-    final uri = Uri.parse('$baseUrl/accounts/profiles/$userId');
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/profiles/$encodedUserId');
     final body = {'first_name': firstName, 'last_name': lastName};
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to update user profile. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1194,7 +1269,7 @@ class Meshagent {
   /// Returns JSON like { "projects": [...] } on success.
   Future<List<Map<String, dynamic>>> listProjects() async {
     final uri = Uri.parse('$baseUrl/accounts/projects');
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to list projects. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1205,8 +1280,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}
   /// Returns a role
   Future<ProjectRole> getProjectRole(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/role');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get project role. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1221,8 +1297,9 @@ class Meshagent {
   }
 
   Future<bool> canCreateRooms(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/role');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to create room. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1235,8 +1312,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects
   /// Returns JSON like { "projects": [...] } on success.
   Future<Map<String, dynamic>> getProject(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get project. Status code: ${response.statusCode}, body: ${response.body}');
@@ -1248,10 +1326,11 @@ class Meshagent {
   /// Body: { "name": "", "description": "" }
   /// Returns an Api Key.
   Future<ApiKeyInfo> createApiKey(String projectId, String name, String description) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/api-keys');
     final body = {'name': name, 'description': description};
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1266,8 +1345,10 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/api-keys/{token_id}
   /// Returns 204 No Content on success (no JSON body).
   Future<void> deleteApiKey(String projectId, String tokenId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys/$tokenId');
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedTokenId = Uri.encodeComponent(tokenId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/api-keys/$encodedTokenId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1282,8 +1363,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/api-keys
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
   Future<List<Map<String, dynamic>>> listApiKeys(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/api-keys');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/api-keys');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1291,6 +1373,7 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
     return (jsonDecode(response.body)["keys"] as List).whereType<Map<String, dynamic>>().toList();
   }
 
@@ -1298,8 +1381,9 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/sessions
   /// Returns JSON: { "sessions": [ { "room_name", "started_at", "is_active" }, ... ] }
   Future<List<RoomSession>> listActiveSessions(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/active');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/active');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1310,14 +1394,16 @@ class Meshagent {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data['sessions'] as List<dynamic>? ?? [];
+
     return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions
   /// Returns a JSON dict: { "sessions": [...] }
   Future<List<RoomSession>> listRecentSessions(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1331,12 +1417,10 @@ class Meshagent {
   }
 
   Future<String> getCreditsCheckoutUrl(String projectId, String successUrl, String cancelUrl, double quantity) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/credits');
-    final response = await http.post(
-      uri,
-      headers: _getHeaders(),
-      body: jsonEncode({"quantity": quantity, "success_url": successUrl, "cancel_url": cancelUrl}),
-    );
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/credits');
+    final body = {"quantity": quantity, "success_url": successUrl, "cancel_url": cancelUrl};
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1348,8 +1432,10 @@ class Meshagent {
   }
 
   Future<String> getCheckoutUrl(String projectId, String successUrl, String cancelUrl) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/subscription');
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"success_url": successUrl, "cancel_url": cancelUrl}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/subscription');
+    final body = {"success_url": successUrl, "cancel_url": cancelUrl};
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1363,8 +1449,10 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions/{session_id}
   /// Returns a JSON dict: {"id","room_name","created_at"}
   Future<Map<String, dynamic>> getSession(String projectId, String sessionId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/$sessionId');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1377,8 +1465,10 @@ class Meshagent {
 
   /// Corresponds to: POST /accounts/projects/{project_id}/sessions/{session_id}/terminate
   Future<void> terminate({required String projectId, required String sessionId}) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/$sessionId/terminate');
-    final response = await http.post(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId/terminate');
+    final response = await httpClient.post(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1391,8 +1481,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions/{session_id}
   /// Returns a JSON dict: {"id","room_name","created_at"}
   Future<Map<String, dynamic>> getSubscription(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/subscription');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/subscription');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1400,14 +1491,17 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
     return jsonDecode(response.body);
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions/{session_id}/events
   /// Returns a JSON dict: { "events": [...] }
   Future<List<Map<String, dynamic>>> listSessionEvents(String projectId, String sessionId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/$sessionId/events');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId/events');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1415,14 +1509,17 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
     return (jsonDecode(response.body)["events"] as List).whereType<Map<String, dynamic>>().toList();
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions/{session_id}/spans
   /// Returns a JSON dict: { "spans": [...] }
   Future<List<Map<String, dynamic>>> listSessionSpans(String projectId, String sessionId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/$sessionId/spans');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId/spans');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1430,14 +1527,17 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
     return (jsonDecode(response.body)["spans"] as List).whereType<Map<String, dynamic>>().toList();
   }
 
   /// Corresponds to: GET /accounts/projects/{project_id}/sessions/{session_id}/spans
   /// Returns a JSON dict: { "spans": [...] }
   Future<List<Map<String, dynamic>>> listSessionMetrics(String projectId, String sessionId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/sessions/$sessionId/metrics');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId/metrics');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1445,6 +1545,7 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+
     return (jsonDecode(response.body)["metrics"] as List).whereType<Map<String, dynamic>>().toList();
   }
 
@@ -1460,10 +1561,10 @@ class Meshagent {
     String? action,
     String? payload,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/webhooks');
     final body = {'name': name, 'description': description, 'url': url, 'events': events, 'payload': payload, 'action': action};
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1487,10 +1588,12 @@ class Meshagent {
     String? action,
     String? payload,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks/$webhookId');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedWebhookId = Uri.encodeComponent(webhookId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/webhooks/$encodedWebhookId');
     final body = {'name': name, 'description': description, 'url': url, 'events': events, 'payload': payload, 'action': action};
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1504,8 +1607,9 @@ class Meshagent {
   /// Corresponds to: GET /accounts/projects/{project_id}/webhooks
   /// Returns a JSON dict like { "webhooks": [ { ... }, ... ] }.
   Future<List<Map<String, dynamic>>> listWebhooks(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/webhooks');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1519,8 +1623,10 @@ class Meshagent {
   /// Corresponds to: DELETE /accounts/projects/{project_id}/webhooks/{webhook_id}
   /// Typically returns 200 or 204 on success (no JSON body).
   Future<void> deleteWebhook(String projectId, String webhookId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/webhooks/$webhookId');
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedWebhookId = Uri.encodeComponent(webhookId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/webhooks/$encodedWebhookId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1529,7 +1635,6 @@ class Meshagent {
       );
     }
     // 200 or 204 on success, no body to parse
-    return;
   }
 
   // -------------------------------
@@ -1545,10 +1650,10 @@ class Meshagent {
     required String userId,
     required ApiScope permissions,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants');
     final body = {'room_id': roomId, 'user_id': userId, 'permissions': permissions.toJson()};
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1567,10 +1672,10 @@ class Meshagent {
     required String email,
     required ApiScope permissions,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants');
     final body = {'room_id': roomId, 'email': email, 'permissions': permissions.toJson()};
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1590,12 +1695,11 @@ class Meshagent {
     required ApiScope permissions,
     String? grantId,
   }) async {
-    final gid = grantId ?? 'unused';
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants/$gid');
-
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final gid = Uri.encodeComponent(grantId ?? 'unused');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants/$gid');
     final body = {'room_id': roomId, 'user_id': userId, 'permissions': permissions.toJson()};
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1608,11 +1712,11 @@ class Meshagent {
   /// DELETE /accounts/projects/{project_id}/room-grants/{room_name}/{user_id}
   /// Returns {} on success.
   Future<void> deleteRoomGrant({required String projectId, required String roomId, required String userId}) async {
-    final r = Uri.encodeComponent(roomId);
-    final u = Uri.encodeComponent(userId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants/$r/$u');
-
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants/$encodedRoomId/$encodedUserId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1625,11 +1729,11 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/room-grants/{room_name}/{user_id}
   /// Returns a ProjectRoomGrant.
   Future<ProjectRoomGrant> getRoomGrant({required String projectId, required String roomId, required String userId}) async {
-    final r = Uri.encodeComponent(roomId);
-    final u = Uri.encodeComponent(userId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants/$r/$u');
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants/$encodedRoomId/$encodedUserId');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1644,10 +1748,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/rooms?limit=&offset=&order_by=
   Future<List<Room>> listRooms({required String projectId, int limit = 50, int offset = 0, String orderBy = 'room_name'}) async {
-    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
-    uri = uri.replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/rooms',
+    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1668,10 +1773,11 @@ class Meshagent {
     int offset = 0,
     String orderBy = 'room_name',
   }) async {
-    var uri = Uri.parse('$baseUrl/accounts/projects/$projectId/room-grants');
-    uri = uri.replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/room-grants',
+    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1693,12 +1799,12 @@ class Meshagent {
     int offset = 0,
     String orderBy = 'room_name',
   }) async {
-    final u = Uri.encodeComponent(userId);
-    var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-user/$u',
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-user/$encodedUserId',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1720,11 +1826,13 @@ class Meshagent {
     int offset = 0,
     String orderBy = 'user_id',
   }) async {
-    var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-room/$roomName',
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-room/$encodedRoomName',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
 
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1740,11 +1848,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/room-grants/by-room?limit=&offset=
   Future<List<ProjectRoomGrantCount>> listUniqueRoomsWithGrants({required String projectId, int limit = 50, int offset = 0}) async {
-    var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-room',
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-room',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset'});
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1760,11 +1868,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/room-grants/by-user?limit=&offset=
   Future<List<ProjectUserGrantCount>> listUniqueUsersWithGrants({required String projectId, int limit = 50, int offset = 0}) async {
-    var uri = Uri.parse(
-      '$baseUrl/accounts/projects/$projectId/room-grants/by-user',
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-user',
     ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset'});
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1792,12 +1900,10 @@ class Meshagent {
     Map<String, dynamic>? metadata,
     Map<String, ApiScope>? permissions,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms');
-    final response = await http.post(
-      uri,
-      headers: _getHeaders(),
-      body: jsonEncode({'name': name, 'if_not_exists': ifNotExists, "metadata": metadata, "permissions": permissions}),
-    );
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms');
+    final body = {'name': name, 'if_not_exists': ifNotExists, 'metadata': metadata, 'permissions': permissions};
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode == 409) {
       throw NameInUseException("The room name is already in use");
@@ -1814,14 +1920,15 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/rooms/{room_name}
   /// Returns a Room (404 -> NotFoundException).
   Future<Room> getRoom({required String projectId, required String name}) async {
-    final r = Uri.encodeComponent(name);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$r');
-
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode == 404) {
       throw NotFoundException('room not found');
     }
+
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to get room. '
@@ -1835,10 +1942,10 @@ class Meshagent {
   /// PUT /accounts/projects/{project_id}/rooms/{room_id}
   /// Body: { "name": "new name" }
   Future<void> updateRoom({required String projectId, required String roomId, required String name, Map<String, dynamic>? metadata}) async {
-    final rid = Uri.encodeComponent(roomId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$rid');
-
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode({'name': name, 'metadata': metadata}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId');
+    final response = await httpClient.put(uri, body: jsonEncode({'name': name, 'metadata': metadata}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1850,10 +1957,10 @@ class Meshagent {
 
   /// DELETE /accounts/projects/{project_id}/rooms/{room_id}
   Future<void> deleteRoom({required String projectId, required String roomId}) async {
-    final rid = Uri.encodeComponent(roomId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$rid');
-
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1867,10 +1974,10 @@ class Meshagent {
   /// Body: {}
   /// Returns { "jwt", "room_name", "project_id", "room_url" } on success.
   Future<RoomConnectionInfo> connectRoom({required String projectId, required String roomName, String? client}) async {
-    final r = Uri.encodeComponent(roomName);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/rooms/$r/connect');
-
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode({"client": client}));
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/connect');
+    final response = await httpClient.post(uri, body: jsonEncode({"client": client}));
 
     if (response.statusCode >= 400) {
       if (response.statusCode == 404) {
@@ -1890,7 +1997,7 @@ class Meshagent {
   /// Returns a list of OAuth providers.
   Future<List<AuthProvider>> listOAuthProviders() async {
     final uri = Uri.parse('$baseUrl/oauth/provider/list');
-    final response = await http.get(uri);
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1915,7 +2022,8 @@ class Meshagent {
     required String scope,
     Map<String, dynamic>? metadata,
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients');
     final body = <String, dynamic>{
       'grant_types': grantTypes,
       'response_types': responseTypes,
@@ -1924,7 +2032,7 @@ class Meshagent {
       'metadata': metadata ?? <String, dynamic>{},
     };
 
-    final response = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1947,8 +2055,9 @@ class Meshagent {
     String? scope,
     Map<String, dynamic>? metadata,
   }) async {
-    final cid = Uri.encodeComponent(clientId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedClientId = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients/$encodedClientId');
 
     final body = <String, dynamic>{};
     if (grantTypes != null) body['grant_types'] = grantTypes;
@@ -1957,7 +2066,7 @@ class Meshagent {
     if (scope != null) body['scope'] = scope;
     if (metadata != null) body['metadata'] = metadata;
 
-    final response = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final response = await httpClient.put(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1971,8 +2080,9 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/oauth/clients
   /// Returns a list of OAuthClient (no secrets).
   Future<List<OAuthClient>> listOAuthClients(String projectId) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients');
-    final response = await http.get(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients');
+    final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -1989,14 +2099,16 @@ class Meshagent {
   /// GET /accounts/projects/{project_id}/oauth/clients/{client_id}
   /// Returns one OAuthClient (no secret). 404 -> NotFoundException.
   Future<OAuthClient> getOAuthClient(String projectId, String clientId) async {
-    final cid = Uri.encodeComponent(clientId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedClientId = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients/$encodedClientId');
 
-    final response = await http.get(uri, headers: _getHeaders());
+    final response = await httpClient.get(uri);
 
     if (response.statusCode == 404) {
       throw NotFoundException('oauth client not found');
     }
+
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to get OAuth client. '
@@ -2010,10 +2122,10 @@ class Meshagent {
   /// DELETE /accounts/projects/{project_id}/oauth/clients/{client_id}
   /// Returns 204 No Content on success.
   Future<void> deleteOAuthClient(String projectId, String clientId) async {
-    final cid = Uri.encodeComponent(clientId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/oauth/clients/$cid');
-
-    final response = await http.delete(uri, headers: _getHeaders());
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedClientId = Uri.encodeComponent(clientId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients/$encodedClientId');
+    final response = await httpClient.delete(uri);
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -2036,8 +2148,8 @@ class Meshagent {
     String? taskId,
     Map<String, String> annotations = const {},
   }) async {
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks');
-
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks');
     final body = _CreateScheduledTaskRequest(
       id: taskId,
       roomName: roomName,
@@ -2048,8 +2160,7 @@ class Meshagent {
       once: once,
       annotations: annotations,
     ).toJson();
-
-    final resp = await http.post(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final resp = await httpClient.post(uri, body: jsonEncode(body));
 
     if (resp.statusCode >= 400) {
       // mirror your python client’s "ensure_success" style
@@ -2058,9 +2169,11 @@ class Meshagent {
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final tid = data['task_id'];
+
     if (tid is! String) {
       throw MeshagentException('Invalid create scheduled task response: missing "task_id"');
     }
+
     return tid;
   }
 
@@ -2075,9 +2188,9 @@ class Meshagent {
     bool? active,
     Map<String, String> annotations = const {},
   }) async {
-    final tid = Uri.encodeComponent(taskId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks/$tid');
-
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedTaskId = Uri.encodeComponent(taskId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks/$encodedTaskId');
     final body = _UpdateScheduledTaskRequest(
       roomName: roomName,
       queueName: queueName,
@@ -2087,7 +2200,7 @@ class Meshagent {
       annotations: annotations,
     ).toJson();
 
-    final resp = await http.put(uri, headers: _getHeaders(), body: jsonEncode(body));
+    final resp = await httpClient.put(uri, body: jsonEncode(body));
 
     if (resp.statusCode >= 400) {
       throw MeshagentException('Failed to update scheduled task. Status code: ${resp.statusCode}, body: ${resp.body}');
@@ -2097,10 +2210,11 @@ class Meshagent {
   /// DELETE /accounts/projects/{project_id}/scheduled-tasks/{task_id}
   /// Returns 204 or {} on success.
   Future<void> deleteScheduledTask({required String projectId, required String taskId}) async {
-    final tid = Uri.encodeComponent(taskId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks/$tid');
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedTaskId = Uri.encodeComponent(taskId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks/$encodedTaskId');
 
-    final resp = await http.delete(uri, headers: _getHeaders());
+    final resp = await httpClient.delete(uri);
 
     if (resp.statusCode >= 400) {
       throw MeshagentException('Failed to delete scheduled task. Status code: ${resp.statusCode}, body: ${resp.body}');
@@ -2122,9 +2236,10 @@ class Meshagent {
     if (taskId != null) qp['task_id'] = taskId;
     if (active != null) qp['active'] = active ? 'true' : 'false';
 
-    final uri = Uri.parse('$baseUrl/accounts/projects/$projectId/scheduled-tasks').replace(queryParameters: qp);
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks').replace(queryParameters: qp);
 
-    final resp = await http.get(uri, headers: _getHeaders());
+    final resp = await httpClient.get(uri);
 
     if (resp.statusCode >= 400) {
       throw MeshagentException('Failed to list scheduled tasks. Status code: ${resp.statusCode}, body: ${resp.body}');
