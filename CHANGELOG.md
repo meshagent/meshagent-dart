@@ -1,3 +1,8 @@
+## [0.24.0]
+- Breaking: removed `AgentsClient.ask` and `listAgents` from the Dart SDK.
+- Breaking: `AgentCallContext` renamed to `TaskContext` for task runner/service APIs.
+- Breaking: removed Luau `agents.ask`/`agents.askWithAttachment` and the AI code editor tab from Flutter widgets.
+
 ## [0.23.0]
 - Breaking: create/update service from template APIs now accept YAML template strings instead of ServiceTemplateSpec, and a renderTemplate helper is added
 - Added template-specific model support (agent templates and template environment variables) including token roles
