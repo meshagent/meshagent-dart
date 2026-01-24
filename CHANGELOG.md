@@ -1,3 +1,6 @@
+## [0.24.1]
+- Stability
+
 ## [0.24.0]
 - Breaking: removed `AgentsClient.ask` and `listAgents` from the Dart SDK.
 - Breaking: `AgentCallContext` renamed to `TaskContext` for task runner/service APIs.
