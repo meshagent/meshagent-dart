@@ -20,8 +20,12 @@ abstract class ToolkitConfig {
         return ImageGenerationConfig.fromJson(json);
       case 'local_shell':
         return LocalShellConfig.fromJson(json);
+      case 'shell':
+        return ShellConfig.fromJson(json);
       case 'storage':
         return StorageConfig.fromJson(json);
+      case 'script':
+        return ScriptToolConfig.fromJson(json);
       default:
         throw ArgumentError('Unknown ToolkitConfig name: ${json['name']}');
     }
@@ -205,6 +209,43 @@ class LocalShellConfig extends ToolkitConfig {
 
   @override
   Map<String, dynamic> toJson() => {'name': name};
+}
+
+class ShellConfig extends ToolkitConfig {
+  ShellConfig() : super('shell');
+
+  factory ShellConfig.fromJson(Map<String, dynamic> json) => ShellConfig();
+
+  @override
+  Map<String, dynamic> toJson() => {'name': name};
+}
+
+class ScriptToolConfig extends ToolkitConfig {
+  ScriptToolConfig({required this.serviceId, required this.commands, required this.toolName, this.title, this.description})
+    : super('script');
+
+  final String serviceId;
+  final List<String> commands;
+  final String toolName;
+  final String? title;
+  final String? description;
+  factory ScriptToolConfig.fromJson(Map<String, dynamic> json) => ScriptToolConfig(
+    serviceId: json["service_id"],
+    commands: json["commands"],
+    toolName: json["tool_name"],
+    title: json["title"],
+    description: json["description"],
+  );
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    "service_id": serviceId,
+    "tool_name": toolName,
+    "commands": commands,
+    'title': title,
+    'description': description,
+  };
 }
 
 class StorageConfig extends ToolkitConfig {
