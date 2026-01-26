@@ -954,13 +954,22 @@ class ParticipantInfo {
 }
 
 class RoomContainer {
-  RoomContainer({required this.id, required this.image, this.name, required this.startedBy, required this.state, required this.private});
+  RoomContainer({
+    required this.id,
+    required this.image,
+    this.name,
+    required this.startedBy,
+    required this.state,
+    required this.private,
+    required this.serviceId,
+  });
   final String id;
   final String image;
   final String? name;
   final ParticipantInfo startedBy;
   final String state;
   final bool private;
+  final String? serviceId;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
     return RoomContainer(
@@ -970,6 +979,7 @@ class RoomContainer {
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],
+      serviceId: json["serviceId"],
     );
   }
 }
