@@ -871,8 +871,8 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
-  Future<String> runService({required String serviceId}) async {
-    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId});
+  Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
+    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId, "env": env});
     return (res as JsonResponse).json["container_id"];
   }
 
