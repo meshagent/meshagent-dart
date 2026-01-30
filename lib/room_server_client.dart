@@ -2004,8 +2004,11 @@ class PortSpec {
   final List<EndpointSpec> endpoints;
   final String? liveness;
   final int? hostPort;
+  final bool? published;
+  final bool? public;
 
-  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness, this.hostPort}) : endpoints = endpoints ?? [];
+  PortSpec({required this.num, this.type, this.published, this.public, List<EndpointSpec>? endpoints, this.liveness, this.hostPort})
+    : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
@@ -2014,6 +2017,8 @@ class PortSpec {
       endpoints: (json['endpoints'] as List<dynamic>? ?? []).map((e) => EndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
       liveness: json['liveness'] as String?,
       hostPort: json['host_port'] as int?,
+      published: json['published'],
+      public: json['public'],
     );
   }
 
@@ -2024,15 +2029,27 @@ class PortSpec {
     if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
     if (liveness != null) 'liveness': liveness,
     if (hostPort != null) 'host_port': hostPort,
+    if (published != null) 'published': published,
+    if (public != null) 'public': public,
   };
 
-  PortSpec copyWith({PortNum? num, String? type, List<EndpointSpec>? endpoints, String? liveness, int? hostPort}) {
+  PortSpec copyWith({
+    PortNum? num,
+    String? type,
+    List<EndpointSpec>? endpoints,
+    String? liveness,
+    int? hostPort,
+    bool? public,
+    bool? published,
+  }) {
     return PortSpec(
       num: num ?? this.num,
       type: type ?? this.type,
       endpoints: endpoints ?? List<EndpointSpec>.from(this.endpoints),
       liveness: liveness ?? this.liveness,
       hostPort: hostPort ?? this.hostPort,
+      published: published ?? this.published,
+      public: public ?? this.public,
     );
   }
 }
