@@ -1,3 +1,10 @@
+## [0.25.0]
+- Added OAuth session management and a refreshable access token provider for Flutter auth; the Dart client now supports token providers.
+- Dart client now URI-encodes path segments for account, room, and service endpoints.
+- Added SQL query support in the Dart database client with TableRef and typed params.
+- Added `published`/`public` port fields and `for_identity` support for secrets in the Dart room client.
+- Flutter Shadcn file viewer adds a syntax-highlighted code editor preview; added `flutter_highlight` 0.7.0.
+
 ## [0.24.5]
 - Stability
 
