@@ -2990,12 +2990,20 @@ class SecretsClient extends ChangeEmitter {
     throw RoomServerException("Invalid response received, expected FileResponse or EmptyResponse");
   }
 
-  Future<void> setSecret({required String secretId, required Uint8List data, String? mimeType, String? name, String? delegatedTo}) async {
+  Future<void> setSecret({
+    required String secretId,
+    required Uint8List data,
+    String? mimeType,
+    String? name,
+    String? delegatedTo,
+    String? forIdentity,
+  }) async {
     final req = <String, dynamic>{
       "secret_id": secretId,
       if (mimeType != null) "type": mimeType,
       if (name != null) "name": name,
       if (delegatedTo != null) "delegated_to": delegatedTo,
+      if (forIdentity != null) "for_identity": forIdentity,
     };
 
     final res = await room.sendRequest("secrets.set_secret", req, data: data);
