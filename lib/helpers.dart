@@ -45,7 +45,7 @@ String meshagentBaseUrl([String? baseUrl]) {
 /// Construct the WebSocket URL for a room.
 Uri websocketRoomUrl({required String roomName, String? baseUrl}) {
   // If no `baseUrl` provided, derive from environment.
-  baseUrl ??= String.fromEnvironment('MESHAGENT_API_URL', defaultValue: "");
+  baseUrl ??= String.fromEnvironment('MESHAGENT_ROOM_URL', defaultValue: String.fromEnvironment('MESHAGENT_API_URL', defaultValue: ""));
 
   if (baseUrl.isEmpty) {
     // Default if not set:

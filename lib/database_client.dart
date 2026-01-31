@@ -23,6 +23,18 @@ extension CreateModeValue on CreateMode {
   }
 }
 
+class TableRef {
+  TableRef({required this.name, this.namespace, this.alias});
+
+  final String name;
+  final List<String>? namespace;
+  final String? alias;
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, if (namespace != null) "namespace": namespace, if (alias != null) "alias": alias};
+  }
+}
+
 /// A client for interacting with the 'database' extension on the room server.
 class DatabaseClient {
   final RoomClient room;
@@ -145,6 +157,19 @@ class DatabaseClient {
     List<String>? namespace,
   }) async {
     await room.sendRequest("database.merge", {"table": table, "on": on, "records": records, "namespace": namespace});
+  }
+
+  /// Execute a SQL query against one or more tables.
+  Future<List<Map<String, dynamic>>> sql({required String query, required List<TableRef> tables, Map<String, dynamic>? params}) async {
+    final payload = <String, dynamic>{
+      "query": query,
+      "tables": tables.map((table) => table.toJson()).toList(),
+      if (params != null) "params": params,
+    };
+
+    final response = (await room.sendRequest("database.sql", payload) as JsonResponse);
+    final results = decodeRecords((response.json["results"] as List).cast<Map<String, dynamic>>());
+    return results.toList();
   }
 
   /// Search for records in a table.

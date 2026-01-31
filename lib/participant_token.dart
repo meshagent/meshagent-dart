@@ -298,6 +298,16 @@ class AdminGrant {
   factory AdminGrant.fromJson(Map<String, dynamic> j) => AdminGrant();
 }
 
+class ServicesGrant {
+  ServicesGrant({this.list = true});
+
+  final bool list;
+
+  Map<String, dynamic> toJson() => {"list": list};
+
+  factory ServicesGrant.fromJson(Map<String, dynamic> j) => ServicesGrant(list: j["list"]);
+}
+
 class OAuthEndpoint {
   final String endpoint;
   final String clientId;
@@ -361,6 +371,7 @@ class ApiScope {
   final AdminGrant? admin;
   final SecretsGrant? secrets;
   final TunnelsGrant? tunnels;
+  final ServicesGrant? services;
 
   ApiScope({
     this.livekit,
@@ -375,6 +386,7 @@ class ApiScope {
     this.admin,
     this.secrets,
     this.tunnels,
+    this.services,
   });
 
   static ApiScope agentDefault() => ApiScope(
@@ -387,6 +399,7 @@ class ApiScope {
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
+    services: ServicesGrant(),
   );
 
   static ApiScope userDefault() => ApiScope(
@@ -400,6 +413,7 @@ class ApiScope {
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
     secrets: SecretsGrant(),
+    services: ServicesGrant(),
   );
 
   static ApiScope full() => ApiScope(
@@ -415,6 +429,7 @@ class ApiScope {
     admin: AdminGrant(),
     secrets: SecretsGrant(),
     tunnels: TunnelsGrant(),
+    services: ServicesGrant(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -430,6 +445,7 @@ class ApiScope {
     if (admin != null) 'admin': admin!.toJson(),
     if (secrets != null) 'secrets': secrets!.toJson(),
     if (tunnels != null) 'tunnels': tunnels!.toJson(),
+    if (services != null) 'services': services!.toJson(),
   };
 
   factory ApiScope.fromJson(Map<String, dynamic> j) => ApiScope(
@@ -445,6 +461,7 @@ class ApiScope {
     admin: j['admin'] != null ? AdminGrant.fromJson(j['admin'] as Map<String, dynamic>) : null,
     secrets: j['secrets'] != null ? SecretsGrant.fromJson(j['secrets'] as Map<String, dynamic>) : null,
     tunnels: j['tunnels'] != null ? TunnelsGrant.fromJson(j['tunnels'] as Map<String, dynamic>) : null,
+    services: j['services'] != null ? ServicesGrant.fromJson(j['services'] as Map<String, dynamic>) : null,
   );
 }
 

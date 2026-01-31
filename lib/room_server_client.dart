@@ -871,8 +871,8 @@ class ContainersClient extends ChangeEmitter {
     }
   }
 
-  Future<String> runService({required String serviceId}) async {
-    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId});
+  Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
+    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId, "env": env});
     return (res as JsonResponse).json["container_id"];
   }
 
@@ -2004,8 +2004,11 @@ class PortSpec {
   final List<EndpointSpec> endpoints;
   final String? liveness;
   final int? hostPort;
+  final bool? published;
+  final bool? public;
 
-  PortSpec({required this.num, this.type, List<EndpointSpec>? endpoints, this.liveness, this.hostPort}) : endpoints = endpoints ?? [];
+  PortSpec({required this.num, this.type, this.published, this.public, List<EndpointSpec>? endpoints, this.liveness, this.hostPort})
+    : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
@@ -2014,6 +2017,8 @@ class PortSpec {
       endpoints: (json['endpoints'] as List<dynamic>? ?? []).map((e) => EndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
       liveness: json['liveness'] as String?,
       hostPort: json['host_port'] as int?,
+      published: json['published'],
+      public: json['public'],
     );
   }
 
@@ -2024,15 +2029,27 @@ class PortSpec {
     if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
     if (liveness != null) 'liveness': liveness,
     if (hostPort != null) 'host_port': hostPort,
+    if (published != null) 'published': published,
+    if (public != null) 'public': public,
   };
 
-  PortSpec copyWith({PortNum? num, String? type, List<EndpointSpec>? endpoints, String? liveness, int? hostPort}) {
+  PortSpec copyWith({
+    PortNum? num,
+    String? type,
+    List<EndpointSpec>? endpoints,
+    String? liveness,
+    int? hostPort,
+    bool? public,
+    bool? published,
+  }) {
     return PortSpec(
       num: num ?? this.num,
       type: type ?? this.type,
       endpoints: endpoints ?? List<EndpointSpec>.from(this.endpoints),
       liveness: liveness ?? this.liveness,
       hostPort: hostPort ?? this.hostPort,
+      published: published ?? this.published,
+      public: public ?? this.public,
     );
   }
 }
@@ -2973,12 +2990,20 @@ class SecretsClient extends ChangeEmitter {
     throw RoomServerException("Invalid response received, expected FileResponse or EmptyResponse");
   }
 
-  Future<void> setSecret({required String secretId, required Uint8List data, String? mimeType, String? name, String? delegatedTo}) async {
+  Future<void> setSecret({
+    required String secretId,
+    required Uint8List data,
+    String? mimeType,
+    String? name,
+    String? delegatedTo,
+    String? forIdentity,
+  }) async {
     final req = <String, dynamic>{
       "secret_id": secretId,
       if (mimeType != null) "type": mimeType,
       if (name != null) "name": name,
       if (delegatedTo != null) "delegated_to": delegatedTo,
+      if (forIdentity != null) "for_identity": forIdentity,
     };
 
     final res = await room.sendRequest("secrets.set_secret", req, data: data);
