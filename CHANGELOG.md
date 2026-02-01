@@ -1,3 +1,6 @@
+## [0.25.1]
+- Stability
+
 ## [0.25.0]
 - Added OAuth session management and a refreshable access token provider for Flutter auth; the Dart client now supports token providers.
 - Dart client now URI-encodes path segments for account, room, and service endpoints.
