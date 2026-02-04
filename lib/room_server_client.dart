@@ -979,7 +979,7 @@ class RoomContainer {
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],
-      serviceId: json["serviceId"],
+      serviceId: json["service_id"],
     );
   }
 }
