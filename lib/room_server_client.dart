@@ -2238,7 +2238,7 @@ class TemplateEnvironmentVariable {
 }
 
 class ContainerTemplateSpec {
-  ContainerTemplateSpec({this.environment, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
+  ContainerTemplateSpec({this.environment, this.private, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
 
   final String? image;
   final String? command;
@@ -2246,6 +2246,7 @@ class ContainerTemplateSpec {
   final ServiceTemplateContainerMountSpec? storage;
   final bool? onDemand;
   final bool? writableRootFs;
+  final bool? private;
 
   static ContainerTemplateSpec? fromJson(Map<String, dynamic> json) {
     return ContainerTemplateSpec(
@@ -2257,6 +2258,7 @@ class ContainerTemplateSpec {
       image: json['image'] as String?,
       command: json['command'] as String?,
       storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
+      private: json['private'],
     );
   }
 
@@ -2268,6 +2270,7 @@ class ContainerTemplateSpec {
       if (storage != null) 'storage': storage!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
       if (writableRootFs != null) 'writable_root_fs': writableRootFs,
+      if (private != null) 'private': private,
     };
   }
 
@@ -2291,6 +2294,7 @@ class ContainerTemplateSpec {
       environment: env,
       onDemand: onDemand,
       writableRootFs: writableRootFs,
+      private: private,
       storage: storage == null
           ? null
           : ContainerMountSpec(
@@ -2636,6 +2640,7 @@ class ContainerSpec {
     this.apiKey,
     this.onDemand,
     this.writableRootFs,
+    this.private,
   }) : environment = environment ?? [],
        secrets = secrets ?? [];
 
@@ -2648,6 +2653,7 @@ class ContainerSpec {
   final ServiceApiKeySpec? apiKey;
   final bool? onDemand;
   final bool? writableRootFs;
+  final bool? private;
 
   static ContainerSpec fromJson(Map<String, dynamic> json) {
     return ContainerSpec(
@@ -2660,6 +2666,7 @@ class ContainerSpec {
       apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
       onDemand: json["on_demand"],
       writableRootFs: json["writable_root_fs"],
+      private: json["private"],
     );
   }
 
@@ -2674,6 +2681,7 @@ class ContainerSpec {
       if (apiKey != null) 'api_key': apiKey!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
       if (writableRootFs != null) "writable_root_fs": writableRootFs,
+      if (private != null) 'private': private,
     };
   }
 }
