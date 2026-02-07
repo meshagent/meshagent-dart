@@ -12,8 +12,19 @@ class AgentsClient extends ChangeEmitter {
     await room.sendRequest("agent.call", {"name": name, "url": url, "arguments": arguments});
   }
 
-  Future<List<ToolkitDescription>> listToolkits({String? participantId}) async {
-    final result = (await room.sendRequest("agent.list_toolkits", {"participant_id": participantId})) as JsonResponse;
+  Future<List<ToolkitDescription>> listToolkits({String? participantId, String? participantName, int? timeout}) async {
+    final request = <String, dynamic>{};
+    if (participantId != null) {
+      request["participant_id"] = participantId;
+    }
+    if (participantName != null) {
+      request["participant_name"] = participantName;
+    }
+    if (timeout != null) {
+      request["timeout"] = timeout;
+    }
+
+    final result = (await room.sendRequest("agent.list_toolkits", request)) as JsonResponse;
 
     final toolkits = <ToolkitDescription>[];
     final tools = result.json["tools"];
