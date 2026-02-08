@@ -1158,7 +1158,7 @@ class ToolkitDescription {
       "description": description,
       "title": title,
       "thumbnail_url": thumbnailUrl,
-      "participant_id": participantId,
+      if (participantId != null) "participant_id": participantId,
       "tools": tools
           .map(
             (tool) => {
