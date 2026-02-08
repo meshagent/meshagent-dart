@@ -202,17 +202,22 @@ class RequiredTable extends Requirement {
 
 class RequiredToolkit extends Requirement {
   // Required toolkits, set tools to null to require all the tools in the toolkit
-  RequiredToolkit({required super.name, this.tools});
+  RequiredToolkit({required super.name, this.tools, this.participantName});
 
   final List<String>? tools;
+  final String? participantName;
 
   @override
   Map<String, dynamic> toJson() {
-    return {"toolkit": name, "tools": tools};
+    return {"toolkit": name, "tools": tools, "participant_name": participantName};
   }
 
   static RequiredToolkit fromJson(Map<String, dynamic> from) {
-    return RequiredToolkit(name: from["toolkit"], tools: (from["tools"] as List?)?.whereType<String>().toList());
+    return RequiredToolkit(
+      name: from["toolkit"],
+      tools: (from["tools"] as List?)?.whereType<String>().toList(),
+      participantName: from["participant_name"],
+    );
   }
 }
 
@@ -1124,12 +1129,20 @@ class MeshDocument extends RuntimeDocument {
 }
 
 class ToolkitDescription {
-  ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.thumbnailUrl});
+  ToolkitDescription({
+    required this.title,
+    required this.name,
+    required this.description,
+    required this.tools,
+    this.thumbnailUrl,
+    this.participantId,
+  });
 
   final String? title;
   final String name;
   final String? description;
   final String? thumbnailUrl;
+  final String? participantId;
 
   late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
 
@@ -1145,6 +1158,7 @@ class ToolkitDescription {
       "description": description,
       "title": title,
       "thumbnail_url": thumbnailUrl,
+      "participant_id": participantId,
       "tools": tools
           .map(
             (tool) => {
@@ -1168,6 +1182,7 @@ class ToolkitDescription {
       name: name ?? json["name"],
       description: json["description"],
       thumbnailUrl: json["thumbnail_url"],
+      participantId: json["participant_id"],
       tools: [
         if (json["tools"] is List)
           ...(json["tools"] as List).map((tool) {
