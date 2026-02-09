@@ -1983,14 +1983,16 @@ class EndpointSpec {
   final String path;
   final MeshagentEndpointSpec? meshagent;
   final MCPEndpointSpec? mcp;
+  final Map<String, String>? annotations;
 
-  EndpointSpec({required this.path, this.meshagent, this.mcp});
+  EndpointSpec({required this.path, this.meshagent, this.mcp, this.annotations});
 
   factory EndpointSpec.fromJson(Map<String, dynamic> json) {
     return EndpointSpec(
       path: json['path'] as String,
       meshagent: json['meshagent'] == null ? null : MeshagentEndpointSpec.fromJson(json['meshagent']),
       mcp: json['mcp'] == null ? null : MCPEndpointSpec.fromJson(json['mcp']),
+      annotations: (json['annotations'] as Map?)?.cast<String, String>(),
     );
   }
 
@@ -1998,13 +2000,15 @@ class EndpointSpec {
     'path': path,
     if (meshagent != null) 'meshagent': meshagent!.toJson(),
     if (mcp != null) 'mcp': mcp!.toJson(),
+    if (annotations != null) 'annotations': annotations,
   };
 
-  EndpointSpec copyWith({String? path, MeshagentEndpointSpec? meshagent, MCPEndpointSpec? mcp}) {
+  EndpointSpec copyWith({String? path, MeshagentEndpointSpec? meshagent, MCPEndpointSpec? mcp, Map<String, String>? annotations}) {
     return EndpointSpec(
       path: path ?? this.path,
       meshagent: mcp != null ? null : meshagent ?? this.meshagent,
       mcp: meshagent != null ? null : mcp ?? this.mcp,
+      annotations: annotations ?? this.annotations,
     );
   }
 }
@@ -2020,8 +2024,9 @@ class PortSpec {
   final String? liveness;
   final bool? published;
   final bool? public;
+  final Map<String, String>? annotations;
 
-  PortSpec({required this.num, this.type, this.published, this.public, List<EndpointSpec>? endpoints, this.liveness})
+  PortSpec({required this.num, this.type, this.published, this.public, List<EndpointSpec>? endpoints, this.liveness, this.annotations})
     : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
@@ -2032,6 +2037,7 @@ class PortSpec {
       liveness: json['liveness'] as String?,
       published: json['published'],
       public: json['public'],
+      annotations: (json['annotations'] as Map?)?.cast<String, String>(),
     );
   }
 
@@ -2043,9 +2049,18 @@ class PortSpec {
     if (liveness != null) 'liveness': liveness,
     if (published != null) 'published': published,
     if (public != null) 'public': public,
+    if (annotations != null) 'annotations': annotations,
   };
 
-  PortSpec copyWith({PortNum? num, String? type, List<EndpointSpec>? endpoints, String? liveness, bool? public, bool? published}) {
+  PortSpec copyWith({
+    PortNum? num,
+    String? type,
+    List<EndpointSpec>? endpoints,
+    String? liveness,
+    bool? public,
+    bool? published,
+    Map<String, String>? annotations,
+  }) {
     return PortSpec(
       num: num ?? this.num,
       type: type ?? this.type,
@@ -2053,6 +2068,7 @@ class PortSpec {
       liveness: liveness ?? this.liveness,
       published: published ?? this.published,
       public: public ?? this.public,
+      annotations: annotations ?? this.annotations,
     );
   }
 }
