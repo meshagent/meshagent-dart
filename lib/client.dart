@@ -160,6 +160,19 @@ class Mailbox {
   Map<String, dynamic> toJson() => {'address': address, 'room': room, 'queue': queue, 'public': public};
 }
 
+class Domain {
+  final String domain;
+  final String roomId;
+  final String port;
+
+  Domain({required this.domain, required this.roomId, required this.port});
+
+  factory Domain.fromJson(Map<String, dynamic> json) =>
+      Domain(domain: json['domain'] as String, roomId: json['room_id'] as String, port: json['port'] as String);
+
+  Map<String, dynamic> toJson() => {'domain': domain, 'room_id': roomId, 'port': port};
+}
+
 // ---------------------------
 // Scheduled Tasks models
 // ---------------------------
@@ -443,6 +456,122 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete mailbox. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  /// POST /accounts/projects/{project_id}/domains
+  /// Body: { "domain", "room_id" }
+  /// Returns {} on success.
+  Future<void> createDomain({required String projectId, required String domain, required String roomId, required String port}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains');
+    final body = {'domain': domain, 'room_id': roomId, 'port': port};
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create domain. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  /// PUT /accounts/projects/{project_id}/domains/{domain}
+  /// Body: { "room_id" }
+  /// Returns {} on success.
+  Future<void> updateDomain({required String projectId, required String domain, required String roomId, required String port}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedDomain = Uri.encodeComponent(domain);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+    final body = {'room_id': roomId, 'port': port};
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update domain. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  /// GET /accounts/projects/{project_id}/domains/{domain}
+  Future<Domain> getDomain({required String projectId, required String domain}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedDomain = Uri.encodeComponent(domain);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Domain not found: $domain');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get domain.'
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return Domain.fromJson(data["domain"] as Map<String, dynamic>);
+  }
+
+  /// GET /accounts/projects/{project_id}/domains
+  /// Returns { "domains": [ { "domain","room_id" }, ... ] }
+  Future<List<Domain>> listDomains(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list domains. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['domains'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Domain.fromJson).toList();
+  }
+
+  /// GET /accounts/projects/{project_id}/rooms/{room_id}/domains
+  /// Returns { "domains": [ { "domain","room_id" }, ... ] }
+  Future<List<Domain>> listRoomDomains({required String projectId, required String roomId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId/domains');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room domains. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['domains'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Domain.fromJson).toList();
+  }
+
+  /// DELETE /accounts/projects/{project_id}/domains/{domain}
+  /// Returns {} on success.
+  Future<void> deleteDomain({required String projectId, required String domain}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedDomain = Uri.encodeComponent(domain);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete domain. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
