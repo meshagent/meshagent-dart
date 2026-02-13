@@ -461,12 +461,12 @@ class Meshagent {
     }
   }
 
-  /// POST /accounts/projects/{project_id}/domains
+  /// POST /accounts/projects/{project_id}/routes
   /// Body: { "domain", "room_id" }
   /// Returns {} on success.
-  Future<void> createDomain({required String projectId, required String domain, required String roomId, required String port}) async {
+  Future<void> createRoute({required String projectId, required String domain, required String roomId, required String port}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes');
     final body = {'domain': domain, 'room_id': roomId, 'port': port};
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -479,13 +479,13 @@ class Meshagent {
     }
   }
 
-  /// PUT /accounts/projects/{project_id}/domains/{domain}
+  /// PUT /accounts/projects/{project_id}/routes/{domain}
   /// Body: { "room_id" }
   /// Returns {} on success.
-  Future<void> updateDomain({required String projectId, required String domain, required String roomId, required String port}) async {
+  Future<void> updateRoute({required String projectId, required String domain, required String roomId, required String port}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedDomain = Uri.encodeComponent(domain);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes/$encodedDomain');
     final body = {'room_id': roomId, 'port': port};
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
@@ -498,11 +498,11 @@ class Meshagent {
     }
   }
 
-  /// GET /accounts/projects/{project_id}/domains/{domain}
-  Future<Domain> getDomain({required String projectId, required String domain}) async {
+  /// GET /accounts/projects/{project_id}/routes/{domain}
+  Future<Domain> getRoute({required String projectId, required String domain}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedDomain = Uri.encodeComponent(domain);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes/$encodedDomain');
     final response = await httpClient.get(uri);
 
     if (response.statusCode == 404) {
@@ -517,14 +517,14 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return Domain.fromJson(data["domain"] as Map<String, dynamic>);
+    return Domain.fromJson(data["route"] as Map<String, dynamic>);
   }
 
-  /// GET /accounts/projects/{project_id}/domains
-  /// Returns { "domains": [ { "domain","room_id" }, ... ] }
-  Future<List<Domain>> listDomains(String projectId) async {
+  /// GET /accounts/projects/{project_id}/routes
+  /// Returns { "routes": [ { "domain","room_id" }, ... ] }
+  Future<List<Domain>> listRoutes(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes');
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -535,17 +535,17 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['domains'] as List<dynamic>? ?? [];
+    final list = data['routes'] as List<dynamic>? ?? [];
     return list.whereType<Map<String, dynamic>>().map(Domain.fromJson).toList();
   }
 
-  /// GET /accounts/projects/{project_id}/rooms/{room_id}/domains
-  /// Returns { "domains": [ { "domain","room_id" }, ... ] }
-  Future<List<Domain>> listRoomDomains({required String projectId, required String roomId}) async {
+  /// GET /accounts/projects/{project_id}/rooms/{room_id}/routes
+  /// Returns { "routes": [ { "domain","room_id" }, ... ] }
+  Future<List<Domain>> listRoomRoutes({required String projectId, required String roomId}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomId = Uri.encodeComponent(roomId);
 
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId/domains');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId/routes');
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -556,16 +556,16 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['domains'] as List<dynamic>? ?? [];
+    final list = data['routes'] as List<dynamic>? ?? [];
     return list.whereType<Map<String, dynamic>>().map(Domain.fromJson).toList();
   }
 
-  /// DELETE /accounts/projects/{project_id}/domains/{domain}
+  /// DELETE /accounts/projects/{project_id}/routes/{domain}
   /// Returns {} on success.
-  Future<void> deleteDomain({required String projectId, required String domain}) async {
+  Future<void> deleteRoute({required String projectId, required String domain}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedDomain = Uri.encodeComponent(domain);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/domains/$encodedDomain');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes/$encodedDomain');
 
     final response = await httpClient.delete(uri);
 
