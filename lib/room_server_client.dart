@@ -2137,18 +2137,33 @@ class TokenValue {
   Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson()};
 }
 
+class SecretValue {
+  final String identity;
+  final String id;
+
+  const SecretValue({required this.identity, required this.id});
+
+  factory SecretValue.fromJson(Map<String, dynamic> json) {
+    return SecretValue(identity: json['identity'] as String, id: json['id'] as String);
+  }
+
+  Map<String, dynamic> toJson() => {'identity': identity, 'id': id};
+}
+
 class EnvironmentVariable {
   final String name;
   final String? value;
   final TokenValue? token;
+  final SecretValue? secret;
 
-  EnvironmentVariable({required this.name, this.value, this.token});
+  EnvironmentVariable({required this.name, this.value, this.token, this.secret});
 
   factory EnvironmentVariable.fromJson(Map<String, dynamic> json) {
     return EnvironmentVariable(
       name: json['name'] as String,
       value: json['value'] as String?,
       token: json['token'] == null ? null : TokenValue.fromJson(json['token']),
+      secret: json['secret'] == null ? null : SecretValue.fromJson(json['secret']),
     );
   }
 
