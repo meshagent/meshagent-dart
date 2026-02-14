@@ -1412,6 +1412,10 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
     final response = await httpClient.get(uri);
 
+    if (response.statusCode == 403) {
+      throw ForbiddenException('User does not have access to this project. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get project role. Status code: ${response.statusCode}, body: ${response.body}');
     }
@@ -1429,6 +1433,10 @@ class Meshagent {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
     final response = await httpClient.get(uri);
+
+    if (response.statusCode == 403) {
+      throw ForbiddenException('User does not have access to this project. Status code: ${response.statusCode}, body: ${response.body}');
+    }
 
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to create room. Status code: ${response.statusCode}, body: ${response.body}');
@@ -2534,6 +2542,10 @@ class NotFoundException extends MeshagentException {
 
 class NameInUseException extends MeshagentException {
   NameInUseException(super.message);
+}
+
+class ForbiddenException extends MeshagentException {
+  ForbiddenException(super.message);
 }
 
 class ApiKeyInfo {
