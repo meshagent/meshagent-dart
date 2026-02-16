@@ -1,3 +1,12 @@
+## [0.27.0]
+- Added `Route` support to the Dart client, including create/update/get/list/delete APIs for project and room routes.
+- Added mailbox annotations to Dart mailbox models and mailbox create/update API payloads.
+- Added endpoint/port annotation support in Dart service spec models for routing/request metadata round-tripping.
+- Added secret-backed environment variable modeling in Dart service specs via `SecretValue` and `EnvironmentVariable.secret`.
+- Added structured event and approval handling support in Flutter chat components, including thread status attribute integration.
+- Added git credentials helper fallback to room secrets for username/password using configurable secret IDs.
+- Breaking change: Dart `Mailbox` construction now requires `annotations`.
+
 ## [0.26.0]
 - Stability
 
