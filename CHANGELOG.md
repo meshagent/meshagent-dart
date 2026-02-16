@@ -1,3 +1,6 @@
+## [0.27.1]
+- Stability
+
 ## [0.27.0]
 - Added `Route` support to the Dart client, including create/update/get/list/delete APIs for project and room routes.
 - Added mailbox annotations to Dart mailbox models and mailbox create/update API payloads.
