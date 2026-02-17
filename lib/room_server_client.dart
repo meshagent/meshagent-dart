@@ -2278,7 +2278,16 @@ class TemplateEnvironmentVariable {
 }
 
 class ContainerTemplateSpec {
-  ContainerTemplateSpec({this.environment, this.private, this.image, this.command, this.workingDir, this.storage, this.onDemand, this.writableRootFs});
+  ContainerTemplateSpec({
+    this.environment,
+    this.private,
+    this.image,
+    this.command,
+    this.workingDir,
+    this.storage,
+    this.onDemand,
+    this.writableRootFs,
+  });
 
   final String? image;
   final String? command;
