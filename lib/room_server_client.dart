@@ -582,6 +582,7 @@ class _RunRequest {
   _RunRequest({
     required this.image,
     required this.command,
+    this.workingDir,
     this.env = const {},
     this.mountPath,
     this.mountSubpath,
@@ -594,12 +595,14 @@ class _RunRequest {
     this.mounts,
     this.writableRootFs,
     this.private,
-  }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"');
+  }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"'),
+       assert(workingDir == null || workingDir.startsWith('/'), 'workingDir must start with "/"');
 
   final String? name;
   final String? requestId;
   final String image;
   final String? command;
+  final String? workingDir;
   final Map<String, String> env;
   final String? mountPath;
   final String? mountSubpath;
@@ -616,6 +619,7 @@ class _RunRequest {
     'name': name,
     'image': image,
     'command': command,
+    'working_dir': workingDir,
     'env': env,
     'mount_path': mountPath,
     'mount_subpath': mountSubpath,
@@ -831,6 +835,7 @@ class ContainersClient extends ChangeEmitter {
   Future<String> run({
     required String image,
     String? command,
+    String? workingDir,
     Map<String, String> env = const {},
     String? mountPath,
     String? mountSubpath,
@@ -856,6 +861,7 @@ class ContainersClient extends ChangeEmitter {
         requestId: requestId,
         image: image,
         command: command,
+        workingDir: workingDir,
         env: env,
         mountPath: mountPath,
         mountSubpath: mountSubpath,
@@ -2272,10 +2278,11 @@ class TemplateEnvironmentVariable {
 }
 
 class ContainerTemplateSpec {
-  ContainerTemplateSpec({this.environment, this.private, this.image, this.command, this.storage, this.onDemand, this.writableRootFs});
+  ContainerTemplateSpec({this.environment, this.private, this.image, this.command, this.workingDir, this.storage, this.onDemand, this.writableRootFs});
 
   final String? image;
   final String? command;
+  final String? workingDir;
   final List<TemplateEnvironmentVariable>? environment;
   final ServiceTemplateContainerMountSpec? storage;
   final bool? onDemand;
@@ -2291,6 +2298,7 @@ class ContainerTemplateSpec {
       writableRootFs: json['writable_root_fs'],
       image: json['image'] as String?,
       command: json['command'] as String?,
+      workingDir: json['working_dir'] as String?,
       storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
       private: json['private'],
     );
@@ -2301,6 +2309,7 @@ class ContainerTemplateSpec {
       if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
       if (image != null) 'image': image,
       if (command != null) 'command': command,
+      if (workingDir != null) 'working_dir': workingDir,
       if (storage != null) 'storage': storage!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
       if (writableRootFs != null) 'writable_root_fs': writableRootFs,
@@ -2324,6 +2333,7 @@ class ContainerTemplateSpec {
     }
     return ContainerSpec(
       command: command?.formatWith(values),
+      workingDir: workingDir?.formatWith(values),
       image: img,
       environment: env,
       onDemand: onDemand,
@@ -2666,6 +2676,7 @@ ApiKeyRole _apiKeyRoleFromString(String? s) => ApiKeyRole.admin;
 class ContainerSpec {
   ContainerSpec({
     this.command,
+    this.workingDir,
     required this.image,
     List<EnvironmentVariable>? environment,
     List<String>? secrets,
@@ -2679,6 +2690,7 @@ class ContainerSpec {
        secrets = secrets ?? [];
 
   final String? command;
+  final String? workingDir;
   final String image;
   final List<EnvironmentVariable> environment;
   final List<String> secrets;
@@ -2692,6 +2704,7 @@ class ContainerSpec {
   static ContainerSpec fromJson(Map<String, dynamic> json) {
     return ContainerSpec(
       command: json['command'] as String?,
+      workingDir: json['working_dir'] as String?,
       image: json['image'] as String,
       environment: json['environment'] == null ? null : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList(),
       secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
@@ -2707,6 +2720,7 @@ class ContainerSpec {
   Map<String, dynamic> toJson() {
     return {
       if (command != null) 'command': command,
+      if (workingDir != null) 'working_dir': workingDir,
       'image': image,
       if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
       if (secrets.isNotEmpty) 'secrets': secrets,
