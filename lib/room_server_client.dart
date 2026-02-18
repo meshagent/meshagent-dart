@@ -2273,7 +2273,12 @@ class EnvironmentVariable {
     );
   }
 
-  Map<String, dynamic> toJson() => {'name': name, if (value != null) 'value': value, if (token != null) 'token': token?.toJson()};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (value != null) 'value': value,
+    if (token != null) 'token': token?.toJson(),
+    'secret': secret?.toJson(),
+  };
 }
 
 extension EnvList on List<EnvironmentVariable> {
