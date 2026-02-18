@@ -1089,6 +1089,10 @@ class ServicesClient {
 
     return ListServicesResult.fromJson(response.json);
   }
+
+  Future<void> restart({required String serviceId}) async {
+    await room.sendRequest("services.restart", {"service_id": serviceId});
+  }
 }
 
 class SyncClient extends ChangeEmitter {
