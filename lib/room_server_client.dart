@@ -393,6 +393,7 @@ class RoomClient extends ChangeEmitter {
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
     containers = ContainersClient(room: this);
+    services = ServicesClient(room: this);
     secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
   }
 
@@ -404,6 +405,7 @@ class RoomClient extends ChangeEmitter {
   late final AgentsClient agents;
   late final DatabaseClient database;
   late final ContainersClient containers;
+  late final ServicesClient services;
   late final SecretsClient secrets;
 
   final _ready = Completer();
@@ -992,6 +994,100 @@ class RoomContainer {
       private: json["private"],
       serviceId: json["service_id"],
     );
+  }
+}
+
+class ServiceRuntimeState {
+  ServiceRuntimeState({
+    required this.serviceId,
+    required this.state,
+    required this.containerId,
+    required this.restartScheduledAt,
+    required this.startedAt,
+    required this.restartCount,
+    required this.lastExitCode,
+    required this.lastExitAt,
+  });
+
+  final String serviceId;
+  final String state;
+  final String? containerId;
+  final double? restartScheduledAt;
+  final double? startedAt;
+  final int restartCount;
+  final int? lastExitCode;
+  final double? lastExitAt;
+
+  DateTime? get restartScheduledAtTime => _timestampToDateTime(restartScheduledAt);
+  DateTime? get startedAtTime => _timestampToDateTime(startedAt);
+  DateTime? get lastExitAtTime => _timestampToDateTime(lastExitAt);
+
+  static ServiceRuntimeState fromJson(Map<String, dynamic> json) {
+    return ServiceRuntimeState(
+      serviceId: json["service_id"] as String,
+      state: (json["state"] as String?) ?? "unknown",
+      containerId: json["container_id"] as String?,
+      restartScheduledAt: _toDouble(json["restart_scheduled_at"]),
+      startedAt: _toDouble(json["started_at"]),
+      restartCount: _toInt(json["restart_count"]) ?? 0,
+      lastExitCode: _toInt(json["last_exit_code"]),
+      lastExitAt: _toDouble(json["last_exit_at"]),
+    );
+  }
+
+  static int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return null;
+  }
+
+  static DateTime? _timestampToDateTime(double? timestamp) {
+    if (timestamp == null) {
+      return null;
+    }
+    return DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).round(), isUtc: true).toLocal();
+  }
+}
+
+class ListServicesResult {
+  ListServicesResult({required this.services, required this.serviceStates});
+
+  final List<ServiceSpec> services;
+  final Map<String, ServiceRuntimeState> serviceStates;
+
+  static ListServicesResult fromJson(Map<String, dynamic> json) {
+    final statesRaw = (json["service_states"] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    return ListServicesResult(
+      services: (json["services"] as List).map((item) => ServiceSpec.fromJson((item as Map).cast<String, dynamic>())).toList(),
+      serviceStates: {
+        for (final entry in statesRaw.entries) entry.key: ServiceRuntimeState.fromJson((entry.value as Map).cast<String, dynamic>()),
+      },
+    );
+  }
+}
+
+class ServicesClient {
+  ServicesClient({required this.room});
+
+  final RoomClient room;
+
+  Future<List<ServiceSpec>> list() async {
+    return (await listWithState()).services;
+  }
+
+  Future<ListServicesResult> listWithState() async {
+    final response = await room.sendRequest("services.list", {});
+    if (response is! JsonResponse) {
+      throw RoomServerException("Invalid return type from list services call");
+    }
+
+    return ListServicesResult.fromJson(response.json);
   }
 }
 
