@@ -2060,11 +2060,12 @@ class Meshagent {
     required String name,
     bool ifNotExists = false,
     Map<String, dynamic>? metadata,
+    Map<String, String>? annotations,
     Map<String, ApiScope>? permissions,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms');
-    final body = {'name': name, 'if_not_exists': ifNotExists, 'metadata': metadata, 'permissions': permissions};
+    final body = {'name': name, 'if_not_exists': ifNotExists, 'metadata': metadata, 'annotations': annotations, 'permissions': permissions};
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode == 409) {
@@ -2103,11 +2104,17 @@ class Meshagent {
 
   /// PUT /accounts/projects/{project_id}/rooms/{room_id}
   /// Body: { "name": "new name" }
-  Future<void> updateRoom({required String projectId, required String roomId, required String name, Map<String, dynamic>? metadata}) async {
+  Future<void> updateRoom({
+    required String projectId,
+    required String roomId,
+    required String name,
+    Map<String, dynamic>? metadata,
+    Map<String, String>? annotations,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomId = Uri.encodeComponent(roomId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId');
-    final response = await httpClient.put(uri, body: jsonEncode({'name': name, 'metadata': metadata}));
+    final response = await httpClient.put(uri, body: jsonEncode({'name': name, 'metadata': metadata, 'annotations': annotations}));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -2463,17 +2470,23 @@ class OAuthClient {
 }
 
 class Room {
-  const Room({required this.name, required this.id, required this.metadata});
+  const Room({required this.name, required this.id, required this.metadata, required this.annotations});
 
   final String name;
   final String id;
   final Map<String, dynamic> metadata;
+  final Map<String, String> annotations;
 
   static Room fromJson(Map<String, dynamic> json) {
-    return Room(id: json["id"], name: json["name"], metadata: json["metadata"]);
+    return Room(
+      id: json["id"],
+      name: json["name"],
+      metadata: (json["metadata"] as Map?)?.cast<String, dynamic>() ?? {},
+      annotations: (json["annotations"] as Map?)?.cast<String, String>() ?? {},
+    );
   }
 
-  Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata};
+  Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations};
 }
 
 class ProjectRoomGrant {
