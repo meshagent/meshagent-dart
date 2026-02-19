@@ -149,21 +149,30 @@ class Transaction {
 class Mailbox {
   final String address;
   final String room;
+  final String? roomId;
   final String queue;
   final bool public;
   final Map<String, String> annotations;
 
-  Mailbox({required this.address, required this.room, required this.queue, required this.public, required this.annotations});
+  Mailbox({required this.address, required this.room, this.roomId, required this.queue, required this.public, required this.annotations});
 
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     address: json['address'] as String,
     room: json['room'] as String,
+    roomId: json['room_id'] as String?,
     queue: json['queue'] as String,
     public: json['public'],
     annotations: (json['annotations'] as Map?)?.map((key, value) => MapEntry(key as String, value as String)) ?? {},
   );
 
-  Map<String, dynamic> toJson() => {'address': address, 'room': room, 'queue': queue, 'public': public, 'annotations': annotations};
+  Map<String, dynamic> toJson() => {
+    'address': address,
+    'room': room,
+    if (roomId != null) 'room_id': roomId,
+    'queue': queue,
+    'public': public,
+    'annotations': annotations,
+  };
 }
 
 class Route {
@@ -199,6 +208,7 @@ class ScheduledTask {
     required this.active,
     required this.once,
     required this.annotations,
+    this.roomId,
     this.lastRunId,
     this.lastStartTime,
     this.lastEndTime,
@@ -209,6 +219,7 @@ class ScheduledTask {
   final String id;
   final String projectId;
   final String roomName;
+  final String? roomId;
   final String queueName;
 
   /// Server-side payload is commonly a JSON-string or opaque string.
@@ -230,6 +241,7 @@ class ScheduledTask {
     id: json['id'] as String,
     projectId: json['project_id'] as String,
     roomName: json['room_name'] as String,
+    roomId: json['room_id'] as String?,
     queueName: json['queue_name'] as String,
     payload: json['payload'],
     schedule: json['schedule'] as String,
@@ -247,6 +259,7 @@ class ScheduledTask {
     'id': id,
     'project_id': projectId,
     'room_name': roomName,
+    if (roomId != null) 'room_id': roomId,
     'queue_name': queueName,
     'payload': payload,
     'schedule': schedule,
