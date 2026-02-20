@@ -161,6 +161,54 @@ class DatabaseGrant {
   );
 }
 
+class MemoryGrant {
+  final bool list;
+  final bool create;
+  final bool drop;
+  final bool inspect;
+  final bool query;
+  final bool upsert;
+  final bool ingest;
+  final bool recall;
+  final bool optimize;
+
+  MemoryGrant({
+    this.list = true,
+    this.create = true,
+    this.drop = true,
+    this.inspect = true,
+    this.query = true,
+    this.upsert = true,
+    this.ingest = true,
+    this.recall = true,
+    this.optimize = true,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'list': list,
+    'create': create,
+    'drop': drop,
+    'inspect': inspect,
+    'query': query,
+    'upsert': upsert,
+    'ingest': ingest,
+    'recall': recall,
+    'optimize': optimize,
+  };
+
+  factory MemoryGrant.fromJson(Map<String, dynamic> j) => MemoryGrant(
+    list: j['list'] ?? true,
+    create: j['create'] ?? true,
+    drop: j['drop'] ?? true,
+    inspect: j['inspect'] ?? true,
+    query: j['query'] ?? true,
+    upsert: j['upsert'] ?? true,
+    ingest: j['ingest'] ?? true,
+    recall: j['recall'] ?? true,
+    optimize: j['optimize'] ?? true,
+  );
+}
+
 class SyncPathGrant {
   final String path;
   final bool readOnly;
@@ -363,6 +411,7 @@ class ApiScope {
   final QueuesGrant? queues;
   final MessagingGrant? messaging;
   final DatabaseGrant? database;
+  final MemoryGrant? memory;
   final SyncGrant? sync;
   final StorageGrant? storage;
   final ContainersGrant? containers;
@@ -378,6 +427,7 @@ class ApiScope {
     this.queues,
     this.messaging,
     this.database,
+    this.memory,
     this.sync,
     this.storage,
     this.containers,
@@ -394,6 +444,7 @@ class ApiScope {
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
     database: DatabaseGrant(),
+    memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
     containers: ContainersGrant(),
@@ -421,6 +472,7 @@ class ApiScope {
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
     database: DatabaseGrant(),
+    memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
     containers: ContainersGrant(),
@@ -437,6 +489,7 @@ class ApiScope {
     if (queues != null) 'queues': queues!.toJson(),
     if (messaging != null) 'messaging': messaging!.toJson(),
     if (database != null) 'database': database!.toJson(),
+    if (memory != null) 'memory': memory!.toJson(),
     if (sync != null) 'sync': sync!.toJson(),
     if (storage != null) 'storage': storage!.toJson(),
     if (containers != null) 'containers': containers!.toJson(),
@@ -453,6 +506,7 @@ class ApiScope {
     queues: j['queues'] != null ? QueuesGrant.fromJson(j['queues'] as Map<String, dynamic>) : null,
     messaging: j['messaging'] != null ? MessagingGrant.fromJson(j['messaging'] as Map<String, dynamic>) : null,
     database: j['database'] != null ? DatabaseGrant.fromJson(j['database'] as Map<String, dynamic>) : null,
+    memory: j['memory'] != null ? MemoryGrant.fromJson(j['memory'] as Map<String, dynamic>) : null,
     sync: j['sync'] != null ? SyncGrant.fromJson(j['sync'] as Map<String, dynamic>) : null,
     storage: j['storage'] != null ? StorageGrant.fromJson(j['storage'] as Map<String, dynamic>) : null,
     containers: j['containers'] != null ? ContainersGrant.fromJson(j['containers'] as Map<String, dynamic>) : null,

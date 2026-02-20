@@ -14,6 +14,8 @@ final Map<String, DataTypeConstructor> _dataTypes = {
   "timestamp": (data) => TimestampDataType.fromJson(data),
   "binary": (data) => BinaryDataType.fromJson(data),
   "bool": (data) => BoolDataType.fromJson(data),
+  "list": (data) => ListDataType.fromJson(data),
+  "struct": (data) => StructDataType.fromJson(data),
 };
 
 /// Abstract base class for data types.
@@ -177,6 +179,67 @@ class VectorDataType extends DataType {
   @override
   String toString() {
     return "vector<$elementType>[$size]";
+  }
+}
+
+/// ListDataType
+class ListDataType extends DataType {
+  final DataType elementType;
+
+  ListDataType({required this.elementType, super.nullable, super.metadata}) : super();
+
+  static ListDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'list') {
+      throw Exception("Expected type 'list', got '${data['type']}'");
+    }
+    return ListDataType(
+      nullable: data["nullable"],
+      metadata: data["metadata"],
+      elementType: DataType.fromJson(data['element_type'] as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': 'list', 'element_type': elementType.toJson(), ...super.toJson()};
+  }
+
+  @override
+  String toString() {
+    return "list<$elementType>";
+  }
+}
+
+/// StructDataType
+class StructDataType extends DataType {
+  final Map<String, DataType> fields;
+
+  StructDataType({required this.fields, super.nullable, super.metadata}) : super();
+
+  static StructDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'struct') {
+      throw Exception("Expected type 'struct', got '${data['type']}'");
+    }
+    final rawFields = data["fields"] as Map<String, dynamic>? ?? const {};
+    return StructDataType(
+      nullable: data["nullable"],
+      metadata: data["metadata"],
+      fields: rawFields.map((key, value) => MapEntry(key, DataType.fromJson(value as Map<String, dynamic>))),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'type': 'struct',
+      'fields': {for (final entry in fields.entries) entry.key: entry.value.toJson()},
+      ...super.toJson(),
+    };
+  }
+
+  @override
+  String toString() {
+    return "struct{${fields.keys.join(", ")}}";
   }
 }
 
