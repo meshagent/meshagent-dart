@@ -2,7 +2,6 @@ import "dart:async";
 import "dart:convert";
 import "dart:typed_data";
 
-import "package:meshagent/agents_client.dart";
 import "package:meshagent/meshagent.dart";
 import "package:meshagent/queues_client.dart";
 import "package:logging/logging.dart";
@@ -107,9 +106,9 @@ Uint8List packMessage(Map<String, dynamic> header, [Uint8List? data]) {
 class _PendingRequest {
   _PendingRequest();
 
-  final _completer = Completer<Response>();
+  final _completer = Completer<Chunk>();
 
-  Future<Response> get fut {
+  Future<Chunk> get fut {
     return _completer.future;
   }
 }
@@ -418,8 +417,43 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
+  void _failPendingRequests(RoomServerException error) {
+    if (_pendingRequests.isEmpty) {
+      return;
+    }
+
+    final pending = Map<int, _PendingRequest>.from(_pendingRequests);
+    _pendingRequests.clear();
+    for (final request in pending.values) {
+      if (!request._completer.isCompleted) {
+        request._completer.completeError(error);
+      }
+    }
+  }
+
   Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
-    protocol.start(onDone: onDone, onError: onError);
+    protocol.start(
+      onDone: () {
+        final error = RoomServerException("room connection closed before request completed");
+        _failPendingRequests(error);
+        if (!_ready.isCompleted) {
+          _ready.completeError(error);
+        }
+        if (onDone != null) {
+          onDone();
+        }
+      },
+      onError: (error) {
+        final wrapped = RoomServerException("room connection error: $error");
+        _failPendingRequests(wrapped);
+        if (!_ready.isCompleted) {
+          _ready.completeError(wrapped);
+        }
+        if (onError != null) {
+          onError(error);
+        }
+      },
+    );
 
     sync.start();
 
@@ -427,13 +461,14 @@ class RoomClient extends ChangeEmitter {
   }
 
   void dispose() {
+    _failPendingRequests(RoomServerException("room client disposed"));
     sync.dispose();
     protocol.dispose();
     _localParticipant = null;
   }
 
   // send a request, optionally with a binary trailer
-  Future<Response> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
+  Future<Chunk> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
     final requestId = protocol.getNextMessageId();
 
     final pr = _PendingRequest();
@@ -445,7 +480,7 @@ class RoomClient extends ChangeEmitter {
     await protocol.send(type, message, id: requestId);
 
     final response = await pr.fut;
-    if (response is ErrorResponse) {
+    if (response is ErrorChunk) {
       throw RoomServerException(response.text);
     }
 
@@ -453,12 +488,12 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
-    final response = unpackResponse(data);
+    final response = unpackChunk(data);
     final requestId = messageId;
 
     if (_pendingRequests.containsKey(requestId)) {
       final pr = _pendingRequests.remove(requestId)!;
-      if (response is ErrorResponse) {
+      if (response is ErrorChunk) {
         pr._completer.completeError(RoomServerException(response.text));
       } else {
         pr._completer.complete(response);
@@ -481,7 +516,9 @@ class RoomClient extends ChangeEmitter {
     _roomName = init["room_name"];
     _roomUrl = init["room_url"];
     _sessionId = init["session_id"];
-    _ready.complete(init["room_name"]);
+    if (!_ready.isCompleted) {
+      _ready.complete(init["room_name"]);
+    }
   }
 
   String? _roomName;
@@ -818,7 +855,7 @@ class ContainersClient extends ChangeEmitter {
 
   /// Return *all* local images (similar to `docker images`).
   Future<List<ContainerImage>> listImages() async {
-    final res = await room.sendRequest('containers.list_images', {}) as JsonResponse;
+    final res = await room.sendRequest('containers.list_images', {}) as JsonChunk;
 
     return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
   }
@@ -877,7 +914,7 @@ class ContainersClient extends ChangeEmitter {
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
-      return (res as JsonResponse).json["container_id"];
+      return (res as JsonChunk).json["container_id"];
     } finally {
       _loggers.remove(requestId);
       _progress.remove(requestId);
@@ -886,7 +923,7 @@ class ContainersClient extends ChangeEmitter {
 
   Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
     final res = await room.sendRequest("containers.run_service", {"service_id": serviceId, "env": env});
-    return (res as JsonResponse).json["container_id"];
+    return (res as JsonChunk).json["container_id"];
   }
 
   ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
@@ -902,7 +939,7 @@ class ContainersClient extends ChangeEmitter {
         .then(
           (result) {
             _ttys.remove(requestId);
-            final json = result as JsonResponse;
+            final json = result as JsonChunk;
             container._close(json.json["status"]);
           },
           onError: (error) {
@@ -953,7 +990,7 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<List<RoomContainer>> list({bool? all}) async {
-    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonResponse;
+    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonChunk;
 
     return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
@@ -1083,7 +1120,7 @@ class ServicesClient {
 
   Future<ListServicesResult> listWithState() async {
     final response = await room.sendRequest("services.list", {});
-    if (response is! JsonResponse) {
+    if (response is! JsonChunk) {
       throw RoomServerException("Invalid return type from list services call");
     }
 
@@ -1171,7 +1208,7 @@ class SyncClient extends ChangeEmitter {
                 "initial_json": initialJson,
                 "schema": schema?.toJson(),
               }))
-              as JsonResponse;
+              as JsonChunk;
 
       schema = MeshSchema.fromJson(result.json["schema"]);
 
@@ -1363,7 +1400,7 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<List<StorageEntry>> list(String path) async {
-    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonResponse;
+    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonChunk;
     return (response.json["files"] as List).map((f) {
       return StorageEntry(
         name: f["name"],
@@ -1375,11 +1412,11 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<void> delete(String path, {bool? recursive = false}) async {
-    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonResponse);
+    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonChunk);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonResponse);
+    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonChunk);
 
     return FileHandle(id: response.json["handle"]);
   }
@@ -1387,7 +1424,7 @@ class StorageClient extends ChangeEmitter {
   Future<bool> exists(String path) async {
     final result = await room.sendRequest("storage.exists", {"path": path});
 
-    return (result as JsonResponse).json["exists"];
+    return (result as JsonChunk).json["exists"];
   }
 
   Future<void> write(FileHandle handle, Uint8List bytes) async {
@@ -1398,14 +1435,14 @@ class StorageClient extends ChangeEmitter {
     await room.sendRequest("storage.close", {"handle": handle.id});
   }
 
-  Future<FileResponse> download(String path) async {
-    final response = (await room.sendRequest("storage.download", {"path": path}) as FileResponse);
+  Future<FileChunk> download(String path) async {
+    final response = (await room.sendRequest("storage.download", {"path": path}) as FileChunk);
 
     return response;
   }
 
   Future<String> downloadUrl(String path) async {
-    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonResponse).json;
+    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonChunk).json;
 
     return response["url"];
   }
@@ -1713,35 +1750,36 @@ class StorageEntry {
   }
 }
 
-/// Abstract Response class
-abstract class Response {
-  Response();
+/// Abstract Chunk class
+abstract class Chunk {
+  Chunk();
 
   /// Abstract pack method to be implemented by subclasses
   Uint8List pack();
 }
 
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
-final Map<String, Response Function(Map<String, dynamic> header, Uint8List payload)> _responseTypes = {
-  'link': LinkResponse.unpack,
-  'file': FileResponse.unpack,
-  'text': TextResponse.unpack,
-  'error': ErrorResponse.unpack,
-  'json': JsonResponse.unpack,
-  'empty': EmptyResponse.unpack,
+final Map<String, Chunk Function(Map<String, dynamic> header, Uint8List payload)> _chunkTypes = {
+  'link': LinkChunk.unpack,
+  'file': FileChunk.unpack,
+  'text': TextChunk.unpack,
+  'error': ErrorChunk.unpack,
+  'json': JsonChunk.unpack,
+  'empty': EmptyChunk.unpack,
+  'control': ControlChunk.unpack,
 };
 
 //
-// LinkResponse
+// LinkChunk
 //
-class LinkResponse extends Response {
+class LinkChunk extends Chunk {
   final String url;
   final String name;
 
-  LinkResponse({required this.url, required this.name});
+  LinkChunk({required this.url, required this.name});
 
-  static LinkResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return LinkResponse(url: header['url'] as String, name: header['name'] as String);
+  static LinkChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return LinkChunk(url: header['url'] as String, name: header['name'] as String);
   }
 
   @override
@@ -1751,22 +1789,22 @@ class LinkResponse extends Response {
 
   @override
   String toString() {
-    return "LinkResponse ($name): $url";
+    return "LinkChunk ($name): $url";
   }
 }
 
 //
-// FileResponse
+// FileChunk
 //
-class FileResponse extends Response {
+class FileChunk extends Chunk {
   final Uint8List data;
   final String name;
   final String mimeType;
 
-  FileResponse({required this.data, required this.name, required this.mimeType});
+  FileChunk({required this.data, required this.name, required this.mimeType});
 
-  static FileResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return FileResponse(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
+  static FileChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return FileChunk(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
   }
 
   @override
@@ -1776,20 +1814,20 @@ class FileResponse extends Response {
 
   @override
   String toString() {
-    return "FileResponse ($mimeType): $name ";
+    return "FileChunk ($mimeType): $name ";
   }
 }
 
 //
-// TextResponse
+// TextChunk
 //
-class TextResponse extends Response {
+class TextChunk extends Chunk {
   final String text;
 
-  TextResponse({required this.text});
+  TextChunk({required this.text});
 
-  static TextResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return TextResponse(text: header['text'] as String);
+  static TextChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return TextChunk(text: header['text'] as String);
   }
 
   @override
@@ -1799,20 +1837,20 @@ class TextResponse extends Response {
 
   @override
   String toString() {
-    return "TextResponse: $text";
+    return "TextChunk: $text";
   }
 }
 
 //
-// ErrorResponse
+// ErrorChunk
 //
-class ErrorResponse extends Response {
+class ErrorChunk extends Chunk {
   final String text;
 
-  ErrorResponse({required this.text});
+  ErrorChunk({required this.text});
 
-  static ErrorResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return ErrorResponse(text: header['text'] as String);
+  static ErrorChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return ErrorChunk(text: header['text'] as String);
   }
 
   @override
@@ -1822,20 +1860,20 @@ class ErrorResponse extends Response {
 
   @override
   String toString() {
-    return "ErrorResponse: $text";
+    return "ErrorChunk: $text";
   }
 }
 
 //
-// JsonResponse
+// JsonChunk
 //
-class JsonResponse extends Response {
+class JsonChunk extends Chunk {
   final Map<String, dynamic> json;
 
-  JsonResponse({required this.json});
+  JsonChunk({required this.json});
 
-  static JsonResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return JsonResponse(json: header['json'] as Map<String, dynamic>);
+  static JsonChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return JsonChunk(json: header['json'] as Map<String, dynamic>);
   }
 
   @override
@@ -1845,13 +1883,13 @@ class JsonResponse extends Response {
 }
 
 //
-// EmptyResponse
+// EmptyChunk
 //
-class EmptyResponse extends Response {
-  EmptyResponse();
+class EmptyChunk extends Chunk {
+  EmptyChunk();
 
-  static EmptyResponse unpack(Map<String, dynamic> header, Uint8List payload) {
-    return EmptyResponse();
+  static EmptyChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return EmptyChunk();
   }
 
   @override
@@ -1861,22 +1899,47 @@ class EmptyResponse extends Response {
 
   @override
   String toString() {
-    return "EmptyResponse";
+    return "EmptyChunk";
   }
 }
 
-Response unpackResponse(Uint8List data) {
+class ControlChunk extends Chunk {
+  final String method;
+
+  ControlChunk({required this.method});
+
+  static ControlChunk unpack(Map<String, dynamic> header, Uint8List payload) {
+    return ControlChunk(method: header['method'] as String);
+  }
+
+  @override
+  Uint8List pack() {
+    return packMessage({'type': 'control', 'method': method});
+  }
+
+  @override
+  String toString() {
+    return "ControlChunk: $method";
+  }
+}
+
+Chunk unpackChunk(Uint8List data) {
   final header = jsonDecode(splitMessageHeader(data));
   final payload = splitMessagePayload(data);
 
   final typeKey = header['type'] as String;
 
-  if (!_responseTypes.containsKey(typeKey)) {
-    throw StateError('Unknown response type: $typeKey');
+  if (!_chunkTypes.containsKey(typeKey)) {
+    throw StateError('Unknown chunk type: $typeKey');
   }
 
   // Delegate to the correct `unpack` function
-  return _responseTypes[typeKey]!(header, payload);
+  return _chunkTypes[typeKey]!(header, payload);
+}
+
+@Deprecated("use unpackChunk")
+Chunk unpackResponse(Uint8List data) {
+  return unpackChunk(data);
 }
 
 /// ---------------------------------------------------------------------------
@@ -3141,23 +3204,23 @@ class SecretsClient extends ChangeEmitter {
     };
 
     final res = await room.sendRequest("secrets.request_secret", req);
-    if (res is FileResponse) {
+    if (res is FileChunk) {
       return res.data;
     }
-    throw RoomServerException("Invalid response received, expected FileResponse");
+    throw RoomServerException("Invalid response received, expected FileChunk");
   }
 
-  Future<FileResponse?> getSecret({required String secretId, String? delegatedTo}) async {
+  Future<FileChunk?> getSecret({required String secretId, String? delegatedTo}) async {
     final req = <String, dynamic>{"secret_id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.get_secret", req);
-    if (res is EmptyResponse) {
+    if (res is EmptyChunk) {
       return null;
     }
-    if (res is FileResponse) {
+    if (res is FileChunk) {
       return res;
     }
-    throw RoomServerException("Invalid response received, expected FileResponse or EmptyResponse");
+    throw RoomServerException("Invalid response received, expected FileChunk or EmptyChunk");
   }
 
   Future<void> setSecret({
@@ -3177,42 +3240,42 @@ class SecretsClient extends ChangeEmitter {
     };
 
     final res = await room.sendRequest("secrets.set_secret", req, data: data);
-    if (res is EmptyResponse || res is JsonResponse) {
+    if (res is EmptyChunk || res is JsonChunk) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
   }
 
   Future<List<SecretInfo>> listSecrets() async {
     final res = await room.sendRequest("secrets.list_secrets", {});
 
-    if (res is JsonResponse) {
+    if (res is JsonChunk) {
       final secrets = (res.json['secrets'] as List<dynamic>?)?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>)).toList();
 
       return secrets ?? [];
     }
 
-    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
   }
 
   Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
     final req = <String, dynamic>{"id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.delete_secret", req);
-    if (res is EmptyResponse || res is JsonResponse) {
+    if (res is EmptyChunk || res is JsonChunk) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
   }
 
   Future<void> deleteRequestedSecret({required String url, required String type, String? delegatedTo}) async {
     final req = <String, dynamic>{"url": url, "type": type, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.delete_requested_secret", req);
-    if (res is EmptyResponse || res is JsonResponse) {
+    if (res is EmptyChunk || res is JsonChunk) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyResponse or JsonResponse");
+    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
   }
 
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
@@ -3237,7 +3300,7 @@ class SecretsClient extends ChangeEmitter {
       "delegate_to": delegateTo,
     };
 
-    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonResponse;
+    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonChunk;
     final accessToken = (res.json["access_token"] as String?) ?? "";
     if (accessToken.isEmpty) {
       throw RoomServerException("Invalid response: missing access_token");
@@ -3260,14 +3323,14 @@ class SecretsClient extends ChangeEmitter {
 
     final res = await room.sendRequest('secrets.get_offline_oauth_token', req);
 
-    if (res is JsonResponse) {
+    if (res is JsonChunk) {
       final token = (res.json['access_token'] as String?) ?? '';
       if (token.isEmpty) {
         return null;
       }
       return token;
     } else {
-      throw RoomServerException('Invalid response received, expected JsonResponse');
+      throw RoomServerException('Invalid response received, expected JsonChunk');
     }
   }
 }

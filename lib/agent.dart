@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
+
 import 'package:logging/logging.dart';
 import 'package:meshagent/database_client.dart';
-import 'package:meshagent/room_server_client.dart';
 import 'package:meshagent/protocol.dart';
+import 'package:meshagent/room_server_client.dart';
 
 abstract class Tool {
   Tool({required this.name, this.description, this.title, required this.inputSchema, this.thumbnailUrl, this.supportsContext = false});
@@ -14,19 +16,22 @@ abstract class Tool {
   final Map<String, dynamic> inputSchema;
   final bool supportsContext;
 
-  Future<Response> execute(ToolContext context, Map<String, dynamic> arguments);
+  Future<Chunk> execute(ToolContext context, Map<String, dynamic> arguments);
+
+  Stream<Chunk> executeStream(ToolContext context, Map<String, dynamic> arguments) async* {
+    yield await execute(context, arguments);
+  }
 }
 
 abstract class Toolkit {
+  Toolkit({required this.name, this.title, this.description, this.thumbnailUrl, required this.tools, required this.rules});
+
   final String name;
   final String? title;
   final String? description;
   final String? thumbnailUrl;
-
   final List<Tool> tools;
   final List<String> rules;
-
-  Toolkit({required this.name, this.title, this.description, this.thumbnailUrl, required this.tools, required this.rules});
 
   Tool getTool(String name) {
     for (final tool in tools) {
@@ -51,8 +56,12 @@ abstract class Toolkit {
     return json;
   }
 
-  Future<Response> execute(ToolContext context, String name, Map<String, dynamic> arguments) async {
+  Future<Chunk> execute(ToolContext context, String name, Map<String, dynamic> arguments) async {
     return await getTool(name).execute(context, arguments);
+  }
+
+  Stream<Chunk> executeStream(ToolContext context, String name, Map<String, dynamic> arguments) {
+    return getTool(name).executeStream(context, arguments);
   }
 }
 
@@ -61,15 +70,11 @@ class ToolContext {
 
   final Participant? caller;
   final Participant? onBehalfOf;
-
   final Map<String, dynamic>? callerContext;
-
   final RoomClient room;
 }
 
 class RemoteToolkit extends Toolkit {
-  final RoomClient room;
-
   RemoteToolkit({
     required super.name,
     super.title,
@@ -80,19 +85,18 @@ class RemoteToolkit extends Toolkit {
     super.rules = const [],
   });
 
+  final RoomClient room;
+  String? _registrationId;
+
   Future<void> start({bool public = false}) async {
     room.protocol.addHandler("agent.tool_call.$name", _toolCall);
-
     await _register(public: public);
   }
 
   Future<void> stop() async {
     await _unregister();
-
     room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
   }
-
-  String? _registrationId;
 
   Future<void> _register({bool public = false}) async {
     final response = await room.sendRequest("agent.register_toolkit", {
@@ -103,7 +107,7 @@ class RemoteToolkit extends Toolkit {
       "public": public,
       "thumbnail_url": thumbnailUrl,
     });
-    _registrationId = (response as JsonResponse).json["id"];
+    _registrationId = (response as JsonChunk).json["id"];
   }
 
   Future<void> _unregister() async {
@@ -113,32 +117,111 @@ class RemoteToolkit extends Toolkit {
   }
 
   Future<void> _toolCall(Protocol protocol, int messageId, String type, Uint8List data) async {
-    var message = unpackMessage(data).header;
-    var toolName = message["name"];
-    var args = message["arguments"] as Map<String, dynamic>;
+    final unpackedMessage = unpackMessage(data);
+    final message = unpackedMessage.header;
+    final attachment = unpackedMessage.payload;
+    final toolName = message["name"] as String;
+    final rawArguments = message["arguments"];
+    final toolCallId = (message["tool_call_id"] as String?) ?? "$messageId";
+    var args = <String, dynamic>{};
+    var requestStream = false;
+
+    if (rawArguments is! Map) {
+      await room.protocol.send("agent.tool_call_response", ErrorChunk(text: "'arguments' must be a JSON object").pack(), id: messageId);
+      return;
+    }
 
     try {
-      var response = await execute(ToolContext(room: room), toolName, args);
-      await room.protocol.send(id: messageId, "agent.tool_call_response", response.pack());
-    } catch (e) {
-      await room.protocol.send(id: messageId, "agent.tool_call_response", ErrorResponse(text: "$e").pack());
+      final argChunk = unpackChunk(packMessage(Map<String, dynamic>.from(rawArguments), attachment.isEmpty ? null : attachment));
+      if (argChunk is ControlChunk) {
+        requestStream = argChunk.method == "open";
+      } else if (argChunk is JsonChunk) {
+        args = Map<String, dynamic>.from(argChunk.json);
+      } else if (argChunk is EmptyChunk) {
+        args = <String, dynamic>{};
+      } else {
+        args = Map<String, dynamic>.from(rawArguments);
+      }
+    } catch (_) {
+      args = Map<String, dynamic>.from(rawArguments);
     }
+
+    if (requestStream) {
+      await room.protocol.send(
+        "agent.tool_call_response",
+        ErrorChunk(text: "streamed tool input is not supported by the Dart RemoteToolkit yet").pack(),
+        id: messageId,
+      );
+      return;
+    }
+
+    var openedStream = false;
+
+    try {
+      final stream = executeStream(ToolContext(room: room), toolName, args);
+      final iterator = StreamIterator<Chunk>(stream);
+
+      if (!await iterator.moveNext()) {
+        await room.protocol.send("agent.tool_call_response", EmptyChunk().pack(), id: messageId);
+        return;
+      }
+
+      final firstChunk = iterator.current;
+      if (!await iterator.moveNext()) {
+        await room.protocol.send("agent.tool_call_response", firstChunk.pack(), id: messageId);
+        return;
+      }
+
+      openedStream = true;
+      await room.protocol.send("agent.tool_call_response", ControlChunk(method: "open").pack(), id: messageId);
+
+      await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: firstChunk);
+      await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: iterator.current);
+
+      while (await iterator.moveNext()) {
+        await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: iterator.current);
+      }
+
+      await _sendToolCallResponseChunk(
+        messageId: messageId,
+        toolCallId: toolCallId,
+        chunk: ControlChunk(method: "close"),
+      );
+      await iterator.cancel();
+    } catch (error) {
+      if (!openedStream) {
+        await room.protocol.send("agent.tool_call_response", ErrorChunk(text: "$error").pack(), id: messageId);
+        return;
+      }
+
+      await _sendToolCallResponseChunk(
+        messageId: messageId,
+        toolCallId: toolCallId,
+        chunk: ErrorChunk(text: "$error"),
+      );
+      await _sendToolCallResponseChunk(
+        messageId: messageId,
+        toolCallId: toolCallId,
+        chunk: ControlChunk(method: "close"),
+      );
+    }
+  }
+
+  Future<void> _sendToolCallResponseChunk({required int messageId, required String toolCallId, required Chunk chunk}) async {
+    final packedChunk = unpackMessage(chunk.pack());
+    await room.protocol.send(
+      "agent.tool_call_response_chunk",
+      packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
+      id: messageId,
+    );
   }
 }
 
 /// Install (create + index + optimize) a RequiredTable in the current room.
-///
-/// - create_table_with_schema(mode=create_if_not_exists)
-/// - list_indexes + index_exists(column in i.columns)
-/// - create missing indexes (vector / full-text / scalar), each guarded w/ try/catch
-/// - optimize(table)
-
 Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger, bool optimize = true}) async {
   logger ??= Logger.root;
-
   final database = room.database;
 
-  // 1) Create table (idempotent)
   await database.createTableWithSchema(
     name: table.name,
     mode: CreateMode.createIfNotExists,
@@ -146,7 +229,6 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
     namespace: table.namespace,
   );
 
-  // 2) Read current indexes once
   final indexes = await database.listIndexes(table.name, namespace: table.namespace);
 
   bool indexExists(String column) {
@@ -156,42 +238,35 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
     return false;
   }
 
-  // 3) Create missing vector indexes
   for (final vi in table.vectorIndexes ?? const <String>[]) {
     if (indexExists(vi)) continue;
-
     try {
       await database.createVectorIndex(table: table.name, column: vi, namespace: table.namespace, replace: true);
-    } catch (e, st) {
-      logger.warning('unable to create vector index for "$vi": $e', e, st);
+    } catch (error, st) {
+      logger.warning('unable to create vector index for "$vi": $error', error, st);
     }
   }
 
-  // 4) Create missing full text search indexes
   for (final ti in table.fullTextSearchIndexes ?? const <String>[]) {
     if (indexExists(ti)) continue;
-
     try {
       await database.createFullTextSearchIndex(table: table.name, column: ti, namespace: table.namespace, replace: true);
-    } catch (e, st) {
-      logger.warning('unable to create full text search index for "$ti": $e', e, st);
+    } catch (error, st) {
+      logger.warning('unable to create full text search index for "$ti": $error', error, st);
     }
   }
 
-  // 5) Create missing scalar indexes
   for (final si in table.scalarIndexes ?? const <String>[]) {
     if (indexExists(si)) continue;
-
     try {
       await database.createScalarIndex(table: table.name, column: si, namespace: table.namespace, replace: true);
-    } catch (e, st) {
-      logger.warning('unable to create scalar index for "$si": $e', e, st);
+    } catch (error, st) {
+      logger.warning('unable to create scalar index for "$si": $error', error, st);
     }
   }
 
   if (optimize) {
     logger.info('optimizing table ${table.name} in ${table.namespace}');
-    // TODO: use index_stats to determine when indexes need to be updated
     await database.optimize(table: table.name, namespace: table.namespace);
   }
 }

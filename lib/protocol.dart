@@ -177,7 +177,7 @@ class Protocol<T extends ProtocolChannel> {
         packet.add(
           Uint8List(16)
             ..buffer.asByteData().setUint32(0, message.id >> 32, Endian.big)
-            ..buffer.asByteData().setUint32(4, message.id & 0xffff, Endian.big)
+            ..buffer.asByteData().setUint32(4, message.id & 0xffffffff, Endian.big)
             ..buffer.asByteData().setInt32(8, 0, Endian.big)
             ..buffer.asByteData().setInt32(12, packets, Endian.big),
         );
@@ -189,7 +189,7 @@ class Protocol<T extends ProtocolChannel> {
           final header = Uint8List(12).buffer.asByteData();
 
           header.setUint32(0, message.id >> 32, Endian.big);
-          header.setUint32(4, message.id & 0xffff, Endian.big);
+          header.setUint32(4, message.id & 0xffffffff, Endian.big);
           header.setInt32(8, i + 1, Endian.big);
 
           packetBuilder.add(Uint8List.view(header.buffer));
