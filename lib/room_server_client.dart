@@ -220,54 +220,6 @@ class RequiredToolkit extends Requirement {
   }
 }
 
-class AgentDescription {
-  AgentDescription({
-    required this.name,
-    required this.inputSchema,
-    this.outputSchema,
-    required this.description,
-    required this.title,
-    required this.supportsTools,
-    List<String>? labels,
-    this.annotations,
-  }) : labels = List<String>.of(labels ?? const <String>[]);
-
-  final String name;
-  final String title;
-  final String description;
-  final Map<String, dynamic>? outputSchema;
-  final Map<String, dynamic>? inputSchema;
-  final List<String>? labels;
-  final bool supportsTools;
-  final Map<String, dynamic>? annotations;
-
-  Map<String, dynamic> toJson() {
-    return {
-      "name": name,
-      "title": title,
-      "description": description,
-      if (inputSchema != null) "input_schema": inputSchema,
-      if (outputSchema != null) "output_schema": outputSchema,
-      if (labels != null) "labels": labels,
-      if (annotations != null) "annotations": labels,
-      "supports_tools": supportsTools,
-    };
-  }
-
-  static AgentDescription fromJson(Map<String, dynamic> a) {
-    return AgentDescription(
-      description: a["description"] ?? "",
-      title: a["title"] ?? "",
-      name: a["name"],
-      inputSchema: a["input_schema"],
-      outputSchema: a["output_schema"],
-      supportsTools: a["supports_tools"] == true,
-      labels: a["labels"]?.whereType<String>().toList(),
-      annotations: (a["annotations"] as Map?)?.cast<String, dynamic>(),
-    );
-  }
-}
-
 abstract class RoomEvent {
   RoomEvent();
 
@@ -1750,12 +1702,17 @@ class StorageEntry {
   }
 }
 
-/// Abstract Chunk class
-abstract class Chunk {
-  Chunk();
+/// Abstract Content class
+abstract class Content {
+  Content();
 
-  /// Abstract pack method to be implemented by subclasses
+  /// Abstract pack method to be implemented by subclasses.
   Uint8List pack();
+}
+
+/// Backward-compatible name for protocol content.
+abstract class Chunk implements Content {
+  Chunk();
 }
 
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
@@ -1921,6 +1878,18 @@ class ControlChunk extends Chunk {
   String toString() {
     return "ControlChunk: $method";
   }
+}
+
+typedef LinkContent = LinkChunk;
+typedef FileContent = FileChunk;
+typedef TextContent = TextChunk;
+typedef ErrorContent = ErrorChunk;
+typedef JsonContent = JsonChunk;
+typedef EmptyContent = EmptyChunk;
+typedef ControlContent = ControlChunk;
+
+Content unpackContent(Uint8List data) {
+  return unpackChunk(data);
 }
 
 Chunk unpackChunk(Uint8List data) {

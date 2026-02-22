@@ -7,18 +7,18 @@ import 'package:meshagent/protocol.dart';
 import 'package:meshagent/room_server_client.dart';
 import 'package:uuid/uuid.dart';
 
-sealed class ToolCallResult {
-  const ToolCallResult();
+sealed class ToolOutput {
+  const ToolOutput();
 }
 
-class ToolCallChunkResult extends ToolCallResult {
-  const ToolCallChunkResult(this.chunk);
+class ToolChunkOutput extends ToolOutput {
+  const ToolChunkOutput(this.chunk);
 
   final Chunk chunk;
 }
 
-class ToolCallStreamResult extends ToolCallResult {
-  const ToolCallStreamResult(this.stream);
+class ToolStreamOutput extends ToolOutput {
+  const ToolStreamOutput(this.stream);
 
   final Stream<Chunk> stream;
 }
@@ -32,18 +32,18 @@ class ToolCallResponseChunk {
   final String? tool;
 }
 
-sealed class StreamToolInput {
-  const StreamToolInput();
+sealed class ToolInput {
+  const ToolInput();
 }
 
-class StreamToolChunkInput extends StreamToolInput {
-  const StreamToolChunkInput(this.chunk);
+class ToolContentInput extends ToolInput {
+  const ToolContentInput(this.chunk);
 
   final Chunk chunk;
 }
 
-class StreamToolChunkStreamInput extends StreamToolInput {
-  const StreamToolChunkStreamInput(this.chunks);
+class ToolStreamInput extends ToolInput {
+  const ToolStreamInput(this.chunks);
 
   final Stream<Chunk> chunks;
 }
@@ -128,57 +128,10 @@ class AgentsClient extends ChangeEmitter {
     }
   }
 
-  Future<ToolCallResult> invokeTool({
+  Future<ToolOutput> invokeTool({
     required String toolkit,
     required String tool,
-    required Map<String, dynamic> arguments,
-    String? participantId,
-    String? onBehalfOfId,
-    Map<String, dynamic>? callerContext,
-    Uint8List? attachment,
-  }) async {
-    final toolCallId = _uuid.v4();
-    final controller = StreamController<Chunk>(
-      onCancel: () {
-        _toolCallStreams.remove(toolCallId);
-      },
-    );
-    _toolCallStreams[toolCallId] = controller;
-
-    final request = <String, dynamic>{
-      "toolkit": toolkit,
-      "tool": tool,
-      "arguments": arguments,
-      "participant_id": participantId,
-      "on_behalf_of_id": onBehalfOfId,
-      "caller_context": callerContext,
-      "tool_call_id": toolCallId,
-    };
-
-    try {
-      final response = await _awaitInvokeResponse(
-        toolCallId: toolCallId,
-        requestFuture: room.sendRequest("agent.invoke_tool", request, data: attachment),
-      );
-      if (response is ControlChunk && response.method == "open") {
-        return ToolCallStreamResult(controller.stream);
-      }
-
-      await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-      return ToolCallChunkResult(response);
-    } catch (error, stackTrace) {
-      if (!controller.isClosed) {
-        controller.addError(error, stackTrace);
-      }
-      await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-      rethrow;
-    }
-  }
-
-  Future<ToolCallResult> streamTool({
-    required String toolkit,
-    required String tool,
-    required StreamToolInput input,
+    required ToolInput input,
     String? participantId,
     String? onBehalfOfId,
     Map<String, dynamic>? callerContext,
@@ -203,17 +156,17 @@ class AgentsClient extends ChangeEmitter {
     Uint8List? invokeData;
     Future<void>? inputTask;
 
-    if (input is StreamToolChunkInput) {
+    if (input is ToolContentInput) {
       final packedInput = unpackMessage(input.chunk.pack());
       request["arguments"] = packedInput.header;
       invokeData = packedInput.payload.isEmpty ? null : packedInput.payload;
-    } else if (input is StreamToolChunkStreamInput) {
+    } else if (input is ToolStreamInput) {
       final openChunk = unpackMessage(ControlChunk(method: "open").pack());
       request["arguments"] = openChunk.header;
-      inputTask = _streamToolCallRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
+      inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
     } else {
       await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-      throw RoomServerException("streamTool input must be StreamToolChunkInput or StreamToolChunkStreamInput");
+      throw RoomServerException("invokeTool input must be ToolContentInput or ToolStreamInput");
     }
 
     try {
@@ -234,14 +187,14 @@ class AgentsClient extends ChangeEmitter {
             }),
           );
         }
-        return ToolCallStreamResult(controller.stream);
+        return ToolStreamOutput(controller.stream);
       }
 
       if (inputTask != null) {
         await inputTask;
       }
       await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-      return ToolCallChunkResult(response);
+      return ToolChunkOutput(response);
     } catch (error, stackTrace) {
       if (inputTask != null) {
         await Future.wait([inputTask.catchError((_) {})]);
@@ -269,13 +222,10 @@ class AgentsClient extends ChangeEmitter {
     }, data: packedChunk.payload.isEmpty ? null : packedChunk.payload);
   }
 
-  Future<void> _streamToolCallRequestChunks({required String toolCallId, required Stream inputChunks}) async {
+  Future<void> _streamInvokeToolRequestChunks({required String toolCallId, required Stream<Chunk> inputChunks}) async {
     await Future<void>.delayed(Duration.zero);
     try {
       await for (final item in inputChunks) {
-        if (item is! Chunk) {
-          throw RoomServerException("streamTool input stream items must be Chunk values");
-        }
         await _sendToolCallRequestChunk(toolCallId: toolCallId, chunk: item);
       }
     } finally {

@@ -2,15 +2,15 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('ToolCallChunkResult wraps a chunk', () {
-    final result = ToolCallChunkResult(TextChunk(text: 'done'));
+  test('ToolChunkOutput wraps a chunk', () {
+    final result = ToolChunkOutput(TextChunk(text: 'done'));
 
     expect(result.chunk, isA<TextChunk>());
     expect((result.chunk as TextChunk).text, 'done');
   });
 
-  test('ToolCallStreamResult wraps a stream', () async {
-    final result = ToolCallStreamResult(Stream<Chunk>.fromIterable([TextChunk(text: 'a'), TextChunk(text: 'b')]));
+  test('ToolStreamOutput wraps a stream', () async {
+    final result = ToolStreamOutput(Stream<Chunk>.fromIterable([TextChunk(text: 'a'), TextChunk(text: 'b')]));
     final values = await result.stream.toList();
 
     expect(values.length, 2);

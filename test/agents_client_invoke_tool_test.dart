@@ -84,7 +84,11 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final invokeFuture = room.agents.invokeTool(toolkit: "test-stream-toolkit", tool: "stream", arguments: {});
+    final invokeFuture = room.agents.invokeTool(
+      toolkit: "test-stream-toolkit",
+      tool: "stream",
+      input: ToolContentInput(JsonChunk(json: {})),
+    );
 
     await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
 
@@ -118,14 +122,18 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final invokeFuture = room.agents.invokeTool(toolkit: "test-stream-toolkit", tool: "stream", arguments: {});
+    final invokeFuture = room.agents.invokeTool(
+      toolkit: "test-stream-toolkit",
+      tool: "stream",
+      input: ToolContentInput(JsonChunk(json: {})),
+    );
 
     await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
 
     await pair.dispose();
   });
 
-  test('streamTool forwards multiple request chunks before close', () async {
+  test('invokeTool forwards multiple request chunks before close', () async {
     final pair = _ProtocolPair();
     final received = <String>[];
     pair.serverProtocol.start(
@@ -159,12 +167,8 @@ void main() {
     await startFuture;
 
     final input = StreamController<Chunk>();
-    final response = await room.agents.streamTool(
-      toolkit: "test-stream-toolkit",
-      tool: "stream",
-      input: StreamToolChunkStreamInput(input.stream),
-    );
-    expect(response, isA<ToolCallStreamResult>());
+    final response = await room.agents.invokeTool(toolkit: "test-stream-toolkit", tool: "stream", input: ToolStreamInput(input.stream));
+    expect(response, isA<ToolStreamOutput>());
 
     input.add(TextChunk(text: "first"));
     input.add(TextChunk(text: "second"));
