@@ -36,24 +36,10 @@ abstract class BaseTool {
   final Map<String, dynamic>? defs;
   final String? pricing;
   final bool supportsContext;
-
-  ToolContentSpec? get resolvedInputSpec => inputSpec;
-  ToolContentSpec? get resolvedOutputSpec {
-    if (outputSpec != null) {
-      if (outputSchema != null && outputSpec!.schema == null && outputSpec!.types.contains(ToolContentType.json)) {
-        return ToolContentSpec(types: outputSpec!.types, stream: outputSpec!.stream, schema: outputSchema);
-      }
-      return outputSpec;
-    }
-    if (outputSchema == null) {
-      return null;
-    }
-    return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: outputSchema);
-  }
 }
 
-abstract class Tool extends BaseTool {
-  Tool({
+abstract class FunctionTool extends BaseTool {
+  FunctionTool({
     required super.name,
     super.description,
     super.title,
@@ -65,11 +51,6 @@ abstract class Tool extends BaseTool {
     super.pricing,
     super.supportsContext,
   });
-
-  @override
-  ToolContentSpec get resolvedInputSpec {
-    return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: inputSchema);
-  }
 
   Future<Content> execute(ToolContext context, Map<String, dynamic> arguments);
 
@@ -121,8 +102,8 @@ abstract class Toolkit {
       json[tool.name] = {
         "description": tool.description,
         "title": tool.title,
-        "input_spec": tool.resolvedInputSpec?.toJson(),
-        "output_spec": tool.resolvedOutputSpec?.toJson(),
+        "input_spec": tool.inputSpec?.toJson(),
+        "output_spec": tool.outputSpec?.toJson(),
         "thumbnail_url": tool.thumbnailUrl,
         "defs": tool.defs,
         "pricing": tool.pricing,
@@ -134,7 +115,7 @@ abstract class Toolkit {
 
   Future<ToolOutput> execute(ToolContext context, String name, ToolInput input) async {
     final tool = getTool(name);
-    if (tool is Tool) {
+    if (tool is FunctionTool) {
       if (input is! ToolContentInput) {
         throw Exception("tool '$name' does not accept streamed input");
       }
@@ -194,6 +175,44 @@ class RemoteToolkit extends Toolkit {
 
   bool get _shouldValidateSchema {
     return validationMode == ValidationMode.full;
+  }
+
+  ToolContentSpec? _resolveInputSpec(BaseTool tool) {
+    if (tool is FunctionTool) {
+      return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: tool.inputSchema);
+    }
+    return tool.inputSpec;
+  }
+
+  ToolContentSpec? _resolveOutputSpec(BaseTool tool) {
+    if (tool.outputSpec != null) {
+      if (tool.outputSchema != null && tool.outputSpec!.schema == null && tool.outputSpec!.types.contains(ToolContentType.json)) {
+        return ToolContentSpec(types: tool.outputSpec!.types, stream: tool.outputSpec!.stream, schema: tool.outputSchema);
+      }
+      return tool.outputSpec;
+    }
+    if (tool.outputSchema == null) {
+      return null;
+    }
+    return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: tool.outputSchema);
+  }
+
+  @override
+  Map<String, dynamic> getTools() {
+    final json = <String, dynamic>{};
+    for (final tool in tools) {
+      json[tool.name] = {
+        "description": tool.description,
+        "title": tool.title,
+        "input_spec": _resolveInputSpec(tool)?.toJson(),
+        "output_spec": _resolveOutputSpec(tool)?.toJson(),
+        "thumbnail_url": tool.thumbnailUrl,
+        "defs": tool.defs,
+        "pricing": tool.pricing,
+        "supports_context": tool.supportsContext,
+      };
+    }
+    return json;
   }
 
   ToolContentType? _contentType(Content content) {
@@ -313,13 +332,13 @@ class RemoteToolkit extends Toolkit {
   }
 
   void _validateInputContent({required BaseTool tool, required Content content}) {
-    final spec = tool.resolvedInputSpec;
+    final spec = _resolveInputSpec(tool);
     _validateContentType(tool: tool, direction: "input", spec: spec, content: content);
     _validateSchema(tool: tool, direction: "input", content: content, schema: spec?.schema);
   }
 
   void _validateOutputContent({required BaseTool tool, required Content content}) {
-    final spec = tool.resolvedOutputSpec;
+    final spec = _resolveOutputSpec(tool);
     _validateContentType(tool: tool, direction: "output", spec: spec, content: content);
     _validateSchema(tool: tool, direction: "output", content: content, schema: spec?.schema);
   }
@@ -471,7 +490,7 @@ class RemoteToolkit extends Toolkit {
     var openedResponseStream = false;
     StreamController<Content>? requestStreamController;
     try {
-      _validateStreamMode(tool: tool, direction: "input", spec: tool.resolvedInputSpec, stream: requestStream);
+      _validateStreamMode(tool: tool, direction: "input", spec: _resolveInputSpec(tool), stream: requestStream);
 
       ToolInput resolvedInput;
       if (requestStream) {
@@ -496,12 +515,12 @@ class RemoteToolkit extends Toolkit {
       final output = await execute(context, toolName, resolvedInput);
       switch (output) {
         case ToolContentOutput(:final content):
-          _validateStreamMode(tool: tool, direction: "output", spec: tool.resolvedOutputSpec, stream: false);
+          _validateStreamMode(tool: tool, direction: "output", spec: _resolveOutputSpec(tool), stream: false);
           _validateOutputContent(tool: tool, content: content);
           await _sendToolCallResponse(messageId: messageId, chunk: content);
           return;
         case ToolStreamOutput(:final stream):
-          _validateStreamMode(tool: tool, direction: "output", spec: tool.resolvedOutputSpec, stream: true);
+          _validateStreamMode(tool: tool, direction: "output", spec: _resolveOutputSpec(tool), stream: true);
           openedResponseStream = true;
           if (!await _sendToolCallResponse(
             messageId: messageId,

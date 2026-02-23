@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
-class _NoopTool extends Tool {
+class _NoopTool extends FunctionTool {
   _NoopTool({required super.name, required super.inputSchema});
 
   @override
@@ -21,14 +22,40 @@ class _NoopContentTool extends ContentTool {
   }
 }
 
-class _NoopToolkit extends Toolkit {
-  _NoopToolkit({required super.name, required super.tools}) : super(rules: const []);
+class _NoopRemoteToolkit extends RemoteToolkit {
+  _NoopRemoteToolkit({required super.name, required super.tools, required super.room}) : super(rules: const []);
+}
+
+class _RoomHarness {
+  _RoomHarness() {
+    clientProtocol = Protocol(
+      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
+    );
+    room = RoomClient(protocol: clientProtocol);
+  }
+
+  final _clientToServer = StreamController<Uint8List>();
+  final _serverToClient = StreamController<Uint8List>();
+  late final Protocol clientProtocol;
+  late final RoomClient room;
+
+  void dispose() {
+    try {
+      clientProtocol.dispose();
+    } catch (_) {}
+    unawaited(_clientToServer.close());
+    unawaited(_serverToClient.close());
+  }
 }
 
 void main() {
-  test('Toolkit.getTools emits json input_spec by default', () {
-    final toolkit = _NoopToolkit(
+  test('RemoteToolkit.getTools emits json input_spec by default for FunctionTool', () async {
+    final harness = _RoomHarness();
+    addTearDown(harness.dispose);
+
+    final toolkit = _NoopRemoteToolkit(
       name: 'sample',
+      room: harness.room,
       tools: [
         _NoopTool(
           name: 'echo',
@@ -55,9 +82,13 @@ void main() {
     });
   });
 
-  test('Toolkit.getTools preserves explicit input_spec', () {
-    final toolkit = _NoopToolkit(
+  test('RemoteToolkit.getTools preserves explicit input_spec', () async {
+    final harness = _RoomHarness();
+    addTearDown(harness.dispose);
+
+    final toolkit = _NoopRemoteToolkit(
       name: 'sample',
+      room: harness.room,
       tools: [
         _NoopContentTool(
           name: 'echo',

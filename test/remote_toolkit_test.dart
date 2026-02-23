@@ -55,7 +55,7 @@ Content _decodeResponseChunk(Uint8List data) {
   return unpackContent(packMessage(Map<String, dynamic>.from(chunkHeader), message.payload.isEmpty ? null : message.payload));
 }
 
-class _EchoTool extends Tool {
+class _EchoTool extends FunctionTool {
   _EchoTool()
     : super(
         name: "echo",
@@ -70,7 +70,7 @@ class _EchoTool extends Tool {
   }
 }
 
-class _RequiredValueTool extends Tool {
+class _RequiredValueTool extends FunctionTool {
   _RequiredValueTool()
     : super(
         name: "required_value",
@@ -92,7 +92,7 @@ class _RequiredValueTool extends Tool {
   }
 }
 
-class _InvalidOutputTool extends Tool {
+class _InvalidOutputTool extends FunctionTool {
   _InvalidOutputTool()
     : super(
         name: "invalid_output",
