@@ -17,7 +17,7 @@ class _NoopContentTool extends ContentTool {
   _NoopContentTool({required super.name, required super.inputSchema, super.inputSpec});
 
   @override
-  Future<ToolOutput> execute(ToolContext context, ToolInput input) async {
+  Future<ToolCallOutput> execute(ToolContext context, ToolInput input) async {
     return ToolContentOutput(JsonContent(json: {'ok': true}));
   }
 }

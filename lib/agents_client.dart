@@ -7,29 +7,20 @@ import 'package:meshagent/protocol.dart';
 import 'package:meshagent/room_server_client.dart';
 import 'package:uuid/uuid.dart';
 
-sealed class ToolOutput {
-  const ToolOutput();
+sealed class ToolCallOutput {
+  const ToolCallOutput();
 }
 
-class ToolContentOutput extends ToolOutput {
+class ToolContentOutput extends ToolCallOutput {
   const ToolContentOutput(this.content);
 
   final Content content;
 }
 
-class ToolStreamOutput extends ToolOutput {
+class ToolStreamOutput extends ToolCallOutput {
   const ToolStreamOutput(this.stream);
 
   final Stream<Content> stream;
-}
-
-class ToolCallResponseContent {
-  ToolCallResponseContent({required this.toolCallId, required this.content, this.toolkit, this.tool});
-
-  final String toolCallId;
-  final Content content;
-  final String? toolkit;
-  final String? tool;
 }
 
 sealed class ToolInput {
@@ -65,7 +56,6 @@ class AgentsClient extends ChangeEmitter {
   final _uuid = const Uuid();
   final _toolCallStreams = <String, StreamController<Content>>{};
   final _pendingInvokeResponses = <String, Completer<Content>>{};
-  final _toolCallResponseContents = StreamController<ToolCallResponseContent>.broadcast();
 
   Future<void> _failToolCallStreams({required RoomServerException error}) async {
     if (_toolCallStreams.isEmpty) {
@@ -80,10 +70,6 @@ class AgentsClient extends ChangeEmitter {
         unawaited(stream.close());
       }
     }
-  }
-
-  Stream<ToolCallResponseContent> get toolCallResponseContents {
-    return _toolCallResponseContents.stream;
   }
 
   Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
@@ -128,7 +114,7 @@ class AgentsClient extends ChangeEmitter {
     }
   }
 
-  Future<ToolOutput> invokeTool({
+  Future<ToolCallOutput> invokeTool({
     required String toolkit,
     required String tool,
     required ToolInput input,
@@ -248,21 +234,18 @@ class AgentsClient extends ChangeEmitter {
     }
 
     final content = _decodeToolCallContent(header: header, payload: payload);
-    _toolCallResponseContents.add(
-      ToolCallResponseContent(
-        toolCallId: toolCallId,
-        content: content,
-        toolkit: header["toolkit"] as String?,
-        tool: header["tool"] as String?,
-      ),
-    );
 
     final pendingInvoke = _pendingInvokeResponses[toolCallId];
     if (pendingInvoke != null && !pendingInvoke.isCompleted) {
       if (content is ErrorContent) {
         pendingInvoke.completeError(RoomServerException(content.text));
       } else if (content is ControlContent && content.method == "close") {
-        pendingInvoke.completeError(RoomServerException("tool call closed before initial invoke response"));
+        var detail = "tool call closed before initial invoke response";
+        final closeStatus = content.statusCode ?? ControlCloseStatus.normal.code;
+        if (closeStatus != ControlCloseStatus.normal.code) {
+          detail = content.message ?? "tool call stream closed abnormally";
+        }
+        pendingInvoke.completeError(RoomServerException(detail, statusCode: closeStatus));
       }
     }
 
@@ -271,14 +254,13 @@ class AgentsClient extends ChangeEmitter {
       return;
     }
 
-    if (content is ErrorContent) {
-      stream.addError(RoomServerException(content.text));
-      await _closeToolCallStream(toolCallId: toolCallId, controller: stream);
-      return;
-    }
-
     if (content is ControlContent) {
       if (content.method == "close") {
+        final closeStatus = content.statusCode ?? ControlCloseStatus.normal.code;
+        if (closeStatus != ControlCloseStatus.normal.code) {
+          var detail = content.message ?? "tool call stream closed abnormally";
+          stream.addError(RoomServerException(detail, statusCode: closeStatus));
+        }
         await _closeToolCallStream(toolCallId: toolCallId, controller: stream);
       }
       return;

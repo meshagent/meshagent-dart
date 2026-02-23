@@ -10,6 +10,10 @@ import 'package:meshagent/room_server_client.dart';
 
 enum ValidationMode { full, contentTypes, none }
 
+class InvalidToolDataException extends RoomServerException {
+  InvalidToolDataException(super.message);
+}
+
 abstract class BaseTool {
   BaseTool({
     required this.name,
@@ -74,7 +78,7 @@ abstract class ContentTool extends BaseTool {
     super.supportsContext,
   });
 
-  Future<ToolOutput> execute(ToolContext context, ToolInput input);
+  Future<ToolCallOutput> execute(ToolContext context, ToolInput input);
 }
 
 abstract class Toolkit {
@@ -113,7 +117,7 @@ abstract class Toolkit {
     return json;
   }
 
-  Future<ToolOutput> execute(ToolContext context, String name, ToolInput input) async {
+  Future<ToolCallOutput> execute(ToolContext context, String name, ToolInput input) async {
     final tool = getTool(name);
     if (tool is FunctionTool) {
       if (input is! ToolContentInput) {
@@ -294,7 +298,7 @@ class RemoteToolkit extends Toolkit {
     if (spec.stream != stream) {
       final expected = spec.stream ? "streamed" : "single-content";
       final actual = stream ? "streamed" : "single-content";
-      throw RoomServerException("tool '${tool.name}' $direction is $actual but ${direction}_spec requires $expected $direction");
+      throw InvalidToolDataException("tool '${tool.name}' $direction is $actual but ${direction}_spec requires $expected $direction");
     }
   }
 
@@ -306,7 +310,9 @@ class RemoteToolkit extends Toolkit {
     if (type == null || !spec.types.contains(type)) {
       final allowed = spec.types.map(_contentTypeName).join(", ");
       final actual = type == null ? content.runtimeType.toString() : _contentTypeName(type);
-      throw RoomServerException("tool '${tool.name}' $direction content type '$actual' is not allowed by ${direction}_spec ($allowed)");
+      throw InvalidToolDataException(
+        "tool '${tool.name}' $direction content type '$actual' is not allowed by ${direction}_spec ($allowed)",
+      );
     }
   }
 
@@ -327,7 +333,7 @@ class RemoteToolkit extends Toolkit {
     final result = validator.validate(_schemaValue(content));
     if (!result.isValid) {
       final message = result.errors.isEmpty ? "validation failed" : result.errors.first.message;
-      throw RoomServerException("tool '${tool.name}' $direction does not match ${direction}_schema: $message");
+      throw InvalidToolDataException("tool '${tool.name}' $direction does not match ${direction}_schema: $message");
     }
   }
 
@@ -550,15 +556,19 @@ class RemoteToolkit extends Toolkit {
         return;
       }
 
+      if (error is! InvalidToolDataException) {
+        await _sendToolCallResponseChunk(
+          messageId: messageId,
+          toolCallId: toolCallId,
+          chunk: ErrorContent(text: "$error"),
+        );
+      }
       await _sendToolCallResponseChunk(
         messageId: messageId,
         toolCallId: toolCallId,
-        chunk: ErrorContent(text: "$error"),
-      );
-      await _sendToolCallResponseChunk(
-        messageId: messageId,
-        toolCallId: toolCallId,
-        chunk: ControlContent(method: "close"),
+        chunk: error is InvalidToolDataException
+            ? ControlContent(method: "close", statusCode: ControlCloseStatus.invalidData.code, message: error.message)
+            : ControlContent(method: "close"),
       );
     } finally {
       await _closeRequestStream(toolCallId: toolCallId);

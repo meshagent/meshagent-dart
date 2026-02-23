@@ -129,7 +129,7 @@ class _CollectStreamTool extends ContentTool {
       );
 
   @override
-  Future<ToolOutput> execute(ToolContext context, ToolInput input) async {
+  Future<ToolCallOutput> execute(ToolContext context, ToolInput input) async {
     if (input is! ToolStreamInput) {
       throw Exception("collect requires streamed input");
     }
@@ -153,7 +153,7 @@ class _EchoContentInputTool extends ContentTool {
       );
 
   @override
-  Future<ToolOutput> execute(ToolContext context, ToolInput input) async {
+  Future<ToolCallOutput> execute(ToolContext context, ToolInput input) async {
     if (input is! ToolContentInput) {
       throw Exception("echo_content_input requires single content input");
     }
@@ -184,7 +184,7 @@ class _WaitForDisconnectTool extends ContentTool {
   final Completer<Object?> ended = Completer<Object?>();
 
   @override
-  Future<ToolOutput> execute(ToolContext context, ToolInput input) async {
+  Future<ToolCallOutput> execute(ToolContext context, ToolInput input) async {
     if (input is! ToolStreamInput) {
       throw Exception("wait_for_disconnect requires streamed input");
     }

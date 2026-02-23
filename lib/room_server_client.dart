@@ -14,9 +14,10 @@ import "runtime.dart";
 import "database_client.dart";
 
 class RoomServerException implements Exception {
-  RoomServerException(this.message);
+  RoomServerException(this.message, {this.statusCode});
 
   final String message;
+  final int? statusCode;
 
   @override
   String toString() {
@@ -1935,18 +1936,45 @@ class EmptyContent extends Content {
   }
 }
 
+enum ControlCloseStatus {
+  normal(1000),
+  invalidData(1007);
+
+  const ControlCloseStatus(this.code);
+  final int code;
+}
+
 class ControlContent extends Content {
   final String method;
+  final int? statusCode;
+  final String? message;
 
-  ControlContent({required this.method});
+  ControlContent({required this.method, this.statusCode, this.message});
 
   static ControlContent unpack(Map<String, dynamic> header, Uint8List payload) {
-    return ControlContent(method: header['method'] as String);
+    final status = header['status_code'];
+    int? statusCode;
+    if (status is int) {
+      statusCode = status;
+    } else if (status is num) {
+      statusCode = status.toInt();
+    } else if (status is String) {
+      statusCode = int.tryParse(status);
+    }
+    return ControlContent(method: header['method'] as String, statusCode: statusCode, message: header['message'] as String?);
   }
 
   @override
   Uint8List pack() {
-    return packMessage({'type': 'control', 'method': method});
+    final header = <String, dynamic>{'type': 'control', 'method': method};
+    if (method == "close") {
+      final closeStatus = statusCode ?? ControlCloseStatus.normal.code;
+      header['status_code'] = closeStatus;
+      if (message != null) {
+        header['message'] = message;
+      }
+    }
+    return packMessage(header);
   }
 
   @override
