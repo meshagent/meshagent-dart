@@ -13,7 +13,21 @@ void main() {
           'name': 'tool_a',
           'title': 'Tool A',
           'description': 'Performs task A',
-          'input_schema': {'type': 'object'},
+          'input_spec': {
+            'types': ['json'],
+            'stream': false,
+            'schema': {'type': 'object'},
+          },
+          'output_spec': {
+            'types': ['json', 'text'],
+            'stream': true,
+            'schema': {
+              'type': 'object',
+              'properties': {
+                'result': {'type': 'string'},
+              },
+            },
+          },
           'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
           'pricing': 'free',
@@ -23,9 +37,17 @@ void main() {
           'name': 'tool_b',
           'title': 'Tool B',
           'description': 'Performs task B',
-          'input_schema': {
-            'type': 'object',
-            'required': ['value'],
+          'input_spec': {
+            'types': ['json'],
+            'stream': false,
+            'schema': {
+              'type': 'object',
+              'required': ['value'],
+            },
+          },
+          'output_spec': {
+            'types': ['file'],
+            'stream': false,
           },
           'thumbnail_url': null,
           'defs': null,
@@ -47,7 +69,21 @@ void main() {
           'name': 'tool_a',
           'title': 'Tool A',
           'description': 'Performs task A',
-          'input_schema': {'type': 'object'},
+          'input_spec': {
+            'types': ['json'],
+            'stream': false,
+            'schema': {'type': 'object'},
+          },
+          'output_spec': {
+            'types': ['json', 'text'],
+            'stream': true,
+            'schema': {
+              'type': 'object',
+              'properties': {
+                'result': {'type': 'string'},
+              },
+            },
+          },
           'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
           'pricing': 'free',
@@ -57,9 +93,17 @@ void main() {
           'name': 'tool_b',
           'title': 'Tool B',
           'description': 'Performs task B',
-          'input_schema': {
-            'type': 'object',
-            'required': ['value'],
+          'input_spec': {
+            'types': ['json'],
+            'stream': false,
+            'schema': {
+              'type': 'object',
+              'required': ['value'],
+            },
+          },
+          'output_spec': {
+            'types': ['file'],
+            'stream': false,
           },
           'thumbnail_url': null,
           'defs': null,
@@ -67,6 +111,51 @@ void main() {
           'supports_context': false,
         },
       ],
+    });
+  });
+
+  test('ToolkitDescription leaves input_spec undefined when missing', () {
+    final toolkit = ToolkitDescription.fromJson({
+      'name': 'sample_toolkit',
+      'description': 'A sample toolkit',
+      'title': 'Sample Toolkit',
+      'tools': [
+        {'name': 'tool_a', 'title': 'Tool A', 'description': 'Performs task A'},
+      ],
+    });
+
+    expect(toolkit.toJson()['tools'][0]['input_spec'], isNull);
+  });
+
+  test('ToolkitDescription keeps schema under input_spec.schema', () {
+    final toolkit = ToolkitDescription.fromJson({
+      'name': 'sample_toolkit',
+      'description': 'A sample toolkit',
+      'title': 'Sample Toolkit',
+      'tools': [
+        {
+          'name': 'tool_a',
+          'title': 'Tool A',
+          'description': 'Performs task A',
+          'input_spec': {
+            'types': ['json'],
+            'stream': false,
+            'schema': {
+              'type': 'object',
+              'properties': {
+                'value': {'type': 'string'},
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(toolkit.tools[0].inputSpec?.schema, {
+      'type': 'object',
+      'properties': {
+        'value': {'type': 'string'},
+      },
     });
   });
 }

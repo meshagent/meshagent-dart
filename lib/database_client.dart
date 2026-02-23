@@ -45,7 +45,7 @@ class DatabaseClient {
   /// List all tables in the database.
   /// @returns A future resolving to an array of table names.
   Future<List<String>> listTables({List<String>? namespace}) async {
-    final response = (await room.sendRequest("database.list_tables", {"namespace": namespace}) as JsonChunk);
+    final response = (await room.sendRequest("database.list_tables", {"namespace": namespace}) as JsonContent);
 
     // Safely extract tables from response JSON
     final tables = response.json["tables"] as List<dynamic>? ?? [];
@@ -167,7 +167,7 @@ class DatabaseClient {
       if (params != null) "params": params,
     };
 
-    final response = (await room.sendRequest("database.sql", payload) as JsonChunk);
+    final response = (await room.sendRequest("database.sql", payload) as JsonContent);
     final results = decodeRecords((response.json["results"] as List).cast<Map<String, dynamic>>());
     return results.toList();
   }
@@ -212,7 +212,7 @@ class DatabaseClient {
 
     payload["namespace"] = namespace;
 
-    final response = (await room.sendRequest("database.search", payload) as JsonChunk);
+    final response = (await room.sendRequest("database.search", payload) as JsonContent);
 
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
     // Then parse it accordingly:
@@ -248,7 +248,7 @@ class DatabaseClient {
 
     payload["namespace"] = namespace;
 
-    final response = (await room.sendRequest("database.count", payload) as JsonChunk);
+    final response = (await room.sendRequest("database.count", payload) as JsonContent);
 
     // If your sendRequest returns a structure like { "json": { "results": [...] } }
     // Then parse it accordingly:
@@ -274,7 +274,7 @@ class DatabaseClient {
 
   /// Restore a previous version of a table
   Future<Map<String, DataType>> inspect(String table, {List<String>? namespace}) async {
-    final json = (await room.sendRequest("database.inspect", {"table": table, "namespace": namespace}) as JsonChunk);
+    final json = (await room.sendRequest("database.inspect", {"table": table, "namespace": namespace}) as JsonContent);
     final schema = json.json["schema"] as Map;
     return {for (final k in schema.keys) k: DataType.fromJson(schema[k])};
   }
@@ -287,7 +287,8 @@ class DatabaseClient {
   /// List versions of a table
   Future<List<TableVersion>> listVersions(String table, {List<String>? namespace}) async {
     final versions =
-        (await room.sendRequest("database.list_versions", {"table": table, "namespace": namespace}) as JsonChunk).json["versions"] as List;
+        (await room.sendRequest("database.list_versions", {"table": table, "namespace": namespace}) as JsonContent).json["versions"]
+            as List;
     return versions.map((v) => TableVersion(version: (v["version"] as num).toInt(), timestamp: DateTime.parse(v["timestamp"]))).toList();
   }
 
@@ -318,7 +319,7 @@ class DatabaseClient {
 
   /// List all indexes on a table.
   Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace}) async {
-    final response = await room.sendRequest("database.list_indexes", {"table": table, "namespace": namespace}) as JsonChunk;
+    final response = await room.sendRequest("database.list_indexes", {"table": table, "namespace": namespace}) as JsonContent;
     final indexes = response.json["indexes"] as List;
 
     return [...indexes.map((m) => TableIndex.fromJson(m))];

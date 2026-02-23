@@ -11,23 +11,23 @@ sealed class ToolOutput {
   const ToolOutput();
 }
 
-class ToolChunkOutput extends ToolOutput {
-  const ToolChunkOutput(this.chunk);
+class ToolContentOutput extends ToolOutput {
+  const ToolContentOutput(this.content);
 
-  final Chunk chunk;
+  final Content content;
 }
 
 class ToolStreamOutput extends ToolOutput {
   const ToolStreamOutput(this.stream);
 
-  final Stream<Chunk> stream;
+  final Stream<Content> stream;
 }
 
-class ToolCallResponseChunk {
-  ToolCallResponseChunk({required this.toolCallId, required this.chunk, this.toolkit, this.tool});
+class ToolCallResponseContent {
+  ToolCallResponseContent({required this.toolCallId, required this.content, this.toolkit, this.tool});
 
   final String toolCallId;
-  final Chunk chunk;
+  final Content content;
   final String? toolkit;
   final String? tool;
 }
@@ -37,15 +37,15 @@ sealed class ToolInput {
 }
 
 class ToolContentInput extends ToolInput {
-  const ToolContentInput(this.chunk);
+  const ToolContentInput(this.content);
 
-  final Chunk chunk;
+  final Content content;
 }
 
 class ToolStreamInput extends ToolInput {
   const ToolStreamInput(this.chunks);
 
-  final Stream<Chunk> chunks;
+  final Stream<Content> chunks;
 }
 
 class AgentsClient extends ChangeEmitter {
@@ -63,16 +63,16 @@ class AgentsClient extends ChangeEmitter {
 
   final RoomClient room;
   final _uuid = const Uuid();
-  final _toolCallStreams = <String, StreamController<Chunk>>{};
-  final _pendingInvokeResponses = <String, Completer<Chunk>>{};
-  final _toolCallResponseChunks = StreamController<ToolCallResponseChunk>.broadcast();
+  final _toolCallStreams = <String, StreamController<Content>>{};
+  final _pendingInvokeResponses = <String, Completer<Content>>{};
+  final _toolCallResponseContents = StreamController<ToolCallResponseContent>.broadcast();
 
   Future<void> _failToolCallStreams({required RoomServerException error}) async {
     if (_toolCallStreams.isEmpty) {
       return;
     }
 
-    final streams = Map<String, StreamController<Chunk>>.from(_toolCallStreams);
+    final streams = Map<String, StreamController<Content>>.from(_toolCallStreams);
     _toolCallStreams.clear();
     for (final stream in streams.values) {
       if (!stream.isClosed) {
@@ -82,8 +82,8 @@ class AgentsClient extends ChangeEmitter {
     }
   }
 
-  Stream<ToolCallResponseChunk> get toolCallResponseChunks {
-    return _toolCallResponseChunks.stream;
+  Stream<ToolCallResponseContent> get toolCallResponseContents {
+    return _toolCallResponseContents.stream;
   }
 
   Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
@@ -102,7 +102,7 @@ class AgentsClient extends ChangeEmitter {
       request["timeout"] = timeout;
     }
 
-    final result = (await room.sendRequest("agent.list_toolkits", request)) as JsonChunk;
+    final result = (await room.sendRequest("agent.list_toolkits", request)) as JsonContent;
 
     final toolkits = <ToolkitDescription>[];
     final tools = result.json["tools"];
@@ -115,8 +115,8 @@ class AgentsClient extends ChangeEmitter {
     return toolkits;
   }
 
-  Future<Chunk> _awaitInvokeResponse({required String toolCallId, required Future<Chunk> requestFuture}) async {
-    final pending = Completer<Chunk>();
+  Future<Content> _awaitInvokeResponse({required String toolCallId, required Future<Content> requestFuture}) async {
+    final pending = Completer<Content>();
     _pendingInvokeResponses[toolCallId] = pending;
     try {
       return await Future.any([requestFuture, pending.future]);
@@ -137,7 +137,7 @@ class AgentsClient extends ChangeEmitter {
     Map<String, dynamic>? callerContext,
   }) async {
     final toolCallId = _uuid.v4();
-    final controller = StreamController<Chunk>(
+    final controller = StreamController<Content>(
       onCancel: () {
         _toolCallStreams.remove(toolCallId);
       },
@@ -157,11 +157,11 @@ class AgentsClient extends ChangeEmitter {
     Future<void>? inputTask;
 
     if (input is ToolContentInput) {
-      final packedInput = unpackMessage(input.chunk.pack());
+      final packedInput = unpackMessage(input.content.pack());
       request["arguments"] = packedInput.header;
       invokeData = packedInput.payload.isEmpty ? null : packedInput.payload;
     } else if (input is ToolStreamInput) {
-      final openChunk = unpackMessage(ControlChunk(method: "open").pack());
+      final openChunk = unpackMessage(ControlContent(method: "open").pack());
       request["arguments"] = openChunk.header;
       inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
     } else {
@@ -175,7 +175,7 @@ class AgentsClient extends ChangeEmitter {
         requestFuture: room.sendRequest("agent.invoke_tool", request, data: invokeData),
       );
 
-      if (response is ControlChunk && response.method == "open") {
+      if (response is ControlContent && response.method == "open") {
         if (inputTask != null) {
           unawaited(
             inputTask.catchError((Object error, StackTrace stackTrace) async {
@@ -194,7 +194,7 @@ class AgentsClient extends ChangeEmitter {
         await inputTask;
       }
       await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-      return ToolChunkOutput(response);
+      return ToolContentOutput(response);
     } catch (error, stackTrace) {
       if (inputTask != null) {
         await Future.wait([inputTask.catchError((_) {})]);
@@ -207,14 +207,14 @@ class AgentsClient extends ChangeEmitter {
     }
   }
 
-  Future<void> _closeToolCallStream({required String toolCallId, required StreamController<Chunk> controller}) async {
+  Future<void> _closeToolCallStream({required String toolCallId, required StreamController<Content> controller}) async {
     _toolCallStreams.remove(toolCallId);
     if (!controller.isClosed) {
       unawaited(controller.close());
     }
   }
 
-  Future<void> _sendToolCallRequestChunk({required String toolCallId, required Chunk chunk}) async {
+  Future<void> _sendToolCallRequestChunk({required String toolCallId, required Content chunk}) async {
     final packedChunk = unpackMessage(chunk.pack());
     await room.sendRequest("agent.tool_call_request_chunk", {
       "tool_call_id": toolCallId,
@@ -222,7 +222,7 @@ class AgentsClient extends ChangeEmitter {
     }, data: packedChunk.payload.isEmpty ? null : packedChunk.payload);
   }
 
-  Future<void> _streamInvokeToolRequestChunks({required String toolCallId, required Stream<Chunk> inputChunks}) async {
+  Future<void> _streamInvokeToolRequestChunks({required String toolCallId, required Stream<Content> inputChunks}) async {
     await Future<void>.delayed(Duration.zero);
     try {
       await for (final item in inputChunks) {
@@ -231,7 +231,7 @@ class AgentsClient extends ChangeEmitter {
     } finally {
       await _sendToolCallRequestChunk(
         toolCallId: toolCallId,
-        chunk: ControlChunk(method: "close"),
+        chunk: ControlContent(method: "close"),
       );
     }
   }
@@ -247,16 +247,21 @@ class AgentsClient extends ChangeEmitter {
       return;
     }
 
-    final chunk = _decodeToolCallChunk(header: header, payload: payload);
-    _toolCallResponseChunks.add(
-      ToolCallResponseChunk(toolCallId: toolCallId, chunk: chunk, toolkit: header["toolkit"] as String?, tool: header["tool"] as String?),
+    final content = _decodeToolCallContent(header: header, payload: payload);
+    _toolCallResponseContents.add(
+      ToolCallResponseContent(
+        toolCallId: toolCallId,
+        content: content,
+        toolkit: header["toolkit"] as String?,
+        tool: header["tool"] as String?,
+      ),
     );
 
     final pendingInvoke = _pendingInvokeResponses[toolCallId];
     if (pendingInvoke != null && !pendingInvoke.isCompleted) {
-      if (chunk is ErrorChunk) {
-        pendingInvoke.completeError(RoomServerException(chunk.text));
-      } else if (chunk is ControlChunk && chunk.method == "close") {
+      if (content is ErrorContent) {
+        pendingInvoke.completeError(RoomServerException(content.text));
+      } else if (content is ControlContent && content.method == "close") {
         pendingInvoke.completeError(RoomServerException("tool call closed before initial invoke response"));
       }
     }
@@ -266,36 +271,36 @@ class AgentsClient extends ChangeEmitter {
       return;
     }
 
-    if (chunk is ErrorChunk) {
-      stream.addError(RoomServerException(chunk.text));
+    if (content is ErrorContent) {
+      stream.addError(RoomServerException(content.text));
       await _closeToolCallStream(toolCallId: toolCallId, controller: stream);
       return;
     }
 
-    if (chunk is ControlChunk) {
-      if (chunk.method == "close") {
+    if (content is ControlContent) {
+      if (content.method == "close") {
         await _closeToolCallStream(toolCallId: toolCallId, controller: stream);
       }
       return;
     }
 
-    stream.add(chunk);
+    stream.add(content);
   }
 
-  Chunk _decodeToolCallChunk({required Map<String, dynamic> header, required Uint8List payload}) {
+  Content _decodeToolCallContent({required Map<String, dynamic> header, required Uint8List payload}) {
     final chunk = header["chunk"];
     if (chunk is Map) {
       final chunkMap = Map<String, dynamic>.from(chunk);
       if (chunkMap["type"] is String) {
         try {
-          return unpackChunk(packMessage(chunkMap, payload.isEmpty ? null : payload));
+          return unpackContent(packMessage(chunkMap, payload.isEmpty ? null : payload));
         } catch (_) {
-          return JsonChunk(json: chunkMap);
+          return JsonContent(json: chunkMap);
         }
       }
-      return JsonChunk(json: chunkMap);
+      return JsonContent(json: chunkMap);
     }
 
-    return JsonChunk(json: {"chunk": chunk});
+    return JsonContent(json: {"chunk": chunk});
   }
 }

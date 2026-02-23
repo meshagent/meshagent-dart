@@ -52,7 +52,7 @@ void main() {
         if (type != "test.echo") {
           return;
         }
-        await protocol.send("__response__", JsonChunk(json: {"ok": true}).pack(), id: messageId);
+        await protocol.send("__response__", JsonContent(json: {"ok": true}).pack(), id: messageId);
       },
     );
 
@@ -62,8 +62,8 @@ void main() {
     await startFuture;
 
     final result = await room.sendRequest("test.echo", {"x": 1}).timeout(const Duration(seconds: 1));
-    expect(result, isA<JsonChunk>());
-    expect((result as JsonChunk).json["ok"], true);
+    expect(result, isA<JsonContent>());
+    expect((result as JsonContent).json["ok"], true);
 
     await pair.dispose();
   });
@@ -75,7 +75,7 @@ void main() {
         if (type != "agent.invoke_tool") {
           return;
         }
-        await protocol.send("__response__", ErrorChunk(text: "tool 'stream' requires streamed input").pack(), id: messageId);
+        await protocol.send("__response__", ErrorContent(text: "tool 'stream' requires streamed input").pack(), id: messageId);
       },
     );
 
@@ -87,7 +87,7 @@ void main() {
     final invokeFuture = room.agents.invokeTool(
       toolkit: "test-stream-toolkit",
       tool: "stream",
-      input: ToolContentInput(JsonChunk(json: {})),
+      input: ToolContentInput(JsonContent(json: {})),
     );
 
     await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
@@ -125,7 +125,7 @@ void main() {
     final invokeFuture = room.agents.invokeTool(
       toolkit: "test-stream-toolkit",
       tool: "stream",
-      input: ToolContentInput(JsonChunk(json: {})),
+      input: ToolContentInput(JsonContent(json: {})),
     );
 
     await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
@@ -139,7 +139,7 @@ void main() {
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
         if (type == "agent.invoke_tool") {
-          await protocol.send("__response__", ControlChunk(method: "open").pack(), id: messageId);
+          await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
           return;
         }
         if (type != "agent.tool_call_request_chunk") {
@@ -157,7 +157,7 @@ void main() {
           received.add(chunkType);
         }
 
-        await protocol.send("__response__", EmptyChunk().pack(), id: messageId);
+        await protocol.send("__response__", EmptyContent().pack(), id: messageId);
       },
     );
 
@@ -166,12 +166,12 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final input = StreamController<Chunk>();
+    final input = StreamController<Content>();
     final response = await room.agents.invokeTool(toolkit: "test-stream-toolkit", tool: "stream", input: ToolStreamInput(input.stream));
     expect(response, isA<ToolStreamOutput>());
 
-    input.add(TextChunk(text: "first"));
-    input.add(TextChunk(text: "second"));
+    input.add(TextContent(text: "first"));
+    input.add(TextContent(text: "second"));
     await input.close();
 
     await Future<void>.delayed(const Duration(milliseconds: 100));

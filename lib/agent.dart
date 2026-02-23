@@ -1,26 +1,99 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:json_schema/json_schema.dart';
+import 'package:meshagent/agents_client.dart';
 import 'package:logging/logging.dart';
 import 'package:meshagent/database_client.dart';
 import 'package:meshagent/protocol.dart';
 import 'package:meshagent/room_server_client.dart';
 
-abstract class Tool {
-  Tool({required this.name, this.description, this.title, required this.inputSchema, this.thumbnailUrl, this.supportsContext = false});
+enum ValidationMode { full, contentTypes, none }
+
+abstract class BaseTool {
+  BaseTool({
+    required this.name,
+    this.description,
+    this.title,
+    required this.inputSchema,
+    this.inputSpec,
+    this.outputSpec,
+    this.outputSchema,
+    this.thumbnailUrl,
+    this.defs,
+    this.pricing,
+    this.supportsContext = false,
+  });
 
   final String name;
   final String? description;
   final String? title;
   final String? thumbnailUrl;
   final Map<String, dynamic> inputSchema;
+  final ToolContentSpec? inputSpec;
+  final ToolContentSpec? outputSpec;
+  final Map<String, dynamic>? outputSchema;
+  final Map<String, dynamic>? defs;
+  final String? pricing;
   final bool supportsContext;
 
-  Future<Chunk> execute(ToolContext context, Map<String, dynamic> arguments);
+  ToolContentSpec? get resolvedInputSpec => inputSpec;
+  ToolContentSpec? get resolvedOutputSpec {
+    if (outputSpec != null) {
+      if (outputSchema != null && outputSpec!.schema == null && outputSpec!.types.contains(ToolContentType.json)) {
+        return ToolContentSpec(types: outputSpec!.types, stream: outputSpec!.stream, schema: outputSchema);
+      }
+      return outputSpec;
+    }
+    if (outputSchema == null) {
+      return null;
+    }
+    return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: outputSchema);
+  }
+}
 
-  Stream<Chunk> executeStream(ToolContext context, Map<String, dynamic> arguments) async* {
+abstract class Tool extends BaseTool {
+  Tool({
+    required super.name,
+    super.description,
+    super.title,
+    required super.inputSchema,
+    super.outputSpec,
+    super.outputSchema,
+    super.thumbnailUrl,
+    super.defs,
+    super.pricing,
+    super.supportsContext,
+  });
+
+  @override
+  ToolContentSpec get resolvedInputSpec {
+    return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: inputSchema);
+  }
+
+  Future<Content> execute(ToolContext context, Map<String, dynamic> arguments);
+
+  Stream<Content> executeStream(ToolContext context, Map<String, dynamic> arguments) async* {
     yield await execute(context, arguments);
   }
+}
+
+abstract class ContentTool extends BaseTool {
+  ContentTool({
+    required super.name,
+    super.description,
+    super.title,
+    required super.inputSchema,
+    super.inputSpec,
+    super.outputSpec,
+    super.outputSchema,
+    super.thumbnailUrl,
+    super.defs,
+    super.pricing,
+    super.supportsContext,
+  });
+
+  Future<ToolOutput> execute(ToolContext context, ToolInput input);
 }
 
 abstract class Toolkit {
@@ -30,10 +103,10 @@ abstract class Toolkit {
   final String? title;
   final String? description;
   final String? thumbnailUrl;
-  final List<Tool> tools;
+  final List<BaseTool> tools;
   final List<String> rules;
 
-  Tool getTool(String name) {
+  BaseTool getTool(String name) {
     for (final tool in tools) {
       if (tool.name == name) {
         return tool;
@@ -48,20 +121,41 @@ abstract class Toolkit {
       json[tool.name] = {
         "description": tool.description,
         "title": tool.title,
-        "input_schema": tool.inputSchema,
+        "input_spec": tool.resolvedInputSpec?.toJson(),
+        "output_spec": tool.resolvedOutputSpec?.toJson(),
         "thumbnail_url": tool.thumbnailUrl,
+        "defs": tool.defs,
+        "pricing": tool.pricing,
         "supports_context": tool.supportsContext,
       };
     }
     return json;
   }
 
-  Future<Chunk> execute(ToolContext context, String name, Map<String, dynamic> arguments) async {
-    return await getTool(name).execute(context, arguments);
+  Future<ToolOutput> execute(ToolContext context, String name, ToolInput input) async {
+    final tool = getTool(name);
+    if (tool is Tool) {
+      if (input is! ToolContentInput) {
+        throw Exception("tool '$name' does not accept streamed input");
+      }
+      final arguments = _decodeFunctionToolArguments(toolName: name, input: input.content);
+      final response = await tool.execute(context, arguments);
+      return ToolContentOutput(response);
+    }
+    if (tool is ContentTool) {
+      return await tool.execute(context, input);
+    }
+    throw Exception("tool '$name' has unsupported type");
   }
 
-  Stream<Chunk> executeStream(ToolContext context, String name, Map<String, dynamic> arguments) {
-    return getTool(name).executeStream(context, arguments);
+  Map<String, dynamic> _decodeFunctionToolArguments({required String toolName, required Content input}) {
+    if (input is EmptyContent) {
+      return <String, dynamic>{};
+    }
+    if (input is JsonContent) {
+      return Map<String, dynamic>.from(input.json);
+    }
+    throw Exception("tool '$toolName' requires JSON object input");
   }
 }
 
@@ -83,19 +177,189 @@ class RemoteToolkit extends Toolkit {
     required this.room,
     required super.tools,
     super.rules = const [],
+    this.validationMode = ValidationMode.full,
   });
 
   final RoomClient room;
+  final ValidationMode validationMode;
   String? _registrationId;
+  bool _started = false;
+  final Map<String, StreamController<Content>> _requestStreams = {};
+  final Map<String, BaseTool> _requestStreamTools = {};
+  final Map<String, List<Content>> _pendingRequestChunks = {};
+
+  bool get _shouldValidateContentTypes {
+    return validationMode == ValidationMode.full || validationMode == ValidationMode.contentTypes;
+  }
+
+  bool get _shouldValidateSchema {
+    return validationMode == ValidationMode.full;
+  }
+
+  ToolContentType? _contentType(Content content) {
+    if (content is JsonContent) {
+      return ToolContentType.json;
+    }
+    if (content is TextContent) {
+      return ToolContentType.text;
+    }
+    if (content is FileContent) {
+      return ToolContentType.file;
+    }
+    if (content is LinkContent) {
+      return ToolContentType.link;
+    }
+    if (content is EmptyContent) {
+      return ToolContentType.empty;
+    }
+    return null;
+  }
+
+  String _contentTypeName(ToolContentType type) {
+    return switch (type) {
+      ToolContentType.json => "json",
+      ToolContentType.text => "text",
+      ToolContentType.file => "file",
+      ToolContentType.link => "link",
+      ToolContentType.empty => "empty",
+    };
+  }
+
+  dynamic _schemaValue(Content content) {
+    if (content is JsonContent) {
+      return content.json;
+    }
+    if (content is TextContent) {
+      return content.text;
+    }
+    if (content is EmptyContent) {
+      return null;
+    }
+    if (content is LinkContent) {
+      return {"name": content.name, "url": content.url};
+    }
+    if (content is FileContent) {
+      return {"name": content.name, "mime_type": content.mimeType, "size": content.data.length};
+    }
+    if (content is ControlContent) {
+      return {"method": content.method};
+    }
+    if (content is ErrorContent) {
+      return {"text": content.text};
+    }
+    final packed = unpackMessage(content.pack());
+    return packed.header;
+  }
+
+  Map<String, dynamic>? _schemaWithDefs({required Map<String, dynamic>? schema, required Map<String, dynamic>? defs}) {
+    if (schema == null) {
+      return null;
+    }
+    final merged = Map<String, dynamic>.from(schema);
+    if (defs == null) {
+      return merged;
+    }
+    final existingDefs = merged[r'$defs'];
+    if (existingDefs is Map) {
+      merged[r'$defs'] = {...defs, ...existingDefs.cast<String, dynamic>()};
+    } else {
+      merged[r'$defs'] = {...defs};
+    }
+    return merged;
+  }
+
+  void _validateStreamMode({required BaseTool tool, required String direction, required ToolContentSpec? spec, required bool stream}) {
+    if (!_shouldValidateContentTypes || spec == null) {
+      return;
+    }
+    if (spec.stream != stream) {
+      final expected = spec.stream ? "streamed" : "single-content";
+      final actual = stream ? "streamed" : "single-content";
+      throw RoomServerException("tool '${tool.name}' $direction is $actual but ${direction}_spec requires $expected $direction");
+    }
+  }
+
+  void _validateContentType({required BaseTool tool, required String direction, required ToolContentSpec? spec, required Content content}) {
+    if (!_shouldValidateContentTypes || spec == null) {
+      return;
+    }
+    final type = _contentType(content);
+    if (type == null || !spec.types.contains(type)) {
+      final allowed = spec.types.map(_contentTypeName).join(", ");
+      final actual = type == null ? content.runtimeType.toString() : _contentTypeName(type);
+      throw RoomServerException("tool '${tool.name}' $direction content type '$actual' is not allowed by ${direction}_spec ($allowed)");
+    }
+  }
+
+  void _validateSchema({
+    required BaseTool tool,
+    required String direction,
+    required Content content,
+    required Map<String, dynamic>? schema,
+  }) {
+    if (!_shouldValidateSchema) {
+      return;
+    }
+    final resolvedSchema = _schemaWithDefs(schema: schema, defs: tool.defs);
+    if (resolvedSchema == null) {
+      return;
+    }
+    final validator = JsonSchema.create(resolvedSchema);
+    final result = validator.validate(_schemaValue(content));
+    if (!result.isValid) {
+      final message = result.errors.isEmpty ? "validation failed" : result.errors.first.message;
+      throw RoomServerException("tool '${tool.name}' $direction does not match ${direction}_schema: $message");
+    }
+  }
+
+  void _validateInputContent({required BaseTool tool, required Content content}) {
+    final spec = tool.resolvedInputSpec;
+    _validateContentType(tool: tool, direction: "input", spec: spec, content: content);
+    _validateSchema(tool: tool, direction: "input", content: content, schema: spec?.schema);
+  }
+
+  void _validateOutputContent({required BaseTool tool, required Content content}) {
+    final spec = tool.resolvedOutputSpec;
+    _validateContentType(tool: tool, direction: "output", spec: spec, content: content);
+    _validateSchema(tool: tool, direction: "output", content: content, schema: spec?.schema);
+  }
 
   Future<void> start({bool public = false}) async {
+    if (_started) {
+      throw RoomServerException("toolkit '$name' is already started");
+    }
     room.protocol.addHandler("agent.tool_call.$name", _toolCall);
-    await _register(public: public);
+    room.protocol.addHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+    try {
+      await _register(public: public);
+      _started = true;
+      unawaited(
+        room.protocol.done.then((error) async {
+          final wrapped = error == null
+              ? RoomServerException("room client was closed before streamed tool call request completed")
+              : RoomServerException("room client closed with error: $error");
+          await _failActiveRequestStreams(error: wrapped);
+        }),
+      );
+    } catch (_) {
+      room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
+      room.protocol.removeHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
-    await _unregister();
-    room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
+    if (!_started) {
+      return;
+    }
+    _started = false;
+    await _failActiveRequestStreams(error: RoomServerException("remote toolkit stopped"));
+    try {
+      await _unregister();
+    } finally {
+      room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
+      room.protocol.removeHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+    }
   }
 
   Future<void> _register({bool public = false}) async {
@@ -107,12 +371,45 @@ class RemoteToolkit extends Toolkit {
       "public": public,
       "thumbnail_url": thumbnailUrl,
     });
-    _registrationId = (response as JsonChunk).json["id"];
+    _registrationId = (response as JsonContent).json["id"];
   }
 
   Future<void> _unregister() async {
     if (_registrationId != null) {
       await room.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+      _registrationId = null;
+    }
+  }
+
+  Future<void> _failActiveRequestStreams({required RoomServerException error}) async {
+    final streams = Map<String, StreamController<Content>>.from(_requestStreams);
+    _requestStreams.clear();
+    _requestStreamTools.clear();
+    _pendingRequestChunks.clear();
+    for (final stream in streams.values) {
+      if (!stream.isClosed) {
+        stream.addError(error);
+        await stream.close();
+      }
+    }
+  }
+
+  Future<void> _closeRequestStream({required String toolCallId}) async {
+    _pendingRequestChunks.remove(toolCallId);
+    _requestStreamTools.remove(toolCallId);
+    final requestStreamController = _requestStreams.remove(toolCallId);
+    if (requestStreamController != null && !requestStreamController.isClosed) {
+      await requestStreamController.close();
+    }
+  }
+
+  Future<bool> _sendToolCallResponse({required int messageId, required Content chunk}) async {
+    try {
+      await room.protocol.send("agent.tool_call_response", chunk.pack(), id: messageId);
+      return true;
+    } catch (error, stackTrace) {
+      Logger.root.fine("unable to send tool call response", error, stackTrace);
+      return false;
     }
   }
 
@@ -123,97 +420,223 @@ class RemoteToolkit extends Toolkit {
     final toolName = message["name"] as String;
     final rawArguments = message["arguments"];
     final toolCallId = (message["tool_call_id"] as String?) ?? "$messageId";
-    var args = <String, dynamic>{};
+    final callerId = message["caller_id"] as String?;
+    final onBehalfOfId = message["on_behalf_of_id"] as String?;
+    final callerContext = message["caller_context"] is Map ? (message["caller_context"] as Map).cast<String, dynamic>() : null;
+
+    Content? inputChunk;
     var requestStream = false;
-
-    if (rawArguments is! Map) {
-      await room.protocol.send("agent.tool_call_response", ErrorChunk(text: "'arguments' must be a JSON object").pack(), id: messageId);
-      return;
+    if (rawArguments is Map) {
+      try {
+        inputChunk = unpackContent(packMessage(Map<String, dynamic>.from(rawArguments), attachment.isEmpty ? null : attachment));
+      } catch (_) {}
     }
-
-    try {
-      final argChunk = unpackChunk(packMessage(Map<String, dynamic>.from(rawArguments), attachment.isEmpty ? null : attachment));
-      if (argChunk is ControlChunk) {
-        requestStream = argChunk.method == "open";
-      } else if (argChunk is JsonChunk) {
-        args = Map<String, dynamic>.from(argChunk.json);
-      } else if (argChunk is EmptyChunk) {
-        args = <String, dynamic>{};
-      } else {
-        args = Map<String, dynamic>.from(rawArguments);
-      }
-    } catch (_) {
-      args = Map<String, dynamic>.from(rawArguments);
-    }
-
-    if (requestStream) {
-      await room.protocol.send(
-        "agent.tool_call_response",
-        ErrorChunk(text: "streamed tool input is not supported by the Dart RemoteToolkit yet").pack(),
-        id: messageId,
-      );
-      return;
-    }
-
-    var openedStream = false;
-
-    try {
-      final stream = executeStream(ToolContext(room: room), toolName, args);
-      final iterator = StreamIterator<Chunk>(stream);
-
-      if (!await iterator.moveNext()) {
-        await room.protocol.send("agent.tool_call_response", EmptyChunk().pack(), id: messageId);
+    if (inputChunk == null) {
+      if (rawArguments is! Map) {
+        await _sendToolCallResponse(
+          messageId: messageId,
+          chunk: ErrorContent(text: "'arguments' must be a content header object"),
+        );
         return;
       }
+      inputChunk = JsonContent(json: Map<String, dynamic>.from(rawArguments));
+    }
 
-      final firstChunk = iterator.current;
-      if (!await iterator.moveNext()) {
-        await room.protocol.send("agent.tool_call_response", firstChunk.pack(), id: messageId);
+    if (inputChunk is ControlContent) {
+      if (inputChunk.method != "open") {
+        await _sendToolCallResponse(
+          messageId: messageId,
+          chunk: ErrorContent(text: "request stream must start with an open control chunk"),
+        );
         return;
       }
+      requestStream = true;
+    }
 
-      openedStream = true;
-      await room.protocol.send("agent.tool_call_response", ControlChunk(method: "open").pack(), id: messageId);
+    final caller = _resolveParticipant(callerId);
+    final onBehalfOf = _resolveParticipant(onBehalfOfId);
+    final context = ToolContext(room: room, caller: caller, onBehalfOf: onBehalfOf, callerContext: callerContext);
 
-      await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: firstChunk);
-      await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: iterator.current);
-
-      while (await iterator.moveNext()) {
-        await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: iterator.current);
-      }
-
-      await _sendToolCallResponseChunk(
-        messageId: messageId,
-        toolCallId: toolCallId,
-        chunk: ControlChunk(method: "close"),
-      );
-      await iterator.cancel();
+    BaseTool tool;
+    try {
+      tool = getTool(toolName);
     } catch (error) {
-      if (!openedStream) {
-        await room.protocol.send("agent.tool_call_response", ErrorChunk(text: "$error").pack(), id: messageId);
+      await _sendToolCallResponse(
+        messageId: messageId,
+        chunk: ErrorContent(text: "$error"),
+      );
+      return;
+    }
+
+    var openedResponseStream = false;
+    StreamController<Content>? requestStreamController;
+    try {
+      _validateStreamMode(tool: tool, direction: "input", spec: tool.resolvedInputSpec, stream: requestStream);
+
+      ToolInput resolvedInput;
+      if (requestStream) {
+        requestStreamController = StreamController<Content>();
+        _requestStreams[toolCallId] = requestStreamController;
+        _requestStreamTools[toolCallId] = tool;
+        _enqueueRequestStreamChunk(
+          stream: requestStreamController,
+          chunk: ControlContent(method: "open"),
+          tool: tool,
+        );
+        final buffered = _pendingRequestChunks.remove(toolCallId) ?? <Content>[];
+        for (final chunk in buffered) {
+          _enqueueRequestStreamChunk(stream: requestStreamController, chunk: chunk, tool: tool);
+        }
+        resolvedInput = ToolStreamInput(requestStreamController.stream);
+      } else {
+        _validateInputContent(tool: tool, content: inputChunk);
+        resolvedInput = ToolContentInput(inputChunk);
+      }
+
+      final output = await execute(context, toolName, resolvedInput);
+      switch (output) {
+        case ToolContentOutput(:final content):
+          _validateStreamMode(tool: tool, direction: "output", spec: tool.resolvedOutputSpec, stream: false);
+          _validateOutputContent(tool: tool, content: content);
+          await _sendToolCallResponse(messageId: messageId, chunk: content);
+          return;
+        case ToolStreamOutput(:final stream):
+          _validateStreamMode(tool: tool, direction: "output", spec: tool.resolvedOutputSpec, stream: true);
+          openedResponseStream = true;
+          if (!await _sendToolCallResponse(
+            messageId: messageId,
+            chunk: ControlContent(method: "open"),
+          )) {
+            return;
+          }
+          await for (final chunk in stream) {
+            _validateOutputContent(tool: tool, content: chunk);
+            if (!await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: chunk)) {
+              return;
+            }
+          }
+          await _sendToolCallResponseChunk(
+            messageId: messageId,
+            toolCallId: toolCallId,
+            chunk: ControlContent(method: "close"),
+          );
+          return;
+      }
+    } catch (error) {
+      if (!openedResponseStream) {
+        await _sendToolCallResponse(
+          messageId: messageId,
+          chunk: ErrorContent(text: "$error"),
+        );
         return;
       }
 
       await _sendToolCallResponseChunk(
         messageId: messageId,
         toolCallId: toolCallId,
-        chunk: ErrorChunk(text: "$error"),
+        chunk: ErrorContent(text: "$error"),
       );
       await _sendToolCallResponseChunk(
         messageId: messageId,
         toolCallId: toolCallId,
-        chunk: ControlChunk(method: "close"),
+        chunk: ControlContent(method: "close"),
       );
+    } finally {
+      await _closeRequestStream(toolCallId: toolCallId);
     }
   }
 
-  Future<void> _sendToolCallResponseChunk({required int messageId, required String toolCallId, required Chunk chunk}) async {
+  Future<void> _toolCallRequestChunk(Protocol protocol, int messageId, String type, Uint8List data) async {
+    final unpackedMessage = unpackMessage(data);
+    final message = unpackedMessage.header;
+    final payload = unpackedMessage.payload;
+    final toolCallId = message["tool_call_id"];
+    if (toolCallId is! String || toolCallId.isEmpty) {
+      Logger.root.warning("ignoring request stream chunk without tool_call_id");
+      return;
+    }
+
+    final chunkHeader = message["chunk"];
+    if (chunkHeader is! Map) {
+      Logger.root.warning("ignoring request stream chunk without chunk header");
+      return;
+    }
+
+    try {
+      final chunk = unpackContent(packMessage(Map<String, dynamic>.from(chunkHeader), payload.isEmpty ? null : payload));
+      final stream = _requestStreams[toolCallId];
+      if (stream == null) {
+        final buffered = _pendingRequestChunks.putIfAbsent(toolCallId, () => <Content>[]);
+        buffered.add(chunk);
+        return;
+      }
+      _enqueueRequestStreamChunk(stream: stream, chunk: chunk, tool: _requestStreamTools[toolCallId]);
+    } catch (error, stackTrace) {
+      Logger.root.warning("ignoring malformed request stream chunk", error, stackTrace);
+    }
+  }
+
+  void _enqueueRequestStreamChunk({required StreamController<Content> stream, required Content chunk, BaseTool? tool}) {
+    if (chunk is ControlContent) {
+      if (chunk.method == "open") {
+        return;
+      }
+      if (chunk.method == "close") {
+        if (!stream.isClosed) {
+          unawaited(stream.close());
+        }
+        return;
+      }
+      Logger.root.warning("ignoring unknown control chunk method ${chunk.method}");
+      return;
+    }
+
+    if (tool != null) {
+      try {
+        _validateInputContent(tool: tool, content: chunk);
+      } catch (error, stackTrace) {
+        if (!stream.isClosed) {
+          stream.addError(error, stackTrace);
+          unawaited(stream.close());
+        }
+        return;
+      }
+    }
+
+    if (!stream.isClosed) {
+      stream.add(chunk);
+    }
+  }
+
+  Participant? _resolveParticipant(String? participantId) {
+    if (participantId == null || participantId.isEmpty) {
+      return null;
+    }
+    final local = room.localParticipant;
+    if (local != null && local.id == participantId) {
+      return local;
+    }
+    for (final remote in room.messaging.remoteParticipants) {
+      if (remote.id == participantId) {
+        return remote;
+      }
+    }
+    return RemoteParticipant(client: room, id: participantId, role: "user");
+  }
+
+  Future<bool> _sendToolCallResponseChunk({required int messageId, required String toolCallId, required Content chunk}) async {
     final packedChunk = unpackMessage(chunk.pack());
-    await room.protocol.send(
-      "agent.tool_call_response_chunk",
-      packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
-      id: messageId,
-    );
+    try {
+      await room.protocol.send(
+        "agent.tool_call_response_chunk",
+        packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
+        id: messageId,
+      );
+      return true;
+    } catch (error, stackTrace) {
+      Logger.root.fine("unable to send tool call response chunk", error, stackTrace);
+      return false;
+    }
   }
 }
 

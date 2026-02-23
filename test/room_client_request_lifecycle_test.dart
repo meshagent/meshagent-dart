@@ -102,7 +102,7 @@ void main() {
         if (type != "test.echo") {
           return;
         }
-        await protocol.send("__response__", JsonChunk(json: {"message_id": messageId}).pack(), id: messageId);
+        await protocol.send("__response__", JsonContent(json: {"message_id": messageId}).pack(), id: messageId);
       },
     );
 
@@ -116,8 +116,8 @@ void main() {
     }
 
     final result = await room.sendRequest("test.echo", {"a": 1}).timeout(const Duration(seconds: 1));
-    expect(result, isA<JsonChunk>());
-    expect((result as JsonChunk).json["message_id"], 65536);
+    expect(result, isA<JsonContent>());
+    expect((result as JsonContent).json["message_id"], 65536);
 
     await pair.dispose();
   });

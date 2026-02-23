@@ -106,9 +106,9 @@ Uint8List packMessage(Map<String, dynamic> header, [Uint8List? data]) {
 class _PendingRequest {
   _PendingRequest();
 
-  final _completer = Completer<Chunk>();
+  final _completer = Completer<Content>();
 
-  Future<Chunk> get fut {
+  Future<Content> get fut {
     return _completer.future;
   }
 }
@@ -420,7 +420,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   // send a request, optionally with a binary trailer
-  Future<Chunk> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
+  Future<Content> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
     final requestId = protocol.getNextMessageId();
 
     final pr = _PendingRequest();
@@ -432,7 +432,7 @@ class RoomClient extends ChangeEmitter {
     await protocol.send(type, message, id: requestId);
 
     final response = await pr.fut;
-    if (response is ErrorChunk) {
+    if (response is ErrorContent) {
       throw RoomServerException(response.text);
     }
 
@@ -440,12 +440,12 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
-    final response = unpackChunk(data);
+    final response = unpackContent(data);
     final requestId = messageId;
 
     if (_pendingRequests.containsKey(requestId)) {
       final pr = _pendingRequests.remove(requestId)!;
-      if (response is ErrorChunk) {
+      if (response is ErrorContent) {
         pr._completer.completeError(RoomServerException(response.text));
       } else {
         pr._completer.complete(response);
@@ -807,7 +807,7 @@ class ContainersClient extends ChangeEmitter {
 
   /// Return *all* local images (similar to `docker images`).
   Future<List<ContainerImage>> listImages() async {
-    final res = await room.sendRequest('containers.list_images', {}) as JsonChunk;
+    final res = await room.sendRequest('containers.list_images', {}) as JsonContent;
 
     return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
   }
@@ -866,7 +866,7 @@ class ContainersClient extends ChangeEmitter {
       );
 
       final res = await room.sendRequest("containers.run", req.toJson());
-      return (res as JsonChunk).json["container_id"];
+      return (res as JsonContent).json["container_id"];
     } finally {
       _loggers.remove(requestId);
       _progress.remove(requestId);
@@ -875,7 +875,7 @@ class ContainersClient extends ChangeEmitter {
 
   Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
     final res = await room.sendRequest("containers.run_service", {"service_id": serviceId, "env": env});
-    return (res as JsonChunk).json["container_id"];
+    return (res as JsonContent).json["container_id"];
   }
 
   ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
@@ -891,7 +891,7 @@ class ContainersClient extends ChangeEmitter {
         .then(
           (result) {
             _ttys.remove(requestId);
-            final json = result as JsonChunk;
+            final json = result as JsonContent;
             container._close(json.json["status"]);
           },
           onError: (error) {
@@ -942,7 +942,7 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<List<RoomContainer>> list({bool? all}) async {
-    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonChunk;
+    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonContent;
 
     return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
@@ -1072,7 +1072,7 @@ class ServicesClient {
 
   Future<ListServicesResult> listWithState() async {
     final response = await room.sendRequest("services.list", {});
-    if (response is! JsonChunk) {
+    if (response is! JsonContent) {
       throw RoomServerException("Invalid return type from list services call");
     }
 
@@ -1160,7 +1160,7 @@ class SyncClient extends ChangeEmitter {
                 "initial_json": initialJson,
                 "schema": schema?.toJson(),
               }))
-              as JsonChunk;
+              as JsonContent;
 
       schema = MeshSchema.fromJson(result.json["schema"]);
 
@@ -1223,6 +1223,81 @@ class MeshDocument extends RuntimeDocument {
   }
 }
 
+enum ToolContentType { json, text, file, link, empty }
+
+String _toolContentTypeToWire(ToolContentType kind) {
+  return switch (kind) {
+    ToolContentType.json => "json",
+    ToolContentType.text => "text",
+    ToolContentType.file => "file",
+    ToolContentType.link => "link",
+    ToolContentType.empty => "empty",
+  };
+}
+
+ToolContentType _toolContentTypeFromWire(String value) {
+  return switch (value) {
+    "json" => ToolContentType.json,
+    "text" => ToolContentType.text,
+    "file" => ToolContentType.file,
+    "link" => ToolContentType.link,
+    "empty" => ToolContentType.empty,
+    _ => throw ArgumentError.value(value, "value", "Unsupported tool content type"),
+  };
+}
+
+class ToolContentSpec {
+  ToolContentSpec({required List<ToolContentType> types, this.stream = false, this.schema})
+    : types = List<ToolContentType>.unmodifiable(types) {
+    if (types.isEmpty) {
+      throw ArgumentError.value(types, "types", "At least one content type is required");
+    }
+  }
+
+  final List<ToolContentType> types;
+  final bool stream;
+  final Map<String, dynamic>? schema;
+
+  Map<String, dynamic> toJson() {
+    return {"types": types.map(_toolContentTypeToWire).toList(growable: false), "stream": stream, if (schema != null) "schema": schema};
+  }
+
+  static ToolContentSpec? fromJson(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is! Map) {
+      throw ArgumentError.value(value, "value", "Tool content type must be a JSON object");
+    }
+
+    final rawTypes = value["types"];
+    if (rawTypes is! List) {
+      throw ArgumentError.value(rawTypes, "types", "Tool content type requires a types array");
+    }
+
+    final types = rawTypes
+        .map((item) {
+          if (item is! String) {
+            throw ArgumentError.value(item, "types", "Tool content types must be strings");
+          }
+          return _toolContentTypeFromWire(item);
+        })
+        .toList(growable: false);
+
+    final rawStream = value["stream"];
+    final stream = rawStream is bool ? rawStream : false;
+    Map<String, dynamic>? schema;
+    final rawSchema = value["schema"];
+    if (rawSchema != null) {
+      if (rawSchema is! Map) {
+        throw ArgumentError.value(rawSchema, "schema", "Tool content type schema must be a JSON object");
+      }
+      schema = rawSchema.cast<String, dynamic>();
+    }
+    return ToolContentSpec(types: types, stream: stream, schema: schema);
+  }
+}
+
 class ToolkitDescription {
   ToolkitDescription({
     required this.title,
@@ -1260,7 +1335,8 @@ class ToolkitDescription {
               "name": tool.name,
               "title": tool.title,
               "description": tool.description,
-              "input_schema": tool.inputSchema,
+              "input_spec": tool.inputSpec?.toJson(),
+              "output_spec": tool.outputSpec?.toJson(),
               "thumbnail_url": tool.thumbnailUrl,
               "defs": tool.defs,
               "pricing": tool.pricing,
@@ -1285,7 +1361,8 @@ class ToolkitDescription {
               title: tool["title"],
               name: tool["name"],
               description: tool["description"],
-              inputSchema: tool["input_schema"],
+              inputSpec: ToolContentSpec.fromJson(tool["input_spec"]),
+              outputSpec: ToolContentSpec.fromJson(tool["output_spec"]),
               thumbnailUrl: tool["thumbnail_url"],
               pricing: tool["pricing"],
               defs: tool["defs"],
@@ -1300,7 +1377,8 @@ class ToolkitDescription {
               name: toolName,
               pricing: tool["pricing"],
               description: tool["description"],
-              inputSchema: tool["input_schema"],
+              inputSpec: ToolContentSpec.fromJson(tool["input_spec"]),
+              outputSpec: ToolContentSpec.fromJson(tool["output_spec"]),
               thumbnailUrl: tool["thumbnail_url"],
               defs: tool["defs"],
               supportsContext: tool["supports_context"] ?? false,
@@ -1316,7 +1394,8 @@ class ToolDescription {
     required this.title,
     required this.name,
     required this.description,
-    required this.inputSchema,
+    this.inputSpec,
+    this.outputSpec,
     required this.defs,
     required this.pricing,
     this.supportsContext = false,
@@ -1328,7 +1407,8 @@ class ToolDescription {
   final String name;
   final String description;
   final String? thumbnailUrl;
-  final Map<String, dynamic> inputSchema;
+  final ToolContentSpec? inputSpec;
+  final ToolContentSpec? outputSpec;
   final Map<String, dynamic>? defs;
   final bool supportsContext;
 }
@@ -1352,7 +1432,7 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<List<StorageEntry>> list(String path) async {
-    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonChunk;
+    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonContent;
     return (response.json["files"] as List).map((f) {
       return StorageEntry(
         name: f["name"],
@@ -1364,11 +1444,11 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<void> delete(String path, {bool? recursive = false}) async {
-    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonChunk);
+    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonContent);
   }
 
   Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonChunk);
+    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonContent);
 
     return FileHandle(id: response.json["handle"]);
   }
@@ -1376,7 +1456,7 @@ class StorageClient extends ChangeEmitter {
   Future<bool> exists(String path) async {
     final result = await room.sendRequest("storage.exists", {"path": path});
 
-    return (result as JsonChunk).json["exists"];
+    return (result as JsonContent).json["exists"];
   }
 
   Future<void> write(FileHandle handle, Uint8List bytes) async {
@@ -1387,14 +1467,14 @@ class StorageClient extends ChangeEmitter {
     await room.sendRequest("storage.close", {"handle": handle.id});
   }
 
-  Future<FileChunk> download(String path) async {
-    final response = (await room.sendRequest("storage.download", {"path": path}) as FileChunk);
+  Future<FileContent> download(String path) async {
+    final response = (await room.sendRequest("storage.download", {"path": path}) as FileContent);
 
     return response;
   }
 
   Future<String> downloadUrl(String path) async {
-    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonChunk).json;
+    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonContent).json;
 
     return response["url"];
   }
@@ -1710,33 +1790,28 @@ abstract class Content {
   Uint8List pack();
 }
 
-/// Backward-compatible name for protocol content.
-abstract class Chunk implements Content {
-  Chunk();
-}
-
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
-final Map<String, Chunk Function(Map<String, dynamic> header, Uint8List payload)> _chunkTypes = {
-  'link': LinkChunk.unpack,
-  'file': FileChunk.unpack,
-  'text': TextChunk.unpack,
-  'error': ErrorChunk.unpack,
-  'json': JsonChunk.unpack,
-  'empty': EmptyChunk.unpack,
-  'control': ControlChunk.unpack,
+final Map<String, Content Function(Map<String, dynamic> header, Uint8List payload)> _contentTypes = {
+  'link': LinkContent.unpack,
+  'file': FileContent.unpack,
+  'text': TextContent.unpack,
+  'error': ErrorContent.unpack,
+  'json': JsonContent.unpack,
+  'empty': EmptyContent.unpack,
+  'control': ControlContent.unpack,
 };
 
 //
-// LinkChunk
+// LinkContent
 //
-class LinkChunk extends Chunk {
+class LinkContent extends Content {
   final String url;
   final String name;
 
-  LinkChunk({required this.url, required this.name});
+  LinkContent({required this.url, required this.name});
 
-  static LinkChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return LinkChunk(url: header['url'] as String, name: header['name'] as String);
+  static LinkContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return LinkContent(url: header['url'] as String, name: header['name'] as String);
   }
 
   @override
@@ -1746,22 +1821,22 @@ class LinkChunk extends Chunk {
 
   @override
   String toString() {
-    return "LinkChunk ($name): $url";
+    return "LinkContent ($name): $url";
   }
 }
 
 //
-// FileChunk
+// FileContent
 //
-class FileChunk extends Chunk {
+class FileContent extends Content {
   final Uint8List data;
   final String name;
   final String mimeType;
 
-  FileChunk({required this.data, required this.name, required this.mimeType});
+  FileContent({required this.data, required this.name, required this.mimeType});
 
-  static FileChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return FileChunk(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
+  static FileContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return FileContent(data: payload, name: header['name'] as String, mimeType: header['mime_type'] as String);
   }
 
   @override
@@ -1771,20 +1846,20 @@ class FileChunk extends Chunk {
 
   @override
   String toString() {
-    return "FileChunk ($mimeType): $name ";
+    return "FileContent ($mimeType): $name ";
   }
 }
 
 //
-// TextChunk
+// TextContent
 //
-class TextChunk extends Chunk {
+class TextContent extends Content {
   final String text;
 
-  TextChunk({required this.text});
+  TextContent({required this.text});
 
-  static TextChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return TextChunk(text: header['text'] as String);
+  static TextContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return TextContent(text: header['text'] as String);
   }
 
   @override
@@ -1794,20 +1869,20 @@ class TextChunk extends Chunk {
 
   @override
   String toString() {
-    return "TextChunk: $text";
+    return "TextContent: $text";
   }
 }
 
 //
-// ErrorChunk
+// ErrorContent
 //
-class ErrorChunk extends Chunk {
+class ErrorContent extends Content {
   final String text;
 
-  ErrorChunk({required this.text});
+  ErrorContent({required this.text});
 
-  static ErrorChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return ErrorChunk(text: header['text'] as String);
+  static ErrorContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return ErrorContent(text: header['text'] as String);
   }
 
   @override
@@ -1817,20 +1892,20 @@ class ErrorChunk extends Chunk {
 
   @override
   String toString() {
-    return "ErrorChunk: $text";
+    return "ErrorContent: $text";
   }
 }
 
 //
-// JsonChunk
+// JsonContent
 //
-class JsonChunk extends Chunk {
+class JsonContent extends Content {
   final Map<String, dynamic> json;
 
-  JsonChunk({required this.json});
+  JsonContent({required this.json});
 
-  static JsonChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return JsonChunk(json: header['json'] as Map<String, dynamic>);
+  static JsonContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return JsonContent(json: header['json'] as Map<String, dynamic>);
   }
 
   @override
@@ -1840,13 +1915,13 @@ class JsonChunk extends Chunk {
 }
 
 //
-// EmptyChunk
+// EmptyContent
 //
-class EmptyChunk extends Chunk {
-  EmptyChunk();
+class EmptyContent extends Content {
+  EmptyContent();
 
-  static EmptyChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return EmptyChunk();
+  static EmptyContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return EmptyContent();
   }
 
   @override
@@ -1856,17 +1931,17 @@ class EmptyChunk extends Chunk {
 
   @override
   String toString() {
-    return "EmptyChunk";
+    return "EmptyContent";
   }
 }
 
-class ControlChunk extends Chunk {
+class ControlContent extends Content {
   final String method;
 
-  ControlChunk({required this.method});
+  ControlContent({required this.method});
 
-  static ControlChunk unpack(Map<String, dynamic> header, Uint8List payload) {
-    return ControlChunk(method: header['method'] as String);
+  static ControlContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    return ControlContent(method: header['method'] as String);
   }
 
   @override
@@ -1876,39 +1951,21 @@ class ControlChunk extends Chunk {
 
   @override
   String toString() {
-    return "ControlChunk: $method";
+    return "ControlContent: $method";
   }
 }
 
-typedef LinkContent = LinkChunk;
-typedef FileContent = FileChunk;
-typedef TextContent = TextChunk;
-typedef ErrorContent = ErrorChunk;
-typedef JsonContent = JsonChunk;
-typedef EmptyContent = EmptyChunk;
-typedef ControlContent = ControlChunk;
-
 Content unpackContent(Uint8List data) {
-  return unpackChunk(data);
-}
-
-Chunk unpackChunk(Uint8List data) {
-  final header = jsonDecode(splitMessageHeader(data));
+  final header = jsonDecode(splitMessageHeader(data)) as Map<String, dynamic>;
   final payload = splitMessagePayload(data);
 
   final typeKey = header['type'] as String;
-
-  if (!_chunkTypes.containsKey(typeKey)) {
-    throw StateError('Unknown chunk type: $typeKey');
+  final unpacker = _contentTypes[typeKey];
+  if (unpacker == null) {
+    throw StateError('Unknown content type: $typeKey');
   }
 
-  // Delegate to the correct `unpack` function
-  return _chunkTypes[typeKey]!(header, payload);
-}
-
-@Deprecated("use unpackChunk")
-Chunk unpackResponse(Uint8List data) {
-  return unpackChunk(data);
+  return unpacker(header, payload);
 }
 
 /// ---------------------------------------------------------------------------
@@ -3173,23 +3230,23 @@ class SecretsClient extends ChangeEmitter {
     };
 
     final res = await room.sendRequest("secrets.request_secret", req);
-    if (res is FileChunk) {
+    if (res is FileContent) {
       return res.data;
     }
-    throw RoomServerException("Invalid response received, expected FileChunk");
+    throw RoomServerException("Invalid response received, expected FileContent");
   }
 
-  Future<FileChunk?> getSecret({required String secretId, String? delegatedTo}) async {
+  Future<FileContent?> getSecret({required String secretId, String? delegatedTo}) async {
     final req = <String, dynamic>{"secret_id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.get_secret", req);
-    if (res is EmptyChunk) {
+    if (res is EmptyContent) {
       return null;
     }
-    if (res is FileChunk) {
+    if (res is FileContent) {
       return res;
     }
-    throw RoomServerException("Invalid response received, expected FileChunk or EmptyChunk");
+    throw RoomServerException("Invalid response received, expected FileContent or EmptyContent");
   }
 
   Future<void> setSecret({
@@ -3209,42 +3266,42 @@ class SecretsClient extends ChangeEmitter {
     };
 
     final res = await room.sendRequest("secrets.set_secret", req, data: data);
-    if (res is EmptyChunk || res is JsonChunk) {
+    if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
+    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
   }
 
   Future<List<SecretInfo>> listSecrets() async {
     final res = await room.sendRequest("secrets.list_secrets", {});
 
-    if (res is JsonChunk) {
+    if (res is JsonContent) {
       final secrets = (res.json['secrets'] as List<dynamic>?)?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>)).toList();
 
       return secrets ?? [];
     }
 
-    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
+    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
   }
 
   Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
     final req = <String, dynamic>{"id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.delete_secret", req);
-    if (res is EmptyChunk || res is JsonChunk) {
+    if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
+    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
   }
 
   Future<void> deleteRequestedSecret({required String url, required String type, String? delegatedTo}) async {
     final req = <String, dynamic>{"url": url, "type": type, if (delegatedTo != null) "delegated_to": delegatedTo};
 
     final res = await room.sendRequest("secrets.delete_requested_secret", req);
-    if (res is EmptyChunk || res is JsonChunk) {
+    if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyChunk or JsonChunk");
+    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
   }
 
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
@@ -3269,7 +3326,7 @@ class SecretsClient extends ChangeEmitter {
       "delegate_to": delegateTo,
     };
 
-    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonChunk;
+    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonContent;
     final accessToken = (res.json["access_token"] as String?) ?? "";
     if (accessToken.isEmpty) {
       throw RoomServerException("Invalid response: missing access_token");
@@ -3292,14 +3349,14 @@ class SecretsClient extends ChangeEmitter {
 
     final res = await room.sendRequest('secrets.get_offline_oauth_token', req);
 
-    if (res is JsonChunk) {
+    if (res is JsonContent) {
       final token = (res.json['access_token'] as String?) ?? '';
       if (token.isEmpty) {
         return null;
       }
       return token;
     } else {
-      throw RoomServerException('Invalid response received, expected JsonChunk');
+      throw RoomServerException('Invalid response received, expected JsonContent');
     }
   }
 }

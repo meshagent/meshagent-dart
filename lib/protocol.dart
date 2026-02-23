@@ -120,6 +120,7 @@ class Protocol<T extends ProtocolChannel> {
   }
 
   final _send = StreamController<ProtocolMessage>();
+  Object? _sendError;
 
   int _id = 0;
 
@@ -128,6 +129,9 @@ class Protocol<T extends ProtocolChannel> {
   }
 
   Future<void> send(String type, Uint8List data, {int? id}) async {
+    if (_sendError != null) {
+      throw _sendError!;
+    }
     final msg = ProtocolMessage(id: id ?? getNextMessageId(), type: type, data: data);
     _send.add(msg);
     await msg.sent.future;
@@ -170,34 +174,46 @@ class Protocol<T extends ProtocolChannel> {
     () async {
       await for (final message in _send.stream) {
         //debugPrint("message recv on protocol ${message.id} ${message.type}");
+        try {
+          final packets = (message.data.length / 1024).ceil();
 
-        final packets = (message.data.length / 1024).ceil();
+          final packet = BytesBuilder();
+          packet.add(
+            Uint8List(16)
+              ..buffer.asByteData().setUint32(0, message.id >> 32, Endian.big)
+              ..buffer.asByteData().setUint32(4, message.id & 0xffffffff, Endian.big)
+              ..buffer.asByteData().setInt32(8, 0, Endian.big)
+              ..buffer.asByteData().setInt32(12, packets, Endian.big),
+          );
+          packet.add(utf8.encode(message.type));
+          await channel.sendData(packet.toBytes());
 
-        final packet = BytesBuilder();
-        packet.add(
-          Uint8List(16)
-            ..buffer.asByteData().setUint32(0, message.id >> 32, Endian.big)
-            ..buffer.asByteData().setUint32(4, message.id & 0xffffffff, Endian.big)
-            ..buffer.asByteData().setInt32(8, 0, Endian.big)
-            ..buffer.asByteData().setInt32(12, packets, Endian.big),
-        );
-        packet.add(utf8.encode(message.type));
-        await channel.sendData(packet.toBytes());
+          for (var i = 0; i < packets; i++) {
+            final packetBuilder = BytesBuilder();
+            final header = Uint8List(12).buffer.asByteData();
 
-        for (var i = 0; i < packets; i++) {
-          final packetBuilder = BytesBuilder();
-          final header = Uint8List(12).buffer.asByteData();
+            header.setUint32(0, message.id >> 32, Endian.big);
+            header.setUint32(4, message.id & 0xffffffff, Endian.big);
+            header.setInt32(8, i + 1, Endian.big);
 
-          header.setUint32(0, message.id >> 32, Endian.big);
-          header.setUint32(4, message.id & 0xffffffff, Endian.big);
-          header.setInt32(8, i + 1, Endian.big);
+            packetBuilder.add(Uint8List.view(header.buffer));
+            packetBuilder.add(Uint8List.sublistView(message.data, i * 1024, min((i + 1) * 1024, message.data.length)));
 
-          packetBuilder.add(Uint8List.view(header.buffer));
-          packetBuilder.add(Uint8List.sublistView(message.data, i * 1024, min((i + 1) * 1024, message.data.length)));
-
-          await channel.sendData(packetBuilder.toBytes());
+            await channel.sendData(packetBuilder.toBytes());
+          }
+          if (!message.sent.isCompleted) {
+            message.sent.complete();
+          }
+        } catch (error, stackTrace) {
+          _sendError = error;
+          if (!message.sent.isCompleted) {
+            message.sent.completeError(error, stackTrace);
+          }
+          if (!_done.isCompleted) {
+            _done.complete(error);
+          }
+          break;
         }
-        message.sent.complete();
 
         //debugPrint("message sent on protocol ${message.id} ${message.type}");
       }
