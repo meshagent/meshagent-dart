@@ -1,4 +1,5 @@
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
+import 'package:collection/collection.dart';
 import 'api_keys.dart';
 
 /// ---------------------------
@@ -23,6 +24,8 @@ int _semverCompare(String a, String b) {
 
 bool _hasWildcardSuffix(String s) => s.endsWith('*');
 String _stripWildcardSuffix(String s) => _hasWildcardSuffix(s) ? s.substring(0, s.length - 1) : s;
+const ListEquality<String> _stringListEquality = ListEquality<String>();
+List<String> _normalizeNamespace(List<String>? namespace) => namespace ?? const <String>[];
 
 /// ---------------------------
 /// Grant Types (mirror Python)
@@ -111,16 +114,28 @@ class MessagingGrant {
 
 class TableGrant {
   final String name;
+  final List<String>? namespace;
   final bool write;
   final bool read;
   final bool alter;
 
-  TableGrant({required this.name, this.write = false, this.read = true, this.alter = false});
+  TableGrant({required this.name, this.namespace, this.write = false, this.read = true, this.alter = false});
 
-  Map<String, dynamic> toJson() => {'name': name, 'write': write, 'read': read, 'alter': alter};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (namespace != null) 'namespace': namespace,
+    'write': write,
+    'read': read,
+    'alter': alter,
+  };
 
-  factory TableGrant.fromJson(Map<String, dynamic> j) =>
-      TableGrant(name: j['name'], write: j['write'] ?? false, read: j['read'] ?? true, alter: j['alter'] ?? false);
+  factory TableGrant.fromJson(Map<String, dynamic> j) => TableGrant(
+    name: j['name'],
+    namespace: (j['namespace'] as List?)?.cast<String>(),
+    write: j['write'] ?? false,
+    read: j['read'] ?? true,
+    alter: j['alter'] ?? false,
+  );
 }
 
 class DatabaseGrant {
@@ -129,28 +144,61 @@ class DatabaseGrant {
 
   DatabaseGrant({this.tables, this.listTables = true});
 
-  bool canWrite(String table) {
-    if (tables == null) return true;
-    for (final t in tables!) {
-      if (t.name == table) return t.write;
+  List<TableGrant> _matchingTables({required String table, List<String>? namespace}) {
+    if (tables == null) {
+      return const <TableGrant>[];
     }
-    return false;
+
+    final requestedNamespace = _normalizeNamespace(namespace);
+    final matches = <TableGrant>[];
+    for (final tableGrant in tables!) {
+      if (tableGrant.name != table) {
+        continue;
+      }
+      if (tableGrant.namespace == null) {
+        matches.add(tableGrant);
+        continue;
+      }
+      if (_stringListEquality.equals(_normalizeNamespace(tableGrant.namespace), requestedNamespace)) {
+        matches.add(tableGrant);
+      }
+    }
+
+    return matches;
   }
 
-  bool canRead(String table) {
+  bool canWrite(String table, {List<String>? namespace}) {
     if (tables == null) return true;
-    for (final t in tables!) {
-      if (t.name == table) return t.read;
+
+    final matches = _matchingTables(table: table, namespace: namespace);
+    if (matches.isEmpty) {
+      return false;
     }
-    return false;
+    return matches.any((tableGrant) => tableGrant.write);
   }
 
-  bool canAlter(String table) {
+  bool canRead(String table, {List<String>? namespace}) {
     if (tables == null) return true;
-    for (final t in tables!) {
-      if (t.name == table) return t.alter;
+
+    final matches = _matchingTables(table: table, namespace: namespace);
+    if (matches.isEmpty) {
+      return false;
     }
-    return false;
+    return matches.any((tableGrant) => tableGrant.read);
+  }
+
+  bool canAlter(String table, {List<String>? namespace}) {
+    if (tables == null) return true;
+
+    final matches = _matchingTables(table: table, namespace: namespace);
+    if (matches.isEmpty) {
+      return false;
+    }
+    return matches.any((tableGrant) => tableGrant.alter);
+  }
+
+  bool canAccess(String table, {List<String>? namespace}) {
+    return canRead(table, namespace: namespace) || canWrite(table, namespace: namespace) || canAlter(table, namespace: namespace);
   }
 
   Map<String, dynamic> toJson() => {if (tables != null) 'tables': tables!.map((e) => e.toJson()).toList(), 'list_tables': listTables};
@@ -161,8 +209,7 @@ class DatabaseGrant {
   );
 }
 
-class MemoryGrant {
-  final bool list;
+class MemoryPermissions {
   final bool create;
   final bool drop;
   final bool inspect;
@@ -172,8 +219,7 @@ class MemoryGrant {
   final bool recall;
   final bool optimize;
 
-  MemoryGrant({
-    this.list = true,
+  const MemoryPermissions({
     this.create = true,
     this.drop = true,
     this.inspect = true,
@@ -185,7 +231,6 @@ class MemoryGrant {
   });
 
   Map<String, dynamic> toJson() => {
-    'list': list,
     'create': create,
     'drop': drop,
     'inspect': inspect,
@@ -196,8 +241,7 @@ class MemoryGrant {
     'optimize': optimize,
   };
 
-  factory MemoryGrant.fromJson(Map<String, dynamic> j) => MemoryGrant(
-    list: j['list'] ?? true,
+  factory MemoryPermissions.fromJson(Map<String, dynamic> j) => MemoryPermissions(
     create: j['create'] ?? true,
     drop: j['drop'] ?? true,
     inspect: j['inspect'] ?? true,
@@ -206,6 +250,114 @@ class MemoryGrant {
     ingest: j['ingest'] ?? true,
     recall: j['recall'] ?? true,
     optimize: j['optimize'] ?? true,
+  );
+}
+
+class MemoryEntryGrant {
+  final String name;
+  final List<String>? namespace;
+  final MemoryPermissions permissions;
+
+  MemoryEntryGrant({required this.name, this.namespace, MemoryPermissions? permissions})
+    : permissions = permissions ?? const MemoryPermissions();
+
+  Map<String, dynamic> toJson() => {'name': name, if (namespace != null) 'namespace': namespace, 'permissions': permissions.toJson()};
+
+  factory MemoryEntryGrant.fromJson(Map<String, dynamic> j) => MemoryEntryGrant(
+    name: j['name'] as String,
+    namespace: (j['namespace'] as List?)?.cast<String>(),
+    permissions: j['permissions'] == null
+        ? const MemoryPermissions()
+        : MemoryPermissions.fromJson(j['permissions'] as Map<String, dynamic>),
+  );
+}
+
+class MemoryGrant {
+  final bool list;
+  final List<MemoryEntryGrant>? memories;
+
+  MemoryGrant({this.list = true, this.memories});
+
+  List<MemoryEntryGrant> _matchingMemories({required String name, List<String>? namespace}) {
+    if (memories == null) {
+      return const <MemoryEntryGrant>[];
+    }
+
+    final requestedNamespace = _normalizeNamespace(namespace);
+    final matches = <MemoryEntryGrant>[];
+    for (final memoryGrant in memories!) {
+      if (memoryGrant.name != name) {
+        continue;
+      }
+      if (memoryGrant.namespace == null) {
+        matches.add(memoryGrant);
+        continue;
+      }
+      if (_stringListEquality.equals(_normalizeNamespace(memoryGrant.namespace), requestedNamespace)) {
+        matches.add(memoryGrant);
+      }
+    }
+
+    return matches;
+  }
+
+  bool _can({required String name, List<String>? namespace, required bool Function(MemoryPermissions permissions) allows}) {
+    if (memories == null) {
+      return true;
+    }
+
+    final matches = _matchingMemories(name: name, namespace: namespace);
+    if (matches.isEmpty) {
+      return false;
+    }
+
+    for (final memoryGrant in matches) {
+      if (allows(memoryGrant.permissions)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool canCreate(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.create);
+
+  bool canDrop(String name, {List<String>? namespace}) => _can(name: name, namespace: namespace, allows: (permissions) => permissions.drop);
+
+  bool canInspect(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.inspect);
+
+  bool canQuery(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.query);
+
+  bool canUpsert(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.upsert);
+
+  bool canIngest(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.ingest);
+
+  bool canRecall(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.recall);
+
+  bool canOptimize(String name, {List<String>? namespace}) =>
+      _can(name: name, namespace: namespace, allows: (permissions) => permissions.optimize);
+
+  bool canAccessExisting(String name, {List<String>? namespace}) {
+    return canDrop(name, namespace: namespace) ||
+        canInspect(name, namespace: namespace) ||
+        canQuery(name, namespace: namespace) ||
+        canUpsert(name, namespace: namespace) ||
+        canIngest(name, namespace: namespace) ||
+        canRecall(name, namespace: namespace) ||
+        canOptimize(name, namespace: namespace);
+  }
+
+  Map<String, dynamic> toJson() => {'list': list, if (memories != null) 'memories': memories!.map((entry) => entry.toJson()).toList()};
+
+  factory MemoryGrant.fromJson(Map<String, dynamic> j) => MemoryGrant(
+    list: j['list'] ?? true,
+    memories: (j['memories'] as List?)?.map((entry) => MemoryEntryGrant.fromJson(entry as Map<String, dynamic>)).toList(),
   );
 }
 
