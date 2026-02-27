@@ -344,6 +344,7 @@ class RoomClient extends ChangeEmitter {
     agents = AgentsClient(room: this);
     queues = QueuesClient(room: this);
     database = DatabaseClient(room: this);
+    memory = MemoryClient(room: this);
     containers = ContainersClient(room: this);
     services = ServicesClient(room: this);
     secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
@@ -356,6 +357,7 @@ class RoomClient extends ChangeEmitter {
   late final MessagingClient messaging;
   late final AgentsClient agents;
   late final DatabaseClient database;
+  late final MemoryClient memory;
   late final ContainersClient containers;
   late final ServicesClient services;
   late final SecretsClient secrets;
@@ -1059,6 +1061,32 @@ class ListServicesResult {
         for (final entry in statesRaw.entries) entry.key: ServiceRuntimeState.fromJson((entry.value as Map).cast<String, dynamic>()),
       },
     );
+  }
+}
+
+class MemoryClient {
+  MemoryClient({required this.room});
+
+  final RoomClient room;
+
+  Future<List<String>> list({List<String>? namespace}) async {
+    final response = await room.sendRequest("memory.list", {"namespace": namespace});
+    if (response is! JsonContent) {
+      throw RoomServerException("Invalid return type from memory list call");
+    }
+    final memories = response.json["memories"];
+    if (memories is! List) {
+      return [];
+    }
+    return memories.whereType<String>().toList();
+  }
+
+  Future<void> create({required String name, List<String>? namespace, bool overwrite = false, bool ignoreExists = false}) async {
+    await room.sendRequest("memory.create", {"name": name, "namespace": namespace, "overwrite": overwrite, "ignore_exists": ignoreExists});
+  }
+
+  Future<void> drop({required String name, List<String>? namespace, bool ignoreMissing = false}) async {
+    await room.sendRequest("memory.drop", {"name": name, "namespace": namespace, "ignore_missing": ignoreMissing});
   }
 }
 
