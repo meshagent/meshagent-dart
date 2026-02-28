@@ -1113,6 +1113,20 @@ class ServicesClient {
   }
 }
 
+String _normalizeSyncPath(String path) {
+  var normalized = path;
+  while (normalized.startsWith("./")) {
+    normalized = normalized.substring(2);
+  }
+  while (normalized.startsWith("/")) {
+    normalized = normalized.substring(1);
+  }
+  if (normalized == ".") {
+    return "";
+  }
+  return normalized;
+}
+
 class SyncClient extends ChangeEmitter {
   SyncClient({required this.room}) {
     room.protocol.addHandler("room.sync", _handleSync);
@@ -1139,7 +1153,7 @@ class SyncClient extends ChangeEmitter {
     final payload = splitMessagePayload(bytes);
 
     final header = jsonDecode(headerStr);
-    final path = header["path"];
+    final path = _normalizeSyncPath(header["path"] as String);
 
     final isConnecting = _connectingDocuments[path];
     if (isConnecting != null) {
@@ -1160,18 +1174,20 @@ class SyncClient extends ChangeEmitter {
   }
 
   Future<void> create(String path, [Map<String, dynamic>? json]) async {
-    await room.sendRequest("room.create", {"path": path, "json": json});
+    final normalizedPath = _normalizeSyncPath(path);
+    await room.sendRequest("room.create", {"path": normalizedPath, "json": json});
   }
 
   Future<MeshDocument> open(String path, {bool create = true, Map<String, dynamic>? initialJson, MeshSchema? schema}) async {
-    final pending = _connectingDocuments[path];
+    final normalizedPath = _normalizeSyncPath(path);
+    final pending = _connectingDocuments[normalizedPath];
 
     if (pending != null) {
       await pending;
     }
 
-    if (_connectedDocuments[path] != null) {
-      final connectedDoc = _connectedDocuments[path];
+    if (_connectedDocuments[normalizedPath] != null) {
+      final connectedDoc = _connectedDocuments[normalizedPath];
       connectedDoc!.count++;
       return connectedDoc.ref;
     }
@@ -1180,11 +1196,11 @@ class SyncClient extends ChangeEmitter {
     // todo: initial bytes loading
 
     final c = Completer<_RefCount<MeshDocument>>();
-    _connectingDocuments[path] = c.future;
+    _connectingDocuments[normalizedPath] = c.future;
     try {
       final result =
           (await room.sendRequest("room.connect", {
-                "path": path,
+                "path": normalizedPath,
                 "create": create,
                 "initial_json": initialJson,
                 "schema": schema?.toJson(),
@@ -1195,10 +1211,10 @@ class SyncClient extends ChangeEmitter {
 
       final doc = MeshDocument(
         schema: schema,
-        sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: path, base64: base64)),
+        sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: normalizedPath, base64: base64)),
       );
       final rc = _RefCount(doc);
-      _connectedDocuments[path] = rc;
+      _connectedDocuments[normalizedPath] = rc;
       notifyListeners();
 
       c.complete(rc);
@@ -1207,26 +1223,28 @@ class SyncClient extends ChangeEmitter {
       c.completeError(err);
       rethrow;
     } finally {
-      _connectingDocuments.remove(path);
+      _connectingDocuments.remove(normalizedPath);
     }
   }
 
   Future<void> close(String path) async {
-    if (!_connectedDocuments.containsKey(path)) {
-      throw RoomServerException("Not connected to $path");
+    final normalizedPath = _normalizeSyncPath(path);
+    if (!_connectedDocuments.containsKey(normalizedPath)) {
+      throw RoomServerException("Not connected to $normalizedPath");
     }
 
-    final doc = _connectedDocuments[path];
+    final doc = _connectedDocuments[normalizedPath];
     doc!.count--;
     if (doc.count == 0) {
-      _connectedDocuments.remove(path);
-      await room.sendRequest("room.disconnect", {"path": path});
+      _connectedDocuments.remove(normalizedPath);
+      await room.sendRequest("room.disconnect", {"path": normalizedPath});
       DocumentRuntime.instance!.unregisterDocument(doc.ref);
     }
   }
 
   Future<void> sync(String path, Uint8List data) async {
-    await room.sendRequest("room.sync", {"path": path}, data: data);
+    final normalizedPath = _normalizeSyncPath(path);
+    await room.sendRequest("room.sync", {"path": normalizedPath}, data: data);
   }
 
   RoomClient room;
