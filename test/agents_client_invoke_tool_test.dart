@@ -40,10 +40,6 @@ Future<void> _sendRoomReady(Protocol protocol) async {
   );
 }
 
-Matcher _roomServerErrorContaining(String expected) {
-  return predicate((error) => error is RoomServerException && error.message.contains(expected));
-}
-
 void main() {
   test('room sendRequest resolves from __response__', () async {
     final pair = _ProtocolPair();
@@ -75,7 +71,7 @@ void main() {
         if (type != "agent.invoke_tool") {
           return;
         }
-        await protocol.send("__response__", ErrorContent(text: "tool 'stream' requires streamed input").pack(), id: messageId);
+        await protocol.send("__response__", ErrorContent(text: "tool 'stream' requires streamed input", code: 1002).pack(), id: messageId);
       },
     );
 
@@ -90,7 +86,13 @@ void main() {
       input: ToolContentInput(JsonContent(json: {})),
     );
 
-    await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
+    try {
+      await invokeFuture.timeout(const Duration(seconds: 1));
+      fail("expected RoomServerException");
+    } on RoomServerException catch (ex) {
+      expect(ex.message, contains("requires streamed input"));
+      expect(ex.code, 1002);
+    }
 
     await pair.dispose();
   });
@@ -111,7 +113,7 @@ void main() {
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
             "tool": "stream",
-            "chunk": {"type": "error", "text": "tool 'stream' requires streamed input"},
+            "chunk": {"type": "error", "text": "tool 'stream' requires streamed input", "code": 1002},
           }),
         );
       },
@@ -128,7 +130,13 @@ void main() {
       input: ToolContentInput(JsonContent(json: {})),
     );
 
-    await expectLater(invokeFuture.timeout(const Duration(seconds: 1)), throwsA(_roomServerErrorContaining("requires streamed input")));
+    try {
+      await invokeFuture.timeout(const Duration(seconds: 1));
+      fail("expected RoomServerException");
+    } on RoomServerException catch (ex) {
+      expect(ex.message, contains("requires streamed input"));
+      expect(ex.code, 1002);
+    }
 
     await pair.dispose();
   });

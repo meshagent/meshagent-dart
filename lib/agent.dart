@@ -268,7 +268,7 @@ class RemoteToolkit extends Toolkit {
       return {"method": content.method};
     }
     if (content is ErrorContent) {
-      return {"text": content.text};
+      return {"text": content.text, if (content.code != null) "code": content.code};
     }
     final packed = unpackMessage(content.pack());
     return packed.header;

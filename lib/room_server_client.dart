@@ -14,10 +14,11 @@ import "runtime.dart";
 import "database_client.dart";
 
 class RoomServerException implements Exception {
-  RoomServerException(this.message, {this.statusCode});
+  RoomServerException(this.message, {this.statusCode, this.code});
 
   final String message;
   final int? statusCode;
+  final int? code;
 
   @override
   String toString() {
@@ -436,7 +437,7 @@ class RoomClient extends ChangeEmitter {
 
     final response = await pr.fut;
     if (response is ErrorContent) {
-      throw RoomServerException(response.text);
+      throw RoomServerException(response.text, code: response.code);
     }
 
     return response;
@@ -449,7 +450,7 @@ class RoomClient extends ChangeEmitter {
     if (_pendingRequests.containsKey(requestId)) {
       final pr = _pendingRequests.remove(requestId)!;
       if (response is ErrorContent) {
-        pr._completer.completeError(RoomServerException(response.text));
+        pr._completer.completeError(RoomServerException(response.text, code: response.code));
       } else {
         pr._completer.complete(response);
       }
@@ -1925,21 +1926,35 @@ class TextContent extends Content {
 //
 class ErrorContent extends Content {
   final String text;
+  final int? code;
 
-  ErrorContent({required this.text});
+  ErrorContent({required this.text, this.code});
 
   static ErrorContent unpack(Map<String, dynamic> header, Uint8List payload) {
-    return ErrorContent(text: header['text'] as String);
+    final rawCode = header['code'];
+    int? parsedCode;
+    if (rawCode is int) {
+      parsedCode = rawCode;
+    } else if (rawCode is num) {
+      parsedCode = rawCode.toInt();
+    } else if (rawCode is String) {
+      parsedCode = int.tryParse(rawCode);
+    }
+    return ErrorContent(text: header['text'] as String, code: parsedCode);
   }
 
   @override
   Uint8List pack() {
-    return packMessage({'type': 'error', 'text': text});
+    final payload = <String, dynamic>{'type': 'error', 'text': text};
+    if (code != null) {
+      payload['code'] = code;
+    }
+    return packMessage(payload);
   }
 
   @override
   String toString() {
-    return "ErrorContent: $text";
+    return "ErrorContent: text=$text, code=$code";
   }
 }
 

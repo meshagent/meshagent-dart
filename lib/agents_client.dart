@@ -238,7 +238,7 @@ class AgentsClient extends ChangeEmitter {
     final pendingInvoke = _pendingInvokeResponses[toolCallId];
     if (pendingInvoke != null && !pendingInvoke.isCompleted) {
       if (content is ErrorContent) {
-        pendingInvoke.completeError(RoomServerException(content.text));
+        pendingInvoke.completeError(RoomServerException(content.text, code: content.code));
       } else if (content is ControlContent && content.method == "close") {
         var detail = "tool call closed before initial invoke response";
         final closeStatus = content.statusCode ?? ControlCloseStatus.normal.code;

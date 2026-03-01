@@ -121,4 +121,31 @@ void main() {
 
     await pair.dispose();
   });
+
+  test('sendRequest propagates ErrorContent.code on RoomServerException', () async {
+    final pair = _ProtocolPair();
+    pair.serverProtocol.start(
+      onMessage: (protocol, messageId, type, data) async {
+        if (type != "test.error") {
+          return;
+        }
+        await protocol.send("__response__", ErrorContent(text: "invalid request", code: 1002).pack(), id: messageId);
+      },
+    );
+
+    final room = RoomClient(protocol: pair.clientProtocol);
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    try {
+      await room.sendRequest("test.error", {"a": 1});
+      fail("expected RoomServerException");
+    } on RoomServerException catch (ex) {
+      expect(ex.message, contains("invalid request"));
+      expect(ex.code, 1002);
+    }
+
+    await pair.dispose();
+  });
 }

@@ -25,4 +25,14 @@ void main() {
     expect(unpacked, isA<ControlContent>());
     expect((unpacked as ControlContent).method, 'open');
   });
+
+  test('ErrorContent roundtrips optional code through pack/unpackContent', () {
+    final packed = ErrorContent(text: 'invalid request', code: 1002).pack();
+    final unpacked = unpackContent(packed);
+
+    expect(unpacked, isA<ErrorContent>());
+    final error = unpacked as ErrorContent;
+    expect(error.text, 'invalid request');
+    expect(error.code, 1002);
+  });
 }
