@@ -2133,37 +2133,30 @@ class ConnectorRef {
 }
 
 class OAuthClientConfig {
-  final String clientId;
+  final String? clientId;
   final String? clientSecret;
-  final String authorizationEndpoint;
-  final String tokenEndpoint;
+  final String? authorizationEndpoint;
+  final String? tokenEndpoint;
   final bool? noPkce;
   final List<String>? scopes;
 
-  OAuthClientConfig({
-    required this.clientId,
-    this.clientSecret,
-    required this.authorizationEndpoint,
-    required this.tokenEndpoint,
-    this.noPkce,
-    this.scopes,
-  });
+  OAuthClientConfig({this.clientId, this.clientSecret, this.authorizationEndpoint, this.tokenEndpoint, this.noPkce, this.scopes});
 
   factory OAuthClientConfig.fromJson(Map<String, dynamic> json) {
     return OAuthClientConfig(
-      clientId: json['client_id'] as String,
+      clientId: json['client_id'] as String?,
       clientSecret: json['client_secret'] as String?,
-      authorizationEndpoint: json['authorization_endpoint'] as String,
-      tokenEndpoint: json['token_endpoint'] as String,
+      authorizationEndpoint: json['authorization_endpoint'] as String?,
+      tokenEndpoint: json['token_endpoint'] as String?,
       noPkce: json['no_pkce'] as bool?,
       scopes: (json['scopes'] as List?)?.cast<String>(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'client_id': clientId,
-    'authorization_endpoint': authorizationEndpoint,
-    'token_endpoint': tokenEndpoint,
+    if (clientId != null) 'client_id': clientId,
+    if (authorizationEndpoint != null) 'authorization_endpoint': authorizationEndpoint,
+    if (tokenEndpoint != null) 'token_endpoint': tokenEndpoint,
     if (clientSecret != null) 'client_secret': clientSecret,
     if (noPkce != null) 'no_pkce': noPkce,
     if (scopes != null) 'scopes': scopes,

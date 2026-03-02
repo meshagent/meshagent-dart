@@ -274,10 +274,16 @@ class Connector {
 
   ConnectorRef? _buildConnectorRef() {
     final clientSecretId = _oauthClientSecretIdFromHeaders;
-    if (server.openaiConnectorId == null && clientSecretId == null) {
+    final serverUrl = server.serverUrl;
+    final hasServerUrl = serverUrl != null && serverUrl.trim().isNotEmpty;
+    if (server.openaiConnectorId == null && clientSecretId == null && !hasServerUrl) {
       return null;
     }
-    return ConnectorRef(openaiConnectorId: server.openaiConnectorId, serverUrl: server.serverUrl, clientSecretId: clientSecretId);
+    return ConnectorRef(
+      openaiConnectorId: server.openaiConnectorId,
+      serverUrl: hasServerUrl ? serverUrl.trim() : null,
+      clientSecretId: clientSecretId,
+    );
   }
 
   Future<bool> isConnected(RoomClient room, String agentName) async {
