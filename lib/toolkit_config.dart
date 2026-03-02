@@ -288,26 +288,20 @@ class Connector {
 
   Future<bool> isConnected(RoomClient room, String agentName) async {
     final connectorRef = _buildConnectorRef();
-    final includeOauthWithConnector = connectorRef?.clientSecretId != null;
     if (connectorRef == null && oauth == null) {
       return true;
     }
-    final token = await room.secrets.getOfflineOAuthToken(
-      connector: connectorRef,
-      oauth: includeOauthWithConnector ? oauth : (connectorRef != null ? null : oauth),
-      delegatedTo: agentName,
-    );
+    final token = await room.secrets.getOfflineOAuthToken(connector: connectorRef, oauth: oauth, delegatedTo: agentName);
     return token != null;
   }
 
   Future<String?> authenticate(RoomClient client, RemoteParticipant agent, Uri redirectUri) async {
     final connectorRef = _buildConnectorRef();
-    final includeOauthWithConnector = connectorRef?.clientSecretId != null;
     if (connectorRef != null || oauth != null) {
       return await client.secrets.requestOAuthToken(
         fromParticipantId: client.localParticipant!.id,
         connector: connectorRef,
-        oauth: includeOauthWithConnector ? oauth : (connectorRef != null ? null : oauth),
+        oauth: oauth,
         redirectUri: redirectUri,
         delegateTo: agent.getAttribute("name"),
       );
