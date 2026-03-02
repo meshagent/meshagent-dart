@@ -786,6 +786,38 @@ class Meshagent {
     return ServiceTemplateSpec.fromJson(jsonDecode(response.body));
   }
 
+  /// Corresponds to: POST /mcp/discover
+  Future<ServiceSpec> discoverMcpService({required String url}) async {
+    final uri = Uri.parse('$baseUrl/mcp/discover');
+
+    final response = await httpClient.post(uri, body: jsonEncode({"url": url, "format": "service"}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to discover MCP service. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceSpec.fromJson(jsonDecode(response.body));
+  }
+
+  /// Corresponds to: POST /mcp/discover
+  Future<ServiceTemplateSpec> discoverMcpServiceTemplate({required String url}) async {
+    final uri = Uri.parse('$baseUrl/mcp/discover');
+
+    final response = await httpClient.post(uri, body: jsonEncode({"url": url, "format": "template"}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to discover MCP service template. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ServiceTemplateSpec.fromJson(jsonDecode(response.body));
+  }
+
   /// Corresponds to: POST /accounts/projects/:project_id/services
   /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
   /// Returns JSON like { "id" } on success.
