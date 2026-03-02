@@ -2113,16 +2113,22 @@ class AllowedMcpToolFilter {
 class ConnectorRef {
   String? openaiConnectorId;
   String? serverUrl;
+  String? clientSecretId;
 
-  ConnectorRef({this.openaiConnectorId, this.serverUrl});
+  ConnectorRef({this.openaiConnectorId, this.serverUrl, this.clientSecretId});
 
   factory ConnectorRef.fromJson(Map<String, dynamic> json) {
-    return ConnectorRef(serverUrl: json['server_url'] as String?, openaiConnectorId: json['openai_connector_id'] as String?);
+    return ConnectorRef(
+      serverUrl: json['server_url'] as String?,
+      openaiConnectorId: json['openai_connector_id'] as String?,
+      clientSecretId: json['client_secret_id'] as String?,
+    );
   }
 
   Map<String, dynamic> toJson() => {
     if (openaiConnectorId != null) 'openai_connector_id': openaiConnectorId,
     if (serverUrl != null) 'server_url': serverUrl,
+    if (clientSecretId != null) 'client_secret_id': clientSecretId,
   };
 }
 

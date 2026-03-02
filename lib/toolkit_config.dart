@@ -264,24 +264,44 @@ class Connector {
   final OAuthClientConfig? oauth;
   final MCPServer server;
 
+  String? get _oauthClientSecretIdFromHeaders {
+    final value = server.headers?['Meshagent-OAuth-Client-Secret-Id'];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return null;
+  }
+
+  ConnectorRef? _buildConnectorRef() {
+    final clientSecretId = _oauthClientSecretIdFromHeaders;
+    if (server.openaiConnectorId == null && clientSecretId == null) {
+      return null;
+    }
+    return ConnectorRef(openaiConnectorId: server.openaiConnectorId, serverUrl: server.serverUrl, clientSecretId: clientSecretId);
+  }
+
   Future<bool> isConnected(RoomClient room, String agentName) async {
-    if (server.openaiConnectorId == null && oauth == null) {
+    final connectorRef = _buildConnectorRef();
+    final includeOauthWithConnector = connectorRef?.clientSecretId != null;
+    if (connectorRef == null && oauth == null) {
       return true;
     }
     final token = await room.secrets.getOfflineOAuthToken(
-      connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
-      oauth: server.openaiConnectorId != null ? null : oauth,
+      connector: connectorRef,
+      oauth: includeOauthWithConnector ? oauth : (connectorRef != null ? null : oauth),
       delegatedTo: agentName,
     );
     return token != null;
   }
 
   Future<String?> authenticate(RoomClient client, RemoteParticipant agent, Uri redirectUri) async {
-    if (server.openaiConnectorId != null || oauth != null) {
+    final connectorRef = _buildConnectorRef();
+    final includeOauthWithConnector = connectorRef?.clientSecretId != null;
+    if (connectorRef != null || oauth != null) {
       return await client.secrets.requestOAuthToken(
         fromParticipantId: client.localParticipant!.id,
-        connector: server.openaiConnectorId == null ? null : ConnectorRef(openaiConnectorId: server.openaiConnectorId!),
-        oauth: server.openaiConnectorId != null ? null : oauth,
+        connector: connectorRef,
+        oauth: includeOauthWithConnector ? oauth : (connectorRef != null ? null : oauth),
         redirectUri: redirectUri,
         delegateTo: agent.getAttribute("name"),
       );
