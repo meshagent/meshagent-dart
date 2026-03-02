@@ -2369,6 +2369,7 @@ class PortSpec {
 
 class ServiceTemplateVariable {
   final String name;
+  final String? title;
   final String? description;
   final bool obscure;
   final bool optional;
@@ -2378,6 +2379,7 @@ class ServiceTemplateVariable {
 
   ServiceTemplateVariable({
     required this.name,
+    this.title,
     this.description,
     this.obscure = false,
     this.optional = false,
@@ -2389,6 +2391,7 @@ class ServiceTemplateVariable {
   factory ServiceTemplateVariable.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateVariable(
       name: json['name'] as String,
+      title: json['title'] as String?,
       description: json['description'] as String?,
       obscure: json['obscure'] ?? false,
       optional: json['optional'] ?? false,
@@ -2400,6 +2403,7 @@ class ServiceTemplateVariable {
 
   Map<String, dynamic> toJson() => {
     'name': name,
+    if (title != null) 'title': title,
     if (description != null) 'description': description,
     'obscure': obscure,
     'optional': optional,
