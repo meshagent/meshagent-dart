@@ -58,6 +58,7 @@ class _InMemoryStorageServer {
   final Map<String, Uint8List> _files = {};
   final Map<String, BytesBuilder> _streamingUploads = {};
   final Map<String, String> _uploadPaths = {};
+  final Map<String, bool> _uploadOverwrite = {};
   final Map<String, int?> _uploadExpectedSizes = {};
   final Map<String, String> _downloadPaths = {};
   final Map<String, int> _downloadOffsets = {};
@@ -125,6 +126,7 @@ class _InMemoryStorageServer {
         final toolCallId = request['tool_call_id'] as String;
         _streamingUploads.remove(toolCallId);
         _uploadPaths.remove(toolCallId);
+        _uploadOverwrite.remove(toolCallId);
         _uploadExpectedSizes.remove(toolCallId);
         _downloadPaths[toolCallId] = '';
         _downloadOffsets[toolCallId] = 0;
@@ -170,6 +172,10 @@ class _InMemoryStorageServer {
         if (path == null) {
           throw StateError('storage.upload missing start chunk for $toolCallId');
         }
+        final overwrite = _uploadOverwrite.remove(toolCallId) ?? false;
+        if (_files.containsKey(path) && !overwrite) {
+          throw StateError('storage.upload overwrite=false for existing path $path');
+        }
         final bytes = _streamingUploads.remove(toolCallId)?.takeBytes() ?? Uint8List(0);
         final expectedSize = _uploadExpectedSizes.remove(toolCallId);
         if (expectedSize != null && expectedSize != bytes.length) {
@@ -188,6 +194,11 @@ class _InMemoryStorageServer {
           throw StateError('storage.upload missing path header');
         }
         _uploadPaths[toolCallId] = path;
+        final overwrite = chunk.headers['overwrite'];
+        if (overwrite is! bool) {
+          throw StateError('storage.upload missing overwrite header');
+        }
+        _uploadOverwrite[toolCallId] = overwrite;
         final expectedSize = chunk.headers['size'];
         if (expectedSize is int) {
           _uploadExpectedSizes[toolCallId] = expectedSize;
@@ -351,6 +362,21 @@ void main() {
 
     final downloaded = await harness.room.storage.download('docs/example.txt');
     expect(downloaded.data, orderedEquals(bytes));
+
+    await harness.dispose();
+  });
+
+  test('storage uploadStream overwrite updates file and download returns latest bytes', () async {
+    final harness = await _startStorageHarness();
+
+    final initialBytes = Uint8List.fromList('before save'.codeUnits);
+    await harness.room.storage.uploadStream('docs/example.txt', Stream.value(initialBytes), size: initialBytes.length);
+
+    final updatedBytes = Uint8List.fromList('after save'.codeUnits);
+    await harness.room.storage.uploadStream('docs/example.txt', Stream.value(updatedBytes), overwrite: true, size: updatedBytes.length);
+
+    final downloaded = await harness.room.storage.download('docs/example.txt');
+    expect(downloaded.data, orderedEquals(updatedBytes));
 
     await harness.dispose();
   });
