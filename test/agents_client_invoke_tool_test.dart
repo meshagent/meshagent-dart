@@ -68,7 +68,7 @@ void main() {
     final pair = _ProtocolPair();
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type != "agent.invoke_tool") {
+        if (type != "room.invoke_tool") {
           return;
         }
         await protocol.send("__response__", ErrorContent(text: "tool 'stream' requires streamed input", code: 1002).pack(), id: messageId);
@@ -101,14 +101,14 @@ void main() {
     final pair = _ProtocolPair();
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type != "agent.invoke_tool") {
+        if (type != "room.invoke_tool") {
           return;
         }
 
         final request = unpackMessage(data).header;
         final toolCallId = request["tool_call_id"] as String;
         await protocol.send(
-          "agent.tool_call_response_chunk",
+          "room.tool_call_response_chunk",
           packMessage({
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
@@ -146,11 +146,11 @@ void main() {
     final received = <String>[];
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.invoke_tool") {
+        if (type == "room.invoke_tool") {
           await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
           return;
         }
-        if (type != "agent.tool_call_request_chunk") {
+        if (type != "room.tool_call_request_chunk") {
           return;
         }
 
@@ -193,11 +193,11 @@ void main() {
     var sawTextChunk = false;
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.invoke_tool") {
+        if (type == "room.invoke_tool") {
           await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
           return;
         }
-        if (type != "agent.tool_call_request_chunk") {
+        if (type != "room.tool_call_request_chunk") {
           return;
         }
 
@@ -258,13 +258,13 @@ void main() {
     var sentFailureChunks = false;
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.invoke_tool") {
+        if (type == "room.invoke_tool") {
           final request = unpackMessage(data).header;
           toolCallId = request["tool_call_id"] as String;
           await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
           return;
         }
-        if (type != "agent.tool_call_request_chunk") {
+        if (type != "room.tool_call_request_chunk") {
           return;
         }
 
@@ -275,7 +275,7 @@ void main() {
         sentFailureChunks = true;
 
         await protocol.send(
-          "agent.tool_call_response_chunk",
+          "room.tool_call_response_chunk",
           packMessage({
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
@@ -284,7 +284,7 @@ void main() {
           }),
         );
         await protocol.send(
-          "agent.tool_call_response_chunk",
+          "room.tool_call_response_chunk",
           packMessage({
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
@@ -345,13 +345,13 @@ void main() {
     var sentClose = false;
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.invoke_tool") {
+        if (type == "room.invoke_tool") {
           final request = unpackMessage(data).header;
           toolCallId = request["tool_call_id"] as String;
           await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
           return;
         }
-        if (type != "agent.tool_call_request_chunk") {
+        if (type != "room.tool_call_request_chunk") {
           return;
         }
 
@@ -361,7 +361,7 @@ void main() {
         }
         sentClose = true;
         await protocol.send(
-          "agent.tool_call_response_chunk",
+          "room.tool_call_response_chunk",
           packMessage({
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
@@ -421,14 +421,14 @@ void main() {
     final pair = _ProtocolPair();
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type != "agent.invoke_tool") {
+        if (type != "room.invoke_tool") {
           return;
         }
         final request = unpackMessage(data).header;
         final toolCallId = request["tool_call_id"] as String;
         await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
         await protocol.send(
-          "agent.tool_call_response_chunk",
+          "room.tool_call_response_chunk",
           packMessage({
             "tool_call_id": toolCallId,
             "toolkit": "test-stream-toolkit",
