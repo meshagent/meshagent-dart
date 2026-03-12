@@ -220,6 +220,9 @@ class RemoteToolkit extends Toolkit {
   }
 
   ToolContentType? _contentType(Content content) {
+    if (content is BinaryContent) {
+      return ToolContentType.binary;
+    }
     if (content is JsonContent) {
       return ToolContentType.json;
     }
@@ -240,6 +243,7 @@ class RemoteToolkit extends Toolkit {
 
   String _contentTypeName(ToolContentType type) {
     return switch (type) {
+      ToolContentType.binary => "binary",
       ToolContentType.json => "json",
       ToolContentType.text => "text",
       ToolContentType.file => "file",
@@ -249,6 +253,9 @@ class RemoteToolkit extends Toolkit {
   }
 
   dynamic _schemaValue(Content content) {
+    if (content is BinaryContent) {
+      return content.headers;
+    }
     if (content is JsonContent) {
       return content.json;
     }
@@ -353,8 +360,8 @@ class RemoteToolkit extends Toolkit {
     if (_started) {
       throw RoomServerException("toolkit '$name' is already started");
     }
-    room.protocol.addHandler("agent.tool_call.$name", _toolCall);
-    room.protocol.addHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+    room.protocol.addHandler("room.tool_call.$name", _toolCall);
+    room.protocol.addHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
     try {
       await _register(public: public);
       _started = true;
@@ -367,8 +374,8 @@ class RemoteToolkit extends Toolkit {
         }),
       );
     } catch (_) {
-      room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
-      room.protocol.removeHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.$name", _toolCall);
+      room.protocol.removeHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
       rethrow;
     }
   }
@@ -382,13 +389,13 @@ class RemoteToolkit extends Toolkit {
     try {
       await _unregister();
     } finally {
-      room.protocol.removeHandler("agent.tool_call.$name", _toolCall);
-      room.protocol.removeHandler("agent.tool_call_request_chunk.$name", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.$name", _toolCall);
+      room.protocol.removeHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
     }
   }
 
   Future<void> _register({bool public = false}) async {
-    final response = await room.sendRequest("agent.register_toolkit", {
+    final response = await room.sendRequest("room.register_toolkit", {
       "name": name,
       "title": title,
       "description": description,
@@ -401,7 +408,7 @@ class RemoteToolkit extends Toolkit {
 
   Future<void> _unregister() async {
     if (_registrationId != null) {
-      await room.sendRequest("agent.unregister_toolkit", {"id": _registrationId!});
+      await room.sendRequest("room.unregister_toolkit", {"id": _registrationId!});
       _registrationId = null;
     }
   }
@@ -430,7 +437,7 @@ class RemoteToolkit extends Toolkit {
 
   Future<bool> _sendToolCallResponse({required int messageId, required Content chunk}) async {
     try {
-      await room.protocol.send("agent.tool_call_response", chunk.pack(), id: messageId);
+      await room.protocol.send("room.tool_call_response", chunk.pack(), id: messageId);
       return true;
     } catch (error, stackTrace) {
       Logger.root.fine("unable to send tool call response", error, stackTrace);
@@ -657,7 +664,7 @@ class RemoteToolkit extends Toolkit {
     final packedChunk = unpackMessage(chunk.pack());
     try {
       await room.protocol.send(
-        "agent.tool_call_response_chunk",
+        "room.tool_call_response_chunk",
         packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
         id: messageId,
       );

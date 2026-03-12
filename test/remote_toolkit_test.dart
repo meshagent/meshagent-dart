@@ -218,19 +218,19 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
           return;
         }
-        if (type == "agent.tool_call_response") {
+        if (type == "room.tool_call_response") {
           responses.add(unpackContent(data));
           return;
         }
-        if (type == "agent.tool_call_response_chunk") {
+        if (type == "room.tool_call_response_chunk") {
           responseChunks.add(_decodeResponseChunk(data));
         }
       },
@@ -245,7 +245,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "collect",
         "arguments": {"type": "control", "method": "open"},
@@ -253,21 +253,21 @@ void main() {
       }),
     );
     await pair.serverProtocol.send(
-      "agent.tool_call_request_chunk.test",
+      "room.tool_call_request_chunk.test",
       packMessage({
         "tool_call_id": "call-1",
         "chunk": {"type": "text", "text": "hello"},
       }),
     );
     await pair.serverProtocol.send(
-      "agent.tool_call_request_chunk.test",
+      "room.tool_call_request_chunk.test",
       packMessage({
         "tool_call_id": "call-1",
         "chunk": {"type": "text", "text": "world"},
       }),
     );
     await pair.serverProtocol.send(
-      "agent.tool_call_request_chunk.test",
+      "room.tool_call_request_chunk.test",
       packMessage({
         "tool_call_id": "call-1",
         "chunk": {"type": "control", "method": "close"},
@@ -291,15 +291,15 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
           return;
         }
-        if (type == "agent.tool_call_response") {
+        if (type == "room.tool_call_response") {
           responses.add(unpackContent(data));
         }
       },
@@ -314,7 +314,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "echo",
         "arguments": {"type": "control", "method": "open"},
@@ -338,15 +338,15 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
           return;
         }
-        if (type == "agent.tool_call_response") {
+        if (type == "room.tool_call_response") {
           responses.add(unpackContent(data));
         }
       },
@@ -361,7 +361,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "echo_content_input",
         "arguments": {
@@ -390,15 +390,15 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
           return;
         }
-        if (type == "agent.tool_call_response") {
+        if (type == "room.tool_call_response") {
           responses.add(unpackContent(data));
         }
       },
@@ -413,7 +413,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "required_value",
         "arguments": {"type": "json", "json": {}},
@@ -437,15 +437,15 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
           return;
         }
-        if (type == "agent.tool_call_response") {
+        if (type == "room.tool_call_response") {
           responses.add(unpackContent(data));
         }
       },
@@ -460,7 +460,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "invalid_output",
         "arguments": {"type": "json", "json": {}},
@@ -484,11 +484,11 @@ void main() {
 
     pair.serverProtocol.start(
       onMessage: (protocol, messageId, type, data) async {
-        if (type == "agent.register_toolkit") {
+        if (type == "room.register_toolkit") {
           await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
           return;
         }
-        if (type == "agent.unregister_toolkit") {
+        if (type == "room.unregister_toolkit") {
           await protocol.send("__response__", EmptyContent().pack(), id: messageId);
         }
       },
@@ -503,7 +503,7 @@ void main() {
     await toolkit.start(public: true);
 
     await pair.serverProtocol.send(
-      "agent.tool_call.test",
+      "room.tool_call.test",
       packMessage({
         "name": "wait_for_disconnect",
         "arguments": {"type": "control", "method": "open"},

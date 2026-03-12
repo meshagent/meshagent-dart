@@ -1,0 +1,165 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:meshagent/meshagent.dart';
+import 'package:meshagent/runtime.dart';
+import 'package:test/test.dart';
+
+class _ProtocolPair {
+  _ProtocolPair() {
+    clientProtocol = Protocol(
+      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
+    );
+    serverProtocol = Protocol(
+      channel: StreamProtocolChannel(input: _clientToServer.stream, output: _serverToClient.sink),
+    );
+  }
+
+  final _clientToServer = StreamController<Uint8List>();
+  final _serverToClient = StreamController<Uint8List>();
+  late final Protocol clientProtocol;
+  late final Protocol serverProtocol;
+
+  Future<void> dispose() async {
+    try {
+      clientProtocol.dispose();
+    } catch (_) {}
+    try {
+      serverProtocol.dispose();
+    } catch (_) {}
+    unawaited(_clientToServer.close());
+    if (!_serverToClient.isClosed) {
+      unawaited(_serverToClient.close());
+    }
+  }
+}
+
+Future<void> _sendRoomReady(Protocol protocol) async {
+  await protocol.send(
+    'room_ready',
+    packMessage({'room_name': 'test-room', 'room_url': 'ws://example/rooms/test-room', 'session_id': 'session-1'}),
+  );
+}
+
+Future<void> _sendToolCallResponseChunk({required Protocol protocol, required String toolCallId, required Content chunk}) async {
+  final packed = unpackMessage(chunk.pack());
+  await protocol.send(
+    'room.tool_call_response_chunk',
+    packMessage({'tool_call_id': toolCallId, 'chunk': packed.header}, packed.payload.isEmpty ? null : packed.payload),
+  );
+}
+
+class _FakeDocumentRuntime extends DocumentRuntime {
+  _FakeDocumentRuntime() : super.base();
+
+  @override
+  void applyBackendChanges({required String documentId, required String base64}) {}
+
+  @override
+  void registerDocument(RuntimeDocument document) {}
+
+  @override
+  void unregisterDocument(RuntimeDocument document) {}
+
+  @override
+  void sendChanges(Map<String, dynamic> message) {}
+}
+
+void main() {
+  test('sync client streams open, sync, and close through sync.open', () async {
+    final pair = _ProtocolPair();
+    final schema = MeshSchema(
+      rootTagName: 'thread',
+      elements: [ElementType(tagName: 'thread', description: '', properties: [])],
+    );
+
+    String? toolCallId;
+    final requestChunks = <Content>[];
+
+    pair.serverProtocol.start(
+      onMessage: (protocol, messageId, type, data) async {
+        if (type == 'room.invoke_tool') {
+          final request = unpackMessage(data).header;
+          expect(request['toolkit'], 'sync');
+          expect(request['tool'], 'open');
+          toolCallId = request['tool_call_id'] as String;
+          final arguments = Map<String, dynamic>.from(request['arguments'] as Map);
+          expect(arguments['type'], 'control');
+          expect(arguments['method'], 'open');
+          await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
+          return;
+        }
+
+        if (type != 'room.tool_call_request_chunk') {
+          return;
+        }
+
+        final message = unpackMessage(data);
+        final header = message.header;
+        final chunkHeader = Map<String, dynamic>.from(header['chunk'] as Map);
+        final packedChunk = packMessage(chunkHeader, message.payload.isEmpty ? null : message.payload);
+        final chunk = unpackContent(packedChunk);
+        requestChunks.add(chunk);
+        await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+
+        if (toolCallId == null) {
+          return;
+        }
+
+        if (chunk is BinaryContent && chunk.headers['kind'] == 'start') {
+          await _sendToolCallResponseChunk(
+            protocol: protocol,
+            toolCallId: toolCallId!,
+            chunk: BinaryContent(data: Uint8List(0), headers: {'kind': 'state', 'path': 'thread.thread', 'schema': schema.toJson()}),
+          );
+          return;
+        }
+
+        if (chunk is ControlContent && chunk.method == 'close') {
+          await _sendToolCallResponseChunk(
+            protocol: protocol,
+            toolCallId: toolCallId!,
+            chunk: ControlContent(method: 'close'),
+          );
+        }
+      },
+    );
+
+    final room = RoomClient(protocol: pair.clientProtocol);
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    try {
+      DocumentRuntime.instance = _FakeDocumentRuntime();
+
+      final doc = await room.sync.open('/thread.thread').timeout(const Duration(seconds: 1));
+      expect(await doc.synchronized.timeout(const Duration(seconds: 1)), isTrue);
+
+      await room.sync.sync('/thread.thread', Uint8List.fromList(utf8.encode('YQ==')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await room.sync.close('/thread.thread');
+
+      expect(requestChunks.length, greaterThanOrEqualTo(3));
+
+      expect(requestChunks.first, isA<BinaryContent>());
+      final startChunk = requestChunks.first as BinaryContent;
+      expect(startChunk.headers['kind'], 'start');
+      expect(startChunk.headers['path'], 'thread.thread');
+      expect(startChunk.headers['create'], isTrue);
+
+      expect(requestChunks[1], isA<BinaryContent>());
+      final syncChunk = requestChunks[1] as BinaryContent;
+      expect(syncChunk.headers, {'kind': 'sync'});
+      expect(syncChunk.data, Uint8List.fromList(utf8.encode('YQ==')));
+
+      expect(requestChunks.last, isA<ControlContent>());
+      final closeChunk = requestChunks.last as ControlContent;
+      expect(closeChunk.method, 'close');
+    } finally {
+      room.dispose();
+      await pair.dispose();
+    }
+  });
+}

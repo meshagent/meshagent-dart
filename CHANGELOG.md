@@ -1,3 +1,9 @@
+## [0.30.0]
+- Breaking: tool invocation moved to toolkit-based `room.invoke` with `room.*` tool-call events and streaming tool-call chunks.
+- Added containers and services clients to the Dart RoomClient, with container exec/log streaming and service list/restart support.
+- Storage and database clients now support streaming upload/download and streaming query/insert/search with chunked inputs; Sync client uses streaming open/update.
+- Dependency update: added `async ^2.13.0`.
+
 ## [0.29.4]
 - Stability
 

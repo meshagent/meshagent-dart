@@ -1,17 +1,19 @@
-import "dart:async";
-import "dart:convert";
-import "dart:typed_data";
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
-import "package:meshagent/meshagent.dart";
-import "package:meshagent/queues_client.dart";
-import "package:logging/logging.dart";
-import "package:meshagent/yaml/yaml.dart";
+import 'package:async/async.dart';
+import 'package:logging/logging.dart';
+import 'package:meshagent/meshagent.dart';
+import 'package:meshagent/queues_client.dart';
+import 'package:meshagent/yaml/yaml.dart';
 
 import 'package:path/path.dart' as path;
-import "package:uuid/uuid.dart";
+import 'package:uuid/uuid.dart';
 
-import "runtime.dart";
-import "database_client.dart";
+import 'database_client.dart';
+import 'runtime.dart';
 
 class RoomServerException implements Exception {
   RoomServerException(this.message, {this.statusCode, this.code});
@@ -113,13 +115,6 @@ class _PendingRequest {
   Future<Content> get fut {
     return _completer.future;
   }
-}
-
-class _QueuedSync {
-  _QueuedSync({required this.path, required this.base64});
-
-  final String path;
-  final String base64;
 }
 
 abstract class Requirement {
@@ -338,6 +333,17 @@ class RoomClient extends ChangeEmitter {
 
     protocol.addHandler("room.status", _handleRoomStatus);
 
+    protocol.addHandler("room.tool_call_response_chunk", _handleToolCallResponseChunk);
+
+    unawaited(
+      protocol.done.then((error) {
+        final wrapped = error == null
+            ? RoomServerException("room client was closed before tool call completed")
+            : RoomServerException("room client closed with error: $error");
+        return _failToolCallStreams(error: wrapped);
+      }),
+    );
+
     sync = SyncClient(room: this);
     storage = StorageClient(room: this);
     developer = DeveloperClient(room: this);
@@ -370,6 +376,9 @@ class RoomClient extends ChangeEmitter {
   }
 
   final _pendingRequests = <int, _PendingRequest>{};
+  final _toolCallStreams = <String, StreamController<Content>>{};
+  final _pendingInvokeResponses = <String, Completer<Content>>{};
+  final _uuid = const Uuid();
 
   final Protocol protocol;
 
@@ -392,6 +401,7 @@ class RoomClient extends ChangeEmitter {
       onDone: () {
         final error = RoomServerException("room connection closed before request completed");
         _failPendingRequests(error);
+        unawaited(_failToolCallStreams(error: error));
         if (!_ready.isCompleted) {
           _ready.completeError(error);
         }
@@ -402,6 +412,7 @@ class RoomClient extends ChangeEmitter {
       onError: (error) {
         final wrapped = RoomServerException("room connection error: $error");
         _failPendingRequests(wrapped);
+        unawaited(_failToolCallStreams(error: wrapped));
         if (!_ready.isCompleted) {
           _ready.completeError(wrapped);
         }
@@ -417,7 +428,9 @@ class RoomClient extends ChangeEmitter {
   }
 
   void dispose() {
-    _failPendingRequests(RoomServerException("room client disposed"));
+    final error = RoomServerException("room client disposed");
+    _failPendingRequests(error);
+    unawaited(_failToolCallStreams(error: error));
     sync.dispose();
     protocol.dispose();
     _localParticipant = null;
@@ -441,6 +454,246 @@ class RoomClient extends ChangeEmitter {
     }
 
     return response;
+  }
+
+  Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
+    await sendRequest("room.call", {"name": name, "url": url, "arguments": arguments});
+  }
+
+  Future<List<ToolkitDescription>> listToolkits({String? participantId, String? participantName, int? timeout}) async {
+    final request = <String, dynamic>{};
+    if (participantId != null) {
+      request["participant_id"] = participantId;
+    }
+    if (participantName != null) {
+      request["participant_name"] = participantName;
+    }
+    if (timeout != null) {
+      request["timeout"] = timeout;
+    }
+
+    final result = await sendRequest("room.list_toolkits", request);
+    if (result is! JsonContent) {
+      throw RoomServerException("unexpected return type from room.list_toolkits");
+    }
+
+    final toolsValue = result.json["tools"];
+    if (toolsValue is! Map) {
+      throw RoomServerException("unexpected return type from room.list_toolkits");
+    }
+
+    final tools = Map<String, dynamic>.from(toolsValue);
+    final toolkits = <ToolkitDescription>[];
+
+    for (final entry in tools.entries) {
+      final json = entry.value;
+      if (json is! Map) {
+        throw RoomServerException("unexpected toolkit description from room.list_toolkits");
+      }
+      toolkits.add(ToolkitDescription.fromJson(Map<String, dynamic>.from(json), name: entry.key));
+    }
+
+    return toolkits;
+  }
+
+  Future<Content> _awaitInvokeResponse({required String toolCallId, required Future<Content> requestFuture}) async {
+    final pending = Completer<Content>();
+    _pendingInvokeResponses[toolCallId] = pending;
+    try {
+      return await Future.any([requestFuture, pending.future]);
+    } finally {
+      final current = _pendingInvokeResponses[toolCallId];
+      if (identical(current, pending)) {
+        _pendingInvokeResponses.remove(toolCallId);
+      }
+    }
+  }
+
+  Future<ToolCallOutput> invoke({
+    required String toolkit,
+    required String tool,
+    required ToolInput input,
+    String? participantId,
+    String? onBehalfOfId,
+    Map<String, dynamic>? callerContext,
+  }) async {
+    final toolCallId = _uuid.v4();
+    final controller = StreamController<Content>(
+      onCancel: () {
+        _toolCallStreams.remove(toolCallId);
+      },
+    );
+    _toolCallStreams[toolCallId] = controller;
+
+    final request = <String, dynamic>{
+      "toolkit": toolkit,
+      "tool": tool,
+      "participant_id": participantId,
+      "on_behalf_of_id": onBehalfOfId,
+      "caller_context": callerContext,
+      "tool_call_id": toolCallId,
+    };
+
+    Uint8List? invokeData;
+    Future<void>? inputTask;
+
+    if (input is ToolContentInput) {
+      final packedInput = unpackMessage(input.content.pack());
+      request["arguments"] = packedInput.header;
+      invokeData = packedInput.payload.isEmpty ? null : packedInput.payload;
+    } else if (input is ToolStreamInput) {
+      final openChunk = unpackMessage(ControlContent(method: "open").pack());
+      request["arguments"] = openChunk.header;
+      inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
+    } else {
+      await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
+      throw RoomServerException("invokeTool input must be ToolContentInput or ToolStreamInput");
+    }
+
+    try {
+      final response = await _awaitInvokeResponse(
+        toolCallId: toolCallId,
+        requestFuture: sendRequest("room.invoke_tool", request, data: invokeData),
+      );
+
+      if (response is ControlContent && response.method == "open") {
+        if (inputTask != null) {
+          unawaited(
+            inputTask.catchError((Object error, StackTrace stackTrace) async {
+              final wrapped = error is RoomServerException ? error : RoomServerException("request stream failed: $error");
+              if (!controller.isClosed) {
+                controller.addError(wrapped, stackTrace);
+              }
+              await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
+            }),
+          );
+        }
+        return ToolStreamOutput(controller.stream);
+      }
+
+      if (inputTask != null) {
+        await inputTask;
+      }
+      await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
+      return ToolContentOutput(response);
+    } catch (error, stackTrace) {
+      if (inputTask != null) {
+        await Future.wait([inputTask.catchError((_) {})]);
+      }
+      if (!controller.isClosed) {
+        controller.addError(error, stackTrace);
+      }
+      await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
+      rethrow;
+    }
+  }
+
+  Future<void> _failToolCallStreams({required RoomServerException error}) async {
+    if (_toolCallStreams.isEmpty) {
+      return;
+    }
+
+    final streams = Map<String, StreamController<Content>>.from(_toolCallStreams);
+    _toolCallStreams.clear();
+    for (final stream in streams.values) {
+      if (!stream.isClosed) {
+        stream.addError(error);
+        unawaited(stream.close());
+      }
+    }
+  }
+
+  Future<void> _closeToolCallStream({required String toolCallId, required StreamController<Content> controller}) async {
+    _toolCallStreams.remove(toolCallId);
+    if (!controller.isClosed) {
+      unawaited(controller.close());
+    }
+  }
+
+  Future<void> _sendToolCallRequestChunk({required String toolCallId, required Content chunk}) async {
+    final packedChunk = unpackMessage(chunk.pack());
+    await sendRequest("room.tool_call_request_chunk", {
+      "tool_call_id": toolCallId,
+      "chunk": packedChunk.header,
+    }, data: packedChunk.payload.isEmpty ? null : packedChunk.payload);
+  }
+
+  Future<void> _streamInvokeToolRequestChunks({required String toolCallId, required Stream<Content> inputChunks}) async {
+    await Future<void>.delayed(Duration.zero);
+    try {
+      await for (final item in inputChunks) {
+        await _sendToolCallRequestChunk(toolCallId: toolCallId, chunk: item);
+      }
+    } finally {
+      await _sendToolCallRequestChunk(
+        toolCallId: toolCallId,
+        chunk: ControlContent(method: "close"),
+      );
+    }
+  }
+
+  Future<void> _handleToolCallResponseChunk(Protocol protocol, int messageId, String type, Uint8List data) async {
+    final message = unpackMessage(data);
+    final header = message.header;
+    final payload = message.payload;
+
+    final toolCallId = header["tool_call_id"];
+    if (toolCallId is! String || toolCallId.isEmpty) {
+      Logger.root.warning("ignoring tool call chunk without tool_call_id");
+      return;
+    }
+
+    final content = _decodeToolCallContent(header: header, payload: payload);
+
+    final pendingInvoke = _pendingInvokeResponses[toolCallId];
+    if (pendingInvoke != null && !pendingInvoke.isCompleted) {
+      if (content is ErrorContent) {
+        pendingInvoke.completeError(RoomServerException(content.text, code: content.code));
+      } else if (content is ControlContent && content.method == "close") {
+        var detail = "tool call closed before initial invoke response";
+        final closeStatus = content.statusCode ?? ControlCloseStatus.normal.code;
+        if (closeStatus != ControlCloseStatus.normal.code) {
+          detail = content.message ?? "tool call stream closed abnormally";
+        }
+        pendingInvoke.completeError(RoomServerException(detail, statusCode: closeStatus));
+      }
+    }
+
+    final stream = _toolCallStreams[toolCallId];
+    if (stream == null || stream.isClosed) {
+      return;
+    }
+
+    if (content is ControlContent) {
+      if (content.method == "close") {
+        final closeStatus = content.statusCode ?? ControlCloseStatus.normal.code;
+        if (closeStatus != ControlCloseStatus.normal.code) {
+          final detail = content.message ?? "tool call stream closed abnormally";
+          stream.addError(RoomServerException(detail, statusCode: closeStatus));
+        }
+        await _closeToolCallStream(toolCallId: toolCallId, controller: stream);
+      }
+      return;
+    }
+
+    stream.add(content);
+  }
+
+  Content _decodeToolCallContent({required Map<String, dynamic> header, required Uint8List payload}) {
+    final chunk = header["chunk"];
+    if (chunk is Map) {
+      final chunkMap = Map<String, dynamic>.from(chunk);
+      if (chunkMap["type"] is String) {
+        try {
+          return unpackContent(packMessage(chunkMap, payload.isEmpty ? null : payload));
+        } catch (_) {
+          return JsonContent(json: chunkMap);
+        }
+      }
+      return JsonContent(json: chunkMap);
+    }
+
+    return JsonContent(json: {"chunk": chunk});
   }
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
@@ -564,86 +817,6 @@ class ContainerRunResult {
 
 enum ContextEncoding { gzip }
 
-class _ImagePullRequest {
-  _ImagePullRequest({required this.tag, this.credentials = const []});
-
-  final String tag;
-  final List<DockerSecret> credentials;
-
-  Map<String, dynamic> toJson() => {'tag': tag, if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList()};
-}
-
-class _RunRequest {
-  _RunRequest({
-    required this.image,
-    required this.command,
-    this.workingDir,
-    this.env = const {},
-    this.mountPath,
-    this.mountSubpath,
-    this.role,
-    this.participantName,
-    this.ports = const {},
-    this.credentials = const [],
-    this.requestId,
-    this.name,
-    this.mounts,
-    this.writableRootFs,
-    this.private,
-  }) : assert(mountPath == null || mountPath.startsWith('/'), 'mountPath must start with "/"'),
-       assert(workingDir == null || workingDir.startsWith('/'), 'workingDir must start with "/"');
-
-  final String? name;
-  final String? requestId;
-  final String image;
-  final String? command;
-  final String? workingDir;
-  final Map<String, String> env;
-  final String? mountPath;
-  final String? mountSubpath;
-  final String? role;
-  final String? participantName;
-  final Map<int, int> ports;
-  final List<DockerSecret> credentials;
-  final ContainerMountSpec? mounts;
-  final bool? writableRootFs;
-  final bool? private;
-
-  Map<String, dynamic> toJson() => {
-    if (requestId != null) 'request_id': requestId,
-    'name': name,
-    'image': image,
-    'command': command,
-    'working_dir': workingDir,
-    'env': env,
-    'mount_path': mountPath,
-    'mount_subpath': mountSubpath,
-    'role': role,
-    'participant_name': participantName,
-    'ports': {for (final e in ports.entries) e.key.toString(): e.value.toString()},
-    if (private != null) 'private': private,
-    if (writableRootFs != null) 'writable_root_fs': writableRootFs,
-    if (mounts != null) 'mounts': mounts!.toJson(),
-    if (credentials.isNotEmpty) 'credentials': credentials.map((c) => c.toJson()).toList(),
-  };
-}
-
-class _ExecRequest {
-  _ExecRequest({required this.containerId, required this.command, this.tty = false, this.requestId});
-
-  final String? requestId;
-  final String containerId;
-  final String? command;
-  final bool tty;
-
-  Map<String, dynamic> toJson() => {
-    if (requestId != null) 'request_id': requestId,
-    'container_id': containerId,
-    'command': command,
-    'tty': tty,
-  };
-}
-
 class DockerSecret {
   const DockerSecret({required this.username, required this.password, required this.registry, required this.email});
 
@@ -694,38 +867,110 @@ class ContainerImage {
   final int? size; // bytes
   final Map<String, dynamic> labels;
 
+  static Map<String, dynamic> _labelsFromJson(Object? value) {
+    if (value is List) {
+      final result = <String, dynamic>{};
+      for (final entry in value) {
+        if (entry is! Map) {
+          continue;
+        }
+        final key = entry['key'];
+        final itemValue = entry['value'];
+        if (key is String && itemValue != null) {
+          result[key] = itemValue;
+        }
+      }
+      return result;
+    }
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    return <String, dynamic>{};
+  }
+
   factory ContainerImage.fromJson(Map<String, dynamic> json) => ContainerImage(
     id: json['id'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? const [],
     size: json['size'] as int?,
-    labels: Map<String, dynamic>.from(json['labels'] as Map? ?? {}),
+    labels: _labelsFromJson(json['labels']),
   );
 }
 
+List<Map<String, dynamic>> _containerStringPairList(Map<String, String> values) {
+  return values.entries.map((entry) => {'key': entry.key, 'value': entry.value}).toList(growable: false);
+}
+
+List<Map<String, dynamic>> _containerPortPairs(Map<int, int> values) {
+  return values.entries.map((entry) => {'container_port': entry.key, 'host_port': entry.value}).toList(growable: false);
+}
+
+List<Map<String, dynamic>> _containerCredentials(List<DockerSecret> values) {
+  return values
+      .map((entry) => {'registry': entry.registry, 'username': entry.username, 'password': entry.password})
+      .toList(growable: false);
+}
+
 class ExecSession {
-  ExecSession._(this._client, this._requestId, this.command);
+  ExecSession._({required String requestId, required this.command, required String containerId, bool? tty})
+    : _requestId = requestId,
+      _containerId = containerId,
+      _tty = tty;
 
   final String command;
-  final RoomClient _client;
   final String _requestId;
-
+  final String _containerId;
+  final bool? _tty;
   final _result = Completer<int>();
+  final _inputController = StreamController<Content>();
 
   Future<int> get result {
     return _result.future;
   }
 
   bool _closed = false;
+  bool _inputClosed = false;
+  int? _lastResizeWidth;
+  int? _lastResizeHeight;
   bool get closed {
     return _closed;
   }
 
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(
+      data: Uint8List(0),
+      headers: {'kind': 'start', 'request_id': _requestId, 'container_id': _containerId, 'command': command, 'tty': _tty},
+    );
+    yield* _inputController.stream;
+  }
+
+  void _queueInput({required int channel, Uint8List? data, int? width, int? height}) {
+    if (_inputClosed) {
+      throw RoomServerException('container exec session is already closed');
+    }
+    _inputController.add(
+      BinaryContent(data: data ?? Uint8List(0), headers: {'kind': 'input', 'channel': channel, 'width': width, 'height': height}),
+    );
+  }
+
+  void _closeInputStream() {
+    if (_inputClosed) {
+      return;
+    }
+    _inputClosed = true;
+    unawaited(_inputController.close());
+  }
+
   Future<void> write(Uint8List data) async {
-    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 1}, data: data);
+    _queueInput(channel: 1, data: data);
   }
 
   Future<void> resize({required int width, required int height}) async {
-    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 4, "width": width, "height": height});
+    if (_lastResizeWidth == width && _lastResizeHeight == height) {
+      return;
+    }
+    _lastResizeWidth = width;
+    _lastResizeHeight = height;
+    _queueInput(channel: 4, width: width, height: height);
   }
 
   late final _stdoutController = StreamController<Uint8List>.broadcast()..stream.listen((data) => previousOutput.add(data));
@@ -737,94 +982,125 @@ class ExecSession {
   }
 
   void _close(int code) {
-    _result.complete(code);
+    if (!_result.isCompleted) {
+      _result.complete(code);
+    }
     _closed = true;
+    _closeInputStream();
     _stdoutController.close();
   }
 
   void _closeError(Object error) {
-    _result.completeError(error);
+    if (!_result.isCompleted) {
+      _result.completeError(error);
+    }
     _closed = true;
+    _closeInputStream();
     _stdoutController.close();
   }
 
   Future<void> stop() async {
-    await _client.sendRequest("containers.container_input", {"request_id": _requestId, "channel": 5});
+    _closeInputStream();
   }
 
   Future<void> kill() async {
-    await _client.sendRequest("containers.stop_exec", {"request_id": _requestId});
+    if (_inputClosed) {
+      return;
+    }
+    _queueInput(channel: 5);
   }
 }
 
 class ContainersClient extends ChangeEmitter {
-  ContainersClient({required this.room}) {
-    room.protocol.addHandler("containers.log.chunk", _handleLogChunk);
-    room.protocol.addHandler("containers.run.output", _handleContainerOutput);
-    room.protocol.addHandler("containers.progress", _handleProgress);
-  }
+  ContainersClient({required this.room});
 
-  final Map<String, ExecSession> _ttys = {};
-
-  Future<void> _handleLogChunk(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final chunk = unpackMessage(bytes).header;
-    _loggers[chunk["request_id"]]!.sink.add(chunk["log"]);
-  }
-
-  Future<void> _handleContainerOutput(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final message = unpackMessage(bytes);
-    String requestId = message.header["request_id"];
-    num channel = message.header["channel"];
-    final tty = _ttys[requestId];
-    if (tty == null) {
-      // tty has been closed
-      return;
-    }
-
-    if (channel == 1) {
-      tty._stdoutController.add(message.payload);
-    }
-  }
-
-  Future<void> _handleProgress(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final chunk = unpackMessage(bytes).header;
-    final detail = chunk["detail"] as Map<String, dynamic>?;
-    if (detail != null) {
-      final total = detail["total"] as num?;
-      final current = detail["current"] as num?;
-      final message = chunk["message"] as String;
-      final layer = chunk["layer"] as String?;
-
-      _progress[chunk["request_id"]]!.sink.add(
-        LogProgress(layer: layer, message: message, current: current?.toInt(), total: total?.toInt()),
-      );
-    }
-  }
-
-  final Map<String, StreamController<String>> _loggers = {};
-  final Map<String, StreamController<LogProgress>> _progress = {};
   RoomClient room;
 
-  /// ------------------------------------------------------------------------
-  /// Images
-  /// ------------------------------------------------------------------------
+  RoomServerException _unexpectedResponseError({required String operation}) {
+    return RoomServerException('unexpected return type from containers.$operation');
+  }
 
-  /// Return *all* local images (similar to `docker images`).
   Future<List<ContainerImage>> listImages() async {
-    final res = await room.sendRequest('containers.list_images', {}) as JsonContent;
-
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_images',
+      input: ToolContentInput(JsonContent(json: {})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list_images');
+    }
+    final res = output.content as JsonContent;
     return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
   }
 
-  /// Delete an image by tag or ID (force = true on the server).
   Future<void> deleteImage({required String image}) async {
-    await room.sendRequest('containers.delete_image', {'image': image});
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'delete_image',
+      input: ToolContentInput(JsonContent(json: {'image': image})),
+    );
   }
 
   Future<void> pullImage({required String tag, List<DockerSecret> credentials = const []}) async {
-    final req = _ImagePullRequest(tag: tag, credentials: credentials);
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'pull_image',
+      input: ToolContentInput(JsonContent(json: {'tag': tag, 'credentials': _containerCredentials(credentials)})),
+    );
+  }
 
-    await room.sendRequest("containers.pull_image", req.toJson());
+  Future<String> pushImage({required String tag, List<DockerSecret> credentials = const [], bool private = false}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'push_image',
+      input: ToolContentInput(JsonContent(json: {'tag': tag, 'credentials': _containerCredentials(credentials), 'private': private})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'push_image');
+    }
+    return (output.content as JsonContent).json['container_id'] as String;
+  }
+
+  Future<String> loadImage({required List<ContainerMountSpec> mounts, required String archivePath, bool private = false}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'load_image',
+      input: ToolContentInput(
+        JsonContent(
+          json: {'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false), 'archive_path': archivePath, 'private': private},
+        ),
+      ),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'load_image');
+    }
+    return (output.content as JsonContent).json['container_id'] as String;
+  }
+
+  Future<String> saveImage({
+    required String tag,
+    required List<ContainerMountSpec> mounts,
+    required String archivePath,
+    bool private = false,
+  }) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'save_image',
+      input: ToolContentInput(
+        JsonContent(
+          json: {
+            'tag': tag,
+            'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false),
+            'archive_path': archivePath,
+            'private': private,
+          },
+        ),
+      ),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'save_image');
+    }
+    return (output.content as JsonContent).json['container_id'] as String;
   }
 
   Future<String> run({
@@ -843,112 +1119,246 @@ class ContainersClient extends ChangeEmitter {
     bool? writableRootFs,
     bool? private,
   }) async {
-    final requestId = Uuid().v4().toString();
-    final controller = StreamController<String>();
-    final progress = StreamController<LogProgress>();
-
-    _loggers[requestId] = controller;
-    _progress[requestId] = progress;
-
-    try {
-      final req = _RunRequest(
-        name: name,
-        requestId: requestId,
-        image: image,
-        command: command,
-        workingDir: workingDir,
-        env: env,
-        mountPath: mountPath,
-        mountSubpath: mountSubpath,
-        role: role,
-        participantName: participantName,
-        ports: ports,
-        credentials: credentials,
-        mounts: mounts,
-        writableRootFs: writableRootFs,
-        private: private,
-      );
-
-      final res = await room.sendRequest("containers.run", req.toJson());
-      return (res as JsonContent).json["container_id"];
-    } finally {
-      _loggers.remove(requestId);
-      _progress.remove(requestId);
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'run',
+      input: ToolContentInput(
+        JsonContent(
+          json: {
+            'image': image,
+            'command': command,
+            'working_dir': workingDir,
+            'env': _containerStringPairList(env),
+            'mount_path': mountPath,
+            'mount_subpath': mountSubpath,
+            'role': role,
+            'participant_name': participantName,
+            'ports': _containerPortPairs(ports),
+            'credentials': _containerCredentials(credentials),
+            'name': name,
+            'mounts': mounts?.toJson(),
+            'writable_root_fs': writableRootFs,
+            'private': private,
+          },
+        ),
+      ),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'run');
     }
+    return (output.content as JsonContent).json['container_id'] as String;
   }
 
   Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
-    final res = await room.sendRequest("containers.run_service", {"service_id": serviceId, "env": env});
-    return (res as JsonContent).json["container_id"];
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'run_service',
+      input: ToolContentInput(JsonContent(json: {'service_id': serviceId, 'env': _containerStringPairList(env)})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'run_service');
+    }
+    return (output.content as JsonContent).json['container_id'] as String;
   }
 
   ExecSession exec({required String containerId, required String command, bool tty = false, String? name}) {
-    final requestId = Uuid().v4().toString();
-
-    final req = _ExecRequest(containerId: containerId, requestId: requestId, command: command, tty: tty);
-
-    final container = ExecSession._(room, requestId, command);
-    _ttys[requestId] = container;
+    final requestId = const Uuid().v4();
+    final session = ExecSession._(requestId: requestId, command: command, containerId: containerId, tty: tty);
 
     room
-        .sendRequest("containers.exec", req.toJson())
-        .then(
-          (result) {
-            _ttys.remove(requestId);
-            final json = result as JsonContent;
-            container._close(json.json["status"]);
-          },
-          onError: (error) {
-            _ttys.remove(requestId);
-            container._closeError(error);
-          },
-        );
+        .invoke(toolkit: 'containers', tool: 'exec', input: ToolStreamInput(session.inputStream()))
+        .then((output) async {
+          if (output is! ToolStreamOutput) {
+            throw _unexpectedResponseError(operation: 'exec');
+          }
 
-    return container;
+          await for (final chunk in output.stream) {
+            if (chunk is ErrorContent) {
+              throw RoomServerException(chunk.text, code: chunk.code);
+            }
+            if (chunk is! BinaryContent) {
+              throw _unexpectedResponseError(operation: 'exec');
+            }
+
+            final rawChannel = chunk.headers['channel'];
+            if (rawChannel is! int) {
+              throw RoomServerException('containers.exec returned a chunk without a valid channel');
+            }
+
+            if (rawChannel == 1) {
+              session._stdoutController.add(chunk.data);
+              continue;
+            }
+            if (rawChannel == 3) {
+              final payload = jsonDecode(utf8.decode(chunk.data));
+              if (payload is Map && payload['status'] is int) {
+                session._close(payload['status'] as int);
+                return;
+              }
+              throw RoomServerException('containers.exec returned an invalid status payload');
+            }
+          }
+
+          throw RoomServerException('containers.exec stream closed before a status was returned');
+        })
+        .catchError((Object error) {
+          session._closeError(error);
+        });
+
+    return session;
+  }
+
+  Future<String> build({
+    required String tag,
+    required List<ContainerMountSpec> mounts,
+    required String contextPath,
+    String? dockerfilePath,
+    bool private = false,
+    List<DockerSecret> credentials = const [],
+  }) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'build',
+      input: ToolContentInput(
+        JsonContent(
+          json: {
+            'tag': tag,
+            'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false),
+            'context_path': contextPath,
+            'dockerfile_path': dockerfilePath,
+            'private': private,
+            'credentials': _containerCredentials(credentials),
+          },
+        ),
+      ),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'build');
+    }
+    return (output.content as JsonContent).json['container_id'] as String;
   }
 
   Future<void> stop({required String containerId, bool force = true}) async {
-    await room.sendRequest("containers.stop_container", {"id": containerId, "force": force});
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'stop_container',
+      input: ToolContentInput(JsonContent(json: {'container_id': containerId, 'force': force})),
+    );
+  }
+
+  Future<int> waitForExit({required String containerId}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'wait_for_exit',
+      input: ToolContentInput(JsonContent(json: {'container_id': containerId})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'wait_for_exit');
+    }
+    final exitCode = (output.content as JsonContent).json['exit_code'];
+    if (exitCode is! int) {
+      throw _unexpectedResponseError(operation: 'wait_for_exit');
+    }
+    return exitCode;
   }
 
   Future<void> deleteContainer({required String containerId}) async {
-    await room.sendRequest("containers.delete_container", {"id": containerId});
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'delete_container',
+      input: ToolContentInput(JsonContent(json: {'container_id': containerId})),
+    );
   }
 
   LogStream<void> logs({required String containerId, bool follow = false}) {
-    final requestId = Uuid().v4().toString();
-    final controller = StreamController<String>();
-    final completer = Completer();
+    final requestId = const Uuid().v4();
+    final closeInput = Completer<void>();
+    var inputClosed = false;
+
+    void closeInputStream() {
+      if (inputClosed) {
+        return;
+      }
+      inputClosed = true;
+      if (!closeInput.isCompleted) {
+        closeInput.complete();
+      }
+    }
+
+    Stream<Content> inputStream() async* {
+      yield BinaryContent(
+        data: Uint8List(0),
+        headers: {'kind': 'start', 'request_id': requestId, 'container_id': containerId, 'follow': follow},
+      );
+      await closeInput.future;
+    }
+
+    final completer = Completer<void>();
+    final controller = StreamController<String>(
+      onCancel: () async {
+        closeInputStream();
+        await completer.future.catchError((_) {});
+      },
+    );
     final progress = StreamController<LogProgress>();
 
     final stream = LogStream._(completer, controller.stream, progress.stream, () async {
-      await room.sendRequest('containers.stop_logs', {'request_id': requestId});
+      closeInputStream();
+      await completer.future.catchError((_) {});
     });
-    _loggers[requestId] = controller;
-    _progress[requestId] = progress;
 
     room
-        .sendRequest("containers.logs", {"request_id": requestId, "id": containerId, "follow": follow})
-        .then(
-          (_) {
-            controller.close();
-            completer.complete();
-            _loggers.remove(requestId);
-          },
-          onError: (error) {
-            controller.close();
+        .invoke(toolkit: 'containers', tool: 'logs', input: ToolStreamInput(inputStream()))
+        .then((output) async {
+          if (output is! ToolStreamOutput) {
+            throw _unexpectedResponseError(operation: 'logs');
+          }
+
+          await for (final chunk in output.stream) {
+            if (chunk is ErrorContent) {
+              throw RoomServerException(chunk.text, code: chunk.code);
+            }
+            if (chunk is! BinaryContent) {
+              throw _unexpectedResponseError(operation: 'logs');
+            }
+
+            final rawChannel = chunk.headers['channel'];
+            if (rawChannel is! int) {
+              throw RoomServerException('containers.logs returned a chunk without a valid channel');
+            }
+            if (rawChannel != 1) {
+              continue;
+            }
+            controller.add(utf8.decode(chunk.data));
+          }
+          closeInputStream();
+          unawaited(controller.close());
+          unawaited(progress.close());
+          completer.complete();
+        })
+        .catchError((Object error) async {
+          closeInputStream();
+          unawaited(controller.close());
+          unawaited(progress.close());
+          if (!completer.isCompleted) {
             completer.completeError(error);
-            _loggers.remove(requestId);
-          },
-        );
+          }
+        });
 
     return stream;
   }
 
   Future<List<RoomContainer>> list({bool? all}) async {
-    final res = await room.sendRequest("containers.list_containers", {"all": all}) as JsonContent;
-
-    return (res.json["containers"] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_containers',
+      input: ToolContentInput(JsonContent(json: {'all': all})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list');
+    }
+    final res = output.content as JsonContent;
+    return (res.json['containers'] as List).map((i) => RoomContainer.fromJson(i as Map<String, dynamic>)).toList();
   }
 }
 
@@ -1070,10 +1480,26 @@ class MemoryClient {
 
   final RoomClient room;
 
+  RoomServerException _unexpectedResponseError(String operation) {
+    return RoomServerException("Invalid return type from memory.$operation call");
+  }
+
+  Future<Content> _invoke(String operation, Map<String, dynamic> input) async {
+    final output = await room.invoke(
+      toolkit: "memory",
+      tool: operation,
+      input: ToolContentInput(JsonContent(json: input)),
+    );
+    if (output is! ToolContentOutput) {
+      throw _unexpectedResponseError(operation);
+    }
+    return output.content;
+  }
+
   Future<List<String>> list({List<String>? namespace}) async {
-    final response = await room.sendRequest("memory.list", {"namespace": namespace});
+    final response = await _invoke("list", {"namespace": namespace});
     if (response is! JsonContent) {
-      throw RoomServerException("Invalid return type from memory list call");
+      throw _unexpectedResponseError("list");
     }
     final memories = response.json["memories"];
     if (memories is! List) {
@@ -1083,11 +1509,11 @@ class MemoryClient {
   }
 
   Future<void> create({required String name, List<String>? namespace, bool overwrite = false, bool ignoreExists = false}) async {
-    await room.sendRequest("memory.create", {"name": name, "namespace": namespace, "overwrite": overwrite, "ignore_exists": ignoreExists});
+    await _invoke("create", {"name": name, "namespace": namespace, "overwrite": overwrite, "ignore_exists": ignoreExists});
   }
 
   Future<void> drop({required String name, List<String>? namespace, bool ignoreMissing = false}) async {
-    await room.sendRequest("memory.drop", {"name": name, "namespace": namespace, "ignore_missing": ignoreMissing});
+    await _invoke("drop", {"name": name, "namespace": namespace, "ignore_missing": ignoreMissing});
   }
 }
 
@@ -1096,21 +1522,61 @@ class ServicesClient {
 
   final RoomClient room;
 
+  RoomServerException _unexpectedResponseError(String operation) {
+    return RoomServerException("unexpected return type from services.$operation");
+  }
+
   Future<List<ServiceSpec>> list() async {
     return (await listWithState()).services;
   }
 
   Future<ListServicesResult> listWithState() async {
-    final response = await room.sendRequest("services.list", {});
-    if (response is! JsonContent) {
-      throw RoomServerException("Invalid return type from list services call");
+    final output = await room.invoke(
+      toolkit: "services",
+      tool: "list",
+      input: ToolContentInput(JsonContent(json: {})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError("list");
     }
 
-    return ListServicesResult.fromJson(response.json);
+    final response = output.content as JsonContent;
+    final servicesRaw = response.json["services_json"];
+    final serviceStatesRaw = response.json["service_states"];
+    if (servicesRaw is! List || serviceStatesRaw is! List) {
+      throw _unexpectedResponseError("list");
+    }
+
+    final serviceStates = <String, ServiceRuntimeState>{};
+    for (final item in serviceStatesRaw) {
+      if (item is! Map) {
+        throw _unexpectedResponseError("list");
+      }
+      final state = ServiceRuntimeState.fromJson(Map<String, dynamic>.from(item));
+      serviceStates[state.serviceId] = state;
+    }
+
+    return ListServicesResult(
+      services: servicesRaw.map((item) {
+        if (item is! String) {
+          throw _unexpectedResponseError("list");
+        }
+        final decoded = jsonDecode(item);
+        if (decoded is! Map) {
+          throw _unexpectedResponseError("list");
+        }
+        return ServiceSpec.fromJson(Map<String, dynamic>.from(decoded));
+      }).toList(),
+      serviceStates: serviceStates,
+    );
   }
 
   Future<void> restart({required String serviceId}) async {
-    await room.sendRequest("services.restart", {"service_id": serviceId});
+    await room.invoke(
+      toolkit: "services",
+      tool: "restart",
+      input: ToolContentInput(JsonContent(json: {"service_id": serviceId})),
+    );
   }
 }
 
@@ -1128,55 +1594,207 @@ String _normalizeSyncPath(String path) {
   return normalized;
 }
 
-class SyncClient extends ChangeEmitter {
-  SyncClient({required this.room}) {
-    room.protocol.addHandler("room.sync", _handleSync);
+class _SyncOpenStartChunkHeaders {
+  _SyncOpenStartChunkHeaders({
+    required this.path,
+    required this.create,
+    required this.vector,
+    required this.schemaJson,
+    required this.schemaPath,
+    required this.initialJson,
+  });
+
+  final String path;
+  final bool create;
+  final String? vector;
+  final Map<String, dynamic>? schemaJson;
+  final String? schemaPath;
+  final Map<String, dynamic>? initialJson;
+
+  Map<String, dynamic> toHeaders() {
+    return {
+      "kind": "start",
+      "path": path,
+      "create": create,
+      "vector": vector,
+      "schema": schemaJson,
+      "schema_path": schemaPath,
+      "initial_json": initialJson,
+    };
+  }
+}
+
+class _SyncOpenStateChunkHeaders {
+  _SyncOpenStateChunkHeaders({required this.path, required this.schemaJson});
+
+  final String path;
+  final Map<String, dynamic> schemaJson;
+
+  static _SyncOpenStateChunkHeaders fromHeaders(Map<String, dynamic> headers) {
+    final kind = headers["kind"];
+    final path = headers["path"];
+    final schemaJson = headers["schema"];
+    if (kind != "state" || path is! String || schemaJson is! Map) {
+      throw RoomServerException("Invalid return type from sync.open call");
+    }
+    return _SyncOpenStateChunkHeaders(path: path, schemaJson: Map<String, dynamic>.from(schemaJson));
+  }
+}
+
+class _SyncOpenOutputChunkHeaders {
+  _SyncOpenOutputChunkHeaders({required this.path, required this.kind});
+
+  final String path;
+  final String kind;
+
+  static _SyncOpenOutputChunkHeaders fromHeaders(Map<String, dynamic> headers) {
+    final kind = headers["kind"];
+    final path = headers["path"];
+    if ((kind != "state" && kind != "sync") || path is! String) {
+      throw RoomServerException("Invalid return type from sync.open call");
+    }
+    return _SyncOpenOutputChunkHeaders(path: path, kind: kind as String);
+  }
+}
+
+class _SyncOpenStreamState {
+  _SyncOpenStreamState({
+    required this.path,
+    required this.create,
+    required this.vector,
+    required this.schemaJson,
+    required this.schemaPath,
+    required this.initialJson,
+  });
+
+  final String path;
+  final bool create;
+  final String? vector;
+  final Map<String, dynamic>? schemaJson;
+  final String? schemaPath;
+  final Map<String, dynamic>? initialJson;
+
+  final _input = StreamController<Content>();
+  Future<void>? _task;
+  Object? _error;
+  StackTrace? _errorStackTrace;
+  bool _inputClosed = false;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(
+      data: Uint8List(0),
+      headers: _SyncOpenStartChunkHeaders(
+        path: path,
+        create: create,
+        vector: vector,
+        schemaJson: schemaJson,
+        schemaPath: schemaPath,
+        initialJson: initialJson,
+      ).toHeaders(),
+    );
+    yield* _input.stream;
   }
 
-  void start() {
-    () async {
-      await for (final message in _changesToSync.stream) {
-        room.sendRequest("room.sync", {"path": message.path}, data: utf8.encode(message.base64));
+  void attachTask(Future<void> task) {
+    _task = task;
+    unawaited(
+      task
+          .catchError((Object error, StackTrace stackTrace) {
+            _error = error;
+            _errorStackTrace = stackTrace;
+          })
+          .whenComplete(closeInputStream),
+    );
+  }
+
+  void closeInputStream() {
+    if (_inputClosed) {
+      return;
+    }
+    _inputClosed = true;
+    unawaited(_input.close());
+  }
+
+  void queueSync(Uint8List data) {
+    final error = _error;
+    if (error != null) {
+      final stackTrace = _errorStackTrace;
+      if (stackTrace != null) {
+        Error.throwWithStackTrace(error, stackTrace);
       }
-    }();
+      throw error;
+    }
+    if (_inputClosed) {
+      throw RoomServerException("attempted to sync to a document that is not connected");
+    }
+    _input.add(BinaryContent(data: data, headers: {"kind": "sync"}));
+  }
+
+  Future<void> wait() async {
+    final task = _task;
+    if (task != null) {
+      await task;
+    }
+  }
+}
+
+class SyncClient extends ChangeEmitter {
+  SyncClient({required this.room});
+
+  void start() {
+    if (_started) {
+      throw RoomServerException("client already started");
+    }
+    _started = true;
   }
 
   void dispose() {
-    _changesToSync.close();
+    for (final streamState in _documentStreams.values) {
+      streamState.closeInputStream();
+    }
+    _documentStreams.clear();
+    for (final doc in _connectedDocuments.values) {
+      DocumentRuntime.instance!.unregisterDocument(doc.ref);
+    }
+    _connectedDocuments.clear();
+    _connectingDocuments.clear();
+    _started = false;
   }
 
   final _connectingDocuments = <String, Future<_RefCount<MeshDocument>>>{};
-  final _changesToSync = StreamController<_QueuedSync>();
   final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
+  final _documentStreams = <String, _SyncOpenStreamState>{};
+  bool _started = false;
 
-  Future<void> _handleSync(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    final headerStr = splitMessageHeader(bytes);
-    final payload = splitMessagePayload(bytes);
-
-    final header = jsonDecode(headerStr);
-    final path = _normalizeSyncPath(header["path"] as String);
-
-    final isConnecting = _connectingDocuments[path];
-    if (isConnecting != null) {
-      await isConnecting;
-    }
-
-    if (_connectedDocuments.containsKey(path)) {
-      final doc = _connectedDocuments[path]!;
+  void _applySyncPayload(_RefCount<MeshDocument> doc, Uint8List payload) {
+    if (payload.isNotEmpty) {
       final base64 = utf8.decode(payload);
       DocumentRuntime.instance!.applyBackendChanges(documentId: doc.ref.id, base64: base64);
-
-      if (!doc.ref._synchronized.isCompleted) {
-        doc.ref._synchronized.complete(true);
-      }
-    } else {
-      throw RoomServerException("received change for a document that is not connected:$path");
     }
+
+    if (!doc.ref._synchronized.isCompleted) {
+      doc.ref._synchronized.complete(true);
+    }
+  }
+
+  RoomServerException _unexpectedResponseError({required String operation}) {
+    return RoomServerException("unexpected return type from sync.$operation");
+  }
+
+  Future<ToolCallOutput> _invoke(String operation, ToolInput input) async {
+    final output = await room.invoke(toolkit: "sync", tool: operation, input: input);
+    return output;
   }
 
   Future<void> create(String path, [Map<String, dynamic>? json]) async {
     final normalizedPath = _normalizeSyncPath(path);
-    await room.sendRequest("room.create", {"path": normalizedPath, "json": json});
+    final output = await _invoke(
+      "create",
+      ToolContentInput(JsonContent(json: {"path": normalizedPath, "json": json, "schema": null, "schema_path": null})),
+    );
+    if (output is! ToolContentOutput) {
+      throw _unexpectedResponseError(operation: "create");
+    }
   }
 
   Future<MeshDocument> open(String path, {bool create = true, Map<String, dynamic>? initialJson, MeshSchema? schema}) async {
@@ -1198,29 +1816,63 @@ class SyncClient extends ChangeEmitter {
 
     final c = Completer<_RefCount<MeshDocument>>();
     _connectingDocuments[normalizedPath] = c.future;
+    _SyncOpenStreamState? streamState;
+    StreamIterator<Content>? iterator;
     try {
-      final result =
-          (await room.sendRequest("room.connect", {
-                "path": normalizedPath,
-                "create": create,
-                "initial_json": initialJson,
-                "schema": schema?.toJson(),
-              }))
-              as JsonContent;
+      streamState = _SyncOpenStreamState(
+        path: normalizedPath,
+        create: create,
+        vector: null,
+        schemaJson: schema?.toJson(),
+        schemaPath: null,
+        initialJson: initialJson,
+      );
+      final output = await _invoke("open", ToolStreamInput(streamState.inputStream()));
+      if (output is! ToolStreamOutput) {
+        throw _unexpectedResponseError(operation: "open");
+      }
 
-      schema = MeshSchema.fromJson(result.json["schema"]);
+      iterator = StreamIterator(output.stream);
+      if (!await iterator.moveNext()) {
+        throw RoomServerException("sync.open stream closed before the initial document state was returned");
+      }
+      final firstChunk = iterator.current;
+      if (firstChunk is ErrorContent) {
+        throw RoomServerException(firstChunk.text, code: firstChunk.code);
+      }
+      if (firstChunk is! BinaryContent) {
+        throw _unexpectedResponseError(operation: "open");
+      }
+
+      final stateHeaders = _SyncOpenStateChunkHeaders.fromHeaders(firstChunk.headers);
+      if (_normalizeSyncPath(stateHeaders.path) != normalizedPath) {
+        throw RoomServerException("sync.open stream returned a mismatched path");
+      }
+      schema = MeshSchema.fromJson(stateHeaders.schemaJson);
 
       final doc = MeshDocument(
         schema: schema,
-        sendChangesToBackend: (base64) => _changesToSync.sink.add(_QueuedSync(path: normalizedPath, base64: base64)),
+        sendChangesToBackend: (base64) {
+          try {
+            streamState!.queueSync(Uint8List.fromList(utf8.encode(base64)));
+          } catch (_) {}
+        },
       );
       final rc = _RefCount(doc);
       _connectedDocuments[normalizedPath] = rc;
+      _documentStreams[normalizedPath] = streamState;
+      _applySyncPayload(rc, firstChunk.data);
+      streamState.attachTask(_consumeOpenStream(path: normalizedPath, doc: rc, iterator: iterator, streamState: streamState));
       notifyListeners();
 
       c.complete(rc);
+      await doc.synchronized;
       return doc;
     } catch (err) {
+      streamState?.closeInputStream();
+      if (iterator != null) {
+        await iterator.cancel();
+      }
       c.completeError(err);
       rethrow;
     } finally {
@@ -1238,17 +1890,67 @@ class SyncClient extends ChangeEmitter {
     doc!.count--;
     if (doc.count == 0) {
       _connectedDocuments.remove(normalizedPath);
-      await room.sendRequest("room.disconnect", {"path": normalizedPath});
-      DocumentRuntime.instance!.unregisterDocument(doc.ref);
+      final streamState = _documentStreams.remove(normalizedPath);
+      if (streamState != null) {
+        streamState.closeInputStream();
+        try {
+          await streamState.wait();
+        } finally {
+          DocumentRuntime.instance!.unregisterDocument(doc.ref);
+        }
+      } else {
+        DocumentRuntime.instance!.unregisterDocument(doc.ref);
+      }
     }
   }
 
   Future<void> sync(String path, Uint8List data) async {
     final normalizedPath = _normalizeSyncPath(path);
-    await room.sendRequest("room.sync", {"path": normalizedPath}, data: data);
+    if (!_connectedDocuments.containsKey(normalizedPath)) {
+      throw RoomServerException("attempted to sync to a document that is not connected");
+    }
+    final streamState = _documentStreams[normalizedPath];
+    if (streamState == null) {
+      throw RoomServerException("attempted to sync to a document that is not connected");
+    }
+    streamState.queueSync(data);
   }
 
-  RoomClient room;
+  Future<void> _consumeOpenStream({
+    required String path,
+    required _RefCount<MeshDocument> doc,
+    required StreamIterator<Content> iterator,
+    required _SyncOpenStreamState streamState,
+  }) async {
+    try {
+      while (await iterator.moveNext()) {
+        final chunk = iterator.current;
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw _unexpectedResponseError(operation: "open");
+        }
+        if (chunk is! BinaryContent) {
+          throw _unexpectedResponseError(operation: "open");
+        }
+
+        final headers = _SyncOpenOutputChunkHeaders.fromHeaders(chunk.headers);
+        if (_normalizeSyncPath(headers.path) != path) {
+          throw RoomServerException("sync.open stream returned a mismatched path");
+        }
+        _applySyncPayload(doc, chunk.data);
+      }
+    } finally {
+      streamState.closeInputStream();
+      await iterator.cancel();
+    }
+  }
+
+  final RoomClient room;
 }
 
 class MeshDocument extends RuntimeDocument {
@@ -1271,10 +1973,11 @@ class MeshDocument extends RuntimeDocument {
   }
 }
 
-enum ToolContentType { json, text, file, link, empty }
+enum ToolContentType { binary, json, text, file, link, empty }
 
 String _toolContentTypeToWire(ToolContentType kind) {
   return switch (kind) {
+    ToolContentType.binary => "binary",
     ToolContentType.json => "json",
     ToolContentType.text => "text",
     ToolContentType.file => "file",
@@ -1285,6 +1988,7 @@ String _toolContentTypeToWire(ToolContentType kind) {
 
 ToolContentType _toolContentTypeFromWire(String value) {
   return switch (value) {
+    "binary" => ToolContentType.binary,
     "json" => ToolContentType.json,
     "text" => ToolContentType.text,
     "file" => ToolContentType.file,
@@ -1479,12 +2183,37 @@ class StorageClient extends ChangeEmitter {
     room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
+  RoomServerException _unexpectedResponseError(String operation) {
+    return RoomServerException("unexpected return type from storage.$operation");
+  }
+
+  Future<Content> _invoke(String operation, dynamic input, {Map<String, dynamic>? callerContext}) async {
+    final ToolInput toolInput;
+    if (input is Content) {
+      toolInput = ToolContentInput(input);
+    } else if (input is Map<String, dynamic>) {
+      toolInput = ToolContentInput(JsonContent(json: input));
+    } else {
+      throw RoomServerException("storage.$operation input must be Content or Map<String, dynamic>");
+    }
+
+    final output = await room.invoke(toolkit: "storage", tool: operation, input: toolInput, callerContext: callerContext);
+    if (output is! ToolContentOutput) {
+      throw _unexpectedResponseError(operation);
+    }
+    return output.content;
+  }
+
   Future<List<StorageEntry>> list(String path) async {
-    final response = (await room.sendRequest("storage.list", {"path": path})) as JsonContent;
+    final response = await _invoke("list", {"path": path});
+    if (response is! JsonContent) {
+      throw _unexpectedResponseError("list");
+    }
     return (response.json["files"] as List).map((f) {
       return StorageEntry(
         name: f["name"],
         isFolder: f["is_folder"],
+        size: f["size"] is int ? f["size"] : null,
         createdAt: f["created_at"] == null ? null : DateTime.parse(f["created_at"]),
         updatedAt: f["updated_at"] == null ? null : DateTime.parse(f["updated_at"]),
       );
@@ -1492,39 +2221,301 @@ class StorageClient extends ChangeEmitter {
   }
 
   Future<void> delete(String path, {bool? recursive = false}) async {
-    (await room.sendRequest("storage.delete", {"path": path, "recursive": recursive}) as JsonContent);
-  }
-
-  Future<FileHandle> open(String path, {bool overwrite = false}) async {
-    final response = (await room.sendRequest("storage.open", {"path": path, "overwrite": overwrite}) as JsonContent);
-
-    return FileHandle(id: response.json["handle"]);
+    await _invoke("delete", {"path": path, "recursive": recursive});
   }
 
   Future<bool> exists(String path) async {
-    final result = await room.sendRequest("storage.exists", {"path": path});
-
-    return (result as JsonContent).json["exists"];
+    final result = await _invoke("exists", {"path": path});
+    if (result is! JsonContent) {
+      throw _unexpectedResponseError("exists");
+    }
+    return result.json["exists"];
   }
 
-  Future<void> write(FileHandle handle, Uint8List bytes) async {
-    await room.sendRequest("storage.write", {"handle": handle.id}, data: bytes);
+  String _defaultUploadName(String uploadPath, {String? name}) {
+    if (name != null && name.isNotEmpty) {
+      return name;
+    }
+    return path.basename(uploadPath);
   }
 
-  Future<void> close(FileHandle handle) async {
-    await room.sendRequest("storage.close", {"handle": handle.id});
+  Future<void> upload(String path, Uint8List bytes, {bool overwrite = false, String? name, String? mimeType}) async {
+    await uploadStream(path, Stream.value(bytes), overwrite: overwrite, size: bytes.length, name: name, mimeType: mimeType);
+  }
+
+  Future<void> uploadStream(
+    String path,
+    Stream<Uint8List> chunks, {
+    bool overwrite = false,
+    int chunkSize = 64 * 1024,
+    int? size,
+    String? name,
+    String? mimeType,
+  }) async {
+    final input = _StorageUploadInputStream(
+      path: path,
+      overwrite: overwrite,
+      chunks: chunks,
+      chunkSize: chunkSize,
+      size: size,
+      name: _defaultUploadName(path, name: name),
+      mimeType: mimeType,
+    );
+    final output = await room.invoke(toolkit: "storage", tool: "upload", input: ToolStreamInput(input.inputStream()));
+
+    if (output is! ToolStreamOutput) {
+      input.close();
+      throw _unexpectedResponseError("upload");
+    }
+
+    try {
+      await for (final chunk in output.stream) {
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw _unexpectedResponseError("upload");
+        }
+        if (chunk is! BinaryContent || chunk.headers["kind"] != "pull") {
+          throw _unexpectedResponseError("upload");
+        }
+        input.requestNext();
+      }
+    } finally {
+      input.close();
+    }
+  }
+
+  Future<Stream<BinaryContent>> downloadStream(String path, {int chunkSize = 64 * 1024}) async {
+    final input = _StorageDownloadInputStream(path: path, chunkSize: chunkSize);
+    final output = await room.invoke(toolkit: "storage", tool: "download", input: ToolStreamInput(input.inputStream()));
+    if (output is! ToolStreamOutput) {
+      input.close();
+      throw _unexpectedResponseError("download");
+    }
+
+    Stream<BinaryContent> stream() async* {
+      var metadataReceived = false;
+      int? expectedSize;
+      var bytesReceived = 0;
+      try {
+        await for (final chunk in output.stream) {
+          if (chunk is ErrorContent) {
+            throw RoomServerException(chunk.text, code: chunk.code);
+          }
+          if (chunk is ControlContent) {
+            if (chunk.method == "close") {
+              if (!metadataReceived || expectedSize == null || bytesReceived != expectedSize) {
+                throw _unexpectedResponseError("download");
+              }
+              return;
+            }
+            throw _unexpectedResponseError("download");
+          }
+          if (chunk is! BinaryContent) {
+            throw _unexpectedResponseError("download");
+          }
+
+          final kind = chunk.headers["kind"];
+          if (kind == "start") {
+            final chunkName = chunk.headers["name"];
+            final chunkMimeType = chunk.headers["mime_type"];
+            final chunkSizeValue = chunk.headers["size"];
+            if (chunkName is! String || chunkMimeType is! String || chunkSizeValue is! int || chunkSizeValue < 0) {
+              throw _unexpectedResponseError("download");
+            }
+            metadataReceived = true;
+            expectedSize = chunkSizeValue;
+            yield chunk;
+            if (expectedSize > 0) {
+              input.requestNext();
+            }
+            continue;
+          }
+
+          if (kind != "data" || !metadataReceived || expectedSize == null) {
+            throw _unexpectedResponseError("download");
+          }
+
+          bytesReceived += chunk.data.length;
+          if (bytesReceived > expectedSize) {
+            throw _unexpectedResponseError("download");
+          }
+          yield chunk;
+          if (bytesReceived < expectedSize) {
+            input.requestNext();
+          }
+        }
+      } finally {
+        input.close();
+      }
+    }
+
+    return stream();
   }
 
   Future<FileContent> download(String path) async {
-    final response = (await room.sendRequest("storage.download", {"path": path}) as FileContent);
-
-    return response;
+    String? name;
+    String? mimeType;
+    int? expectedSize;
+    var bytesReceived = 0;
+    final bytes = BytesBuilder(copy: false);
+    final stream = await downloadStream(path);
+    await for (final chunk in stream) {
+      final kind = chunk.headers["kind"];
+      if (kind == "start") {
+        final chunkName = chunk.headers["name"];
+        final chunkMimeType = chunk.headers["mime_type"];
+        final chunkSizeValue = chunk.headers["size"];
+        if (chunkName is! String || chunkMimeType is! String || chunkSizeValue is! int || chunkSizeValue < 0) {
+          throw _unexpectedResponseError("download");
+        }
+        name = chunkName;
+        mimeType = chunkMimeType;
+        expectedSize = chunkSizeValue;
+        continue;
+      }
+      if (kind != "data") {
+        throw _unexpectedResponseError("download");
+      }
+      bytes.add(chunk.data);
+      bytesReceived += chunk.data.length;
+    }
+    if (name == null || mimeType == null || expectedSize == null || bytesReceived != expectedSize) {
+      throw _unexpectedResponseError("download");
+    }
+    return FileContent(data: bytes.takeBytes(), name: name, mimeType: mimeType);
   }
 
   Future<String> downloadUrl(String path) async {
-    final response = (await room.sendRequest("storage.download_url", {"path": path}) as JsonContent).json;
+    final response = await _invoke("download_url", {"path": path});
+    if (response is! JsonContent) {
+      throw _unexpectedResponseError("download_url");
+    }
 
-    return response["url"];
+    return response.json["url"];
+  }
+}
+
+class _StorageDownloadInputStream {
+  _StorageDownloadInputStream({required this.path, required this.chunkSize});
+
+  final String path;
+  final int chunkSize;
+  final _pulls = StreamController<void>();
+  bool _closed = false;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(data: Uint8List(0), headers: {"kind": "start", "path": path, "chunk_size": chunkSize});
+    await for (final _ in _pulls.stream) {
+      if (_closed) {
+        return;
+      }
+      yield BinaryContent(data: Uint8List(0), headers: {"kind": "pull"});
+    }
+  }
+
+  void requestNext() {
+    if (_closed) {
+      return;
+    }
+    _pulls.add(null);
+  }
+
+  void close() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    unawaited(_pulls.close());
+  }
+}
+
+class _StorageUploadInputStream {
+  _StorageUploadInputStream({
+    required this.path,
+    required this.overwrite,
+    required Stream<Uint8List> chunks,
+    required this.chunkSize,
+    required this.size,
+    required this.name,
+    required this.mimeType,
+  }) : _source = StreamQueue(chunks);
+
+  final String path;
+  final bool overwrite;
+  final int chunkSize;
+  final int? size;
+  final String name;
+  final String? mimeType;
+  final StreamQueue<Uint8List> _source;
+  final _pulls = StreamController<void>();
+  bool _closed = false;
+  Uint8List _pendingChunk = Uint8List(0);
+  int _pendingOffset = 0;
+  bool _sourceExhausted = false;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(
+      data: Uint8List(0),
+      headers: {"kind": "start", "path": path, "overwrite": overwrite, "name": name, "mime_type": mimeType, "size": size},
+    );
+    await for (final _ in _pulls.stream) {
+      if (_closed) {
+        return;
+      }
+      final chunk = await _nextChunk();
+      if (chunk == null) {
+        return;
+      }
+      yield BinaryContent(data: chunk, headers: const {"kind": "data"});
+    }
+  }
+
+  Future<Uint8List?> _nextChunk() async {
+    while (true) {
+      if (_pendingOffset < _pendingChunk.length) {
+        final end = math.min(_pendingOffset + chunkSize, _pendingChunk.length);
+        final chunk = Uint8List.sublistView(_pendingChunk, _pendingOffset, end);
+        _pendingOffset = end;
+        return Uint8List.fromList(chunk);
+      }
+
+      if (_sourceExhausted) {
+        return null;
+      }
+
+      if (!await _source.hasNext) {
+        _sourceExhausted = true;
+        return null;
+      }
+
+      final nextChunk = await _source.next;
+      if (nextChunk.isEmpty) {
+        continue;
+      }
+      _pendingChunk = nextChunk;
+      _pendingOffset = 0;
+    }
+  }
+
+  void requestNext() {
+    if (_closed) {
+      return;
+    }
+    _pulls.add(null);
+  }
+
+  void close() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    unawaited(_pulls.close());
+    unawaited(_source.cancel());
   }
 }
 
@@ -1534,34 +2525,90 @@ class DeveloperClient extends ChangeEmitter {
   }
 
   RoomClient room;
+
   Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final rawJson = unpackMessage(bytes).header;
 
     room._eventsController.add(RoomLogEvent.fromJson(rawJson));
   }
 
+  RoomServerException _unexpectedResponseError(String operation) {
+    return RoomServerException("unexpected return type from developer.$operation");
+  }
+
+  Future<void> _invoke(String operation, Map<String, dynamic> input) async {
+    await room.invoke(
+      toolkit: "developer",
+      tool: operation,
+      input: ToolContentInput(JsonContent(json: input)),
+    );
+  }
+
   Future<void> log(String type, Map<String, dynamic> data) async {
-    room.protocol.send("developer.log", packMessage({"type": type, "data": data}, null));
+    await _invoke("log", {"type": type, "data": data});
   }
 
   Future<void> info(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send("developer.info", packMessage({"message": message, "extra": extra ?? {}}, null));
+    await _invoke("info", {"message": message, "extra": extra ?? {}});
   }
 
   Future<void> warning(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send("developer.warning", packMessage({"message": message, "extra": extra ?? {}}, null));
+    await _invoke("warning", {"message": message, "extra": extra ?? {}});
   }
 
   Future<void> error(String message, {Map<String, dynamic>? extra}) async {
-    room.protocol.send("developer.error", packMessage({"message": message, "extra": extra ?? {}}, null));
+    await _invoke("error", {"message": message, "extra": extra ?? {}});
   }
 
-  Future<void> enable() async {
-    room.protocol.send("developer.watch", packMessage({}, null));
-  }
+  Stream<RoomLogEvent> logs() async* {
+    final inputClosed = Completer<void>();
 
-  Future<void> disable() async {
-    room.protocol.send("developer.unwatch", packMessage({}, null));
+    Stream<Content> inputStream() async* {
+      await inputClosed.future;
+    }
+
+    final output = await room.invoke(toolkit: "developer", tool: "logs", input: ToolStreamInput(inputStream()));
+    if (output is! ToolStreamOutput) {
+      if (!inputClosed.isCompleted) {
+        inputClosed.complete();
+      }
+      throw _unexpectedResponseError("logs");
+    }
+
+    try {
+      await for (final chunk in output.stream) {
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw _unexpectedResponseError("logs");
+        }
+        if (chunk is! BinaryContent) {
+          throw _unexpectedResponseError("logs");
+        }
+
+        final logType = chunk.headers["type"];
+        if (logType is! String || logType.isEmpty) {
+          throw RoomServerException("developer.logs returned a chunk without a valid type");
+        }
+
+        final dynamic decoded = chunk.data.isEmpty ? <String, dynamic>{} : jsonDecode(utf8.decode(chunk.data));
+        if (decoded is! Map) {
+          throw RoomServerException("developer.logs returned invalid JSON data");
+        }
+
+        final event = RoomLogEvent(type: logType, data: Map<String, dynamic>.from(decoded));
+        room._eventsController.add(event);
+        yield event;
+      }
+    } finally {
+      if (!inputClosed.isCompleted) {
+        inputClosed.complete();
+      }
+    }
   }
 }
 
@@ -1635,6 +2682,25 @@ class MessagingClient extends ChangeEmitter {
   final Map<String, Completer> pendingStreams = {};
   final Map<String, MessageStream> _streams = {};
 
+  Map<String, dynamic> _messageInput({
+    required String type,
+    required Map<String, dynamic> message,
+    Uint8List? attachment,
+    String? toParticipantId,
+  }) {
+    final input = <String, dynamic>{"type": type, "message_json": jsonEncode(message)};
+
+    if (attachment != null) {
+      input["attachment_base64"] = base64Encode(attachment);
+    }
+
+    if (toParticipantId != null) {
+      input["to_participant_id"] = toParticipantId;
+    }
+
+    return input;
+  }
+
   Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
     final streamId = Uuid().v4();
 
@@ -1661,23 +2727,47 @@ class MessagingClient extends ChangeEmitter {
     required Map<String, dynamic> message,
     Uint8List? attachment,
   }) async {
-    await room.sendRequest("messaging.send", {"to_participant_id": to.id, "type": type, "message": message}, data: attachment);
+    await room.invoke(
+      toolkit: "messaging",
+      tool: "send",
+      input: ToolContentInput(
+        JsonContent(
+          json: _messageInput(toParticipantId: to.id, type: type, message: message, attachment: attachment),
+        ),
+      ),
+    );
   }
 
   void Function(MessageStream reader)? _onStreamAcceptCallback;
 
   Future<void> enable({void Function(MessageStream reader)? onStreamAccept}) async {
-    await room.sendRequest("messaging.enable", {});
+    await room.invoke(
+      toolkit: "messaging",
+      tool: "enable",
+      input: ToolContentInput(JsonContent(json: {})),
+    );
 
     _onStreamAcceptCallback = onStreamAccept;
   }
 
   Future<void> disable() async {
-    await room.sendRequest("messaging.disable", {});
+    await room.invoke(
+      toolkit: "messaging",
+      tool: "disable",
+      input: ToolContentInput(JsonContent(json: {})),
+    );
   }
 
   Future<void> broadcastMessage({required String type, required Map<String, dynamic> message, Uint8List? attachment}) async {
-    await room.sendRequest("messaging.broadcast", {"type": type, "message": message}, data: attachment);
+    await room.invoke(
+      toolkit: "messaging",
+      tool: "broadcast",
+      input: ToolContentInput(
+        JsonContent(
+          json: _messageInput(type: type, message: message, attachment: attachment),
+        ),
+      ),
+    );
   }
 
   final _participants = <String, RemoteParticipant>{};
@@ -1818,10 +2908,11 @@ class FileHandle {
 }
 
 class StorageEntry {
-  StorageEntry({required this.name, required this.isFolder, required this.createdAt, required this.updatedAt});
+  StorageEntry({required this.name, required this.isFolder, required this.size, required this.createdAt, required this.updatedAt});
 
   final String name;
   final bool isFolder;
+  final int? size;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -1840,6 +2931,7 @@ abstract class Content {
 
 /// A dictionary-like structure to map a 'type' string to an 'unpack' function.
 final Map<String, Content Function(Map<String, dynamic> header, Uint8List payload)> _contentTypes = {
+  'binary': BinaryContent.unpack,
   'link': LinkContent.unpack,
   'file': FileContent.unpack,
   'text': TextContent.unpack,
@@ -1848,6 +2940,28 @@ final Map<String, Content Function(Map<String, dynamic> header, Uint8List payloa
   'empty': EmptyContent.unpack,
   'control': ControlContent.unpack,
 };
+
+class BinaryContent extends Content {
+  BinaryContent({required this.data, Map<String, dynamic>? headers}) : headers = Map<String, dynamic>.from(headers ?? const {});
+
+  final Uint8List data;
+  final Map<String, dynamic> headers;
+
+  static BinaryContent unpack(Map<String, dynamic> header, Uint8List payload) {
+    final rawHeaders = header['headers'];
+    return BinaryContent(data: payload, headers: rawHeaders is Map ? rawHeaders.cast<String, dynamic>() : const {});
+  }
+
+  @override
+  Uint8List pack() {
+    return packMessage({'type': 'binary', 'headers': headers}, data);
+  }
+
+  @override
+  String toString() {
+    return "BinaryContent: headers=$headers length=${data.length}";
+  }
+}
 
 //
 // LinkContent
@@ -2499,17 +3613,23 @@ class RoomStorageMountSpec {
 class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ImageStorageMountSpec>? images;
+  final List<EmptyDirMountSpec>? emptyDirs;
 
-  ServiceTemplateContainerMountSpec({this.room, this.images});
+  ServiceTemplateContainerMountSpec({this.room, this.images, this.emptyDirs});
 
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
-  Map<String, dynamic> toJson() => {if (room != null) 'room': room!.map((e) => e.toJson()).toList()};
+  Map<String, dynamic> toJson() => {
+    if (room != null) 'room': room!.map((e) => e.toJson()).toList(),
+    if (images != null) 'images': images!.map((e) => e.toJson()).toList(),
+    if (emptyDirs != null) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
+  };
 }
 
 /// ---------------------------------------------------------------------------
@@ -2638,6 +3758,7 @@ class ContainerTemplateSpec {
           ? null
           : ContainerMountSpec(
               room: storage!.room,
+              emptyDirs: storage!.emptyDirs,
               // If you later add `project` to ServiceTemplateContainerMountSpec, map it here:
               // project: storage!.project,
             ),
@@ -2868,19 +3989,38 @@ class FileStorageMountSpec {
   }
 }
 
+class EmptyDirMountSpec {
+  final String path;
+  final bool readOnly;
+
+  const EmptyDirMountSpec({required this.path, this.readOnly = false});
+
+  Map<String, dynamic> toJson() => {'path': path, 'read_only': readOnly};
+
+  static EmptyDirMountSpec fromJson(Map<String, dynamic> json) {
+    return EmptyDirMountSpec(path: json['path'] as String, readOnly: (json['read_only'] as bool?) ?? false);
+  }
+
+  EmptyDirMountSpec copyWith({String? path, bool? readOnly}) {
+    return EmptyDirMountSpec(path: path ?? this.path, readOnly: readOnly ?? this.readOnly);
+  }
+}
+
 class ContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
   final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
+  final List<EmptyDirMountSpec>? emptyDirs;
 
-  const ContainerMountSpec({this.room, this.project, this.images, this.files});
+  const ContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
     if (project != null && project!.isNotEmpty) 'project': project!.map((e) => e.toJson()).toList(),
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null && files!.isNotEmpty) 'files': files!.map((e) => e.toJson()).toList(),
+    if (emptyDirs != null && emptyDirs!.isNotEmpty) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
   };
 
   static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
@@ -2890,6 +4030,7 @@ class ContainerMountSpec {
       project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -3214,6 +4355,26 @@ class SecretsClient extends ChangeEmitter {
   final OAuthTokenRequestHandler? oauthTokenRequestHandler;
   final SecretRequestHandler? secretRequestHandler;
 
+  RoomServerException _unexpectedResponseError(String operation) {
+    return RoomServerException("unexpected return type from secrets.$operation");
+  }
+
+  Future<Content> _invoke(String operation, dynamic input) async {
+    final ToolInput toolInput;
+    if (input is Content) {
+      toolInput = ToolContentInput(input);
+    } else if (input is Map) {
+      toolInput = ToolContentInput(JsonContent(json: Map<String, dynamic>.from(input)));
+    } else {
+      throw RoomServerException("secrets invoke input must be Content or JSON");
+    }
+    final output = await room.invoke(toolkit: "secrets", tool: operation, input: toolInput);
+    if (output is! ToolContentOutput) {
+      throw _unexpectedResponseError(operation);
+    }
+    return output.content;
+  }
+
   // Server sent us a request asking the local user/client to authorize and supply a token.
   Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final header = unpackMessage(bytes).header;
@@ -3286,24 +4447,20 @@ class SecretsClient extends ChangeEmitter {
 
   /// Client -> server: Provide the OAuth token in response to a prior inbound request.
   Future<void> provideOAuthAuthorization({required String requestId, required String code}) async {
-    final payload = {"request_id": requestId, "code": code};
-    await room.sendRequest("secrets.provide_oauth_authorization", payload);
+    await _invoke("provide_oauth_authorization", {"request_id": requestId, "code": code, "error": null});
   }
 
   /// Client -> server: reject an OAuth token request in response to a prior inbound request.
   Future<void> rejectOAuthAuthorization({required String requestId, required String error}) async {
-    final payload = {"request_id": requestId, "error": error};
-    await room.sendRequest("secrets.provide_oauth_authorization", payload);
+    await _invoke("provide_oauth_authorization", {"request_id": requestId, "code": null, "error": error});
   }
 
   Future<void> provideSecret({required String requestId, required Uint8List data}) async {
-    final payload = {"request_id": requestId};
-    await room.sendRequest("secrets.provide_secret", payload, data: data);
+    await _invoke("provide_secret", BinaryContent(data: data, headers: {"request_id": requestId, "error": null}));
   }
 
   Future<void> rejectSecret({required String requestId, required String error}) async {
-    final payload = {"request_id": requestId, "error": error};
-    await room.sendRequest("secrets.provide_secret", payload);
+    await _invoke("provide_secret", BinaryContent(data: Uint8List(0), headers: {"request_id": requestId, "error": error}));
   }
 
   Future<Uint8List> requestSecret({
@@ -3318,27 +4475,27 @@ class SecretsClient extends ChangeEmitter {
       "type": type,
       "participant_id": fromParticipantId,
       "timeout": timeout,
-      if (delegateTo != null) "delegate_to": delegateTo,
+      "delegate_to": delegateTo,
     };
 
-    final res = await room.sendRequest("secrets.request_secret", req);
+    final res = await _invoke("request_secret", req);
     if (res is FileContent) {
       return res.data;
     }
-    throw RoomServerException("Invalid response received, expected FileContent");
+    throw _unexpectedResponseError("request_secret");
   }
 
   Future<FileContent?> getSecret({required String secretId, String? delegatedTo}) async {
-    final req = <String, dynamic>{"secret_id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
+    final req = <String, dynamic>{"secret_id": secretId, "type": null, "name": null, "delegated_to": delegatedTo};
 
-    final res = await room.sendRequest("secrets.get_secret", req);
+    final res = await _invoke("get_secret", req);
     if (res is EmptyContent) {
       return null;
     }
     if (res is FileContent) {
       return res;
     }
-    throw RoomServerException("Invalid response received, expected FileContent or EmptyContent");
+    throw _unexpectedResponseError("get_secret");
   }
 
   Future<void> setSecret({
@@ -3349,23 +4506,28 @@ class SecretsClient extends ChangeEmitter {
     String? delegatedTo,
     String? forIdentity,
   }) async {
-    final req = <String, dynamic>{
-      "secret_id": secretId,
-      if (mimeType != null) "type": mimeType,
-      if (name != null) "name": name,
-      if (delegatedTo != null) "delegated_to": delegatedTo,
-      if (forIdentity != null) "for_identity": forIdentity,
-    };
-
-    final res = await room.sendRequest("secrets.set_secret", req, data: data);
+    final res = await _invoke(
+      "set_secret",
+      BinaryContent(
+        data: data,
+        headers: <String, dynamic>{
+          "secret_id": secretId,
+          "type": mimeType,
+          "name": name,
+          "delegated_to": delegatedTo,
+          "for_identity": forIdentity,
+          "has_data": true,
+        },
+      ),
+    );
     if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
+    throw _unexpectedResponseError("set_secret");
   }
 
   Future<List<SecretInfo>> listSecrets() async {
-    final res = await room.sendRequest("secrets.list_secrets", {});
+    final res = await _invoke("list_secrets", {});
 
     if (res is JsonContent) {
       final secrets = (res.json['secrets'] as List<dynamic>?)?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>)).toList();
@@ -3373,27 +4535,27 @@ class SecretsClient extends ChangeEmitter {
       return secrets ?? [];
     }
 
-    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
+    throw _unexpectedResponseError("list_secrets");
   }
 
   Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
-    final req = <String, dynamic>{"id": secretId, if (delegatedTo != null) "delegated_to": delegatedTo};
+    final req = <String, dynamic>{"id": secretId, "delegated_to": delegatedTo};
 
-    final res = await room.sendRequest("secrets.delete_secret", req);
+    final res = await _invoke("delete_secret", req);
     if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
+    throw _unexpectedResponseError("delete_secret");
   }
 
   Future<void> deleteRequestedSecret({required String url, required String type, String? delegatedTo}) async {
-    final req = <String, dynamic>{"url": url, "type": type, if (delegatedTo != null) "delegated_to": delegatedTo};
+    final req = <String, dynamic>{"url": url, "type": type, "delegated_to": delegatedTo};
 
-    final res = await room.sendRequest("secrets.delete_requested_secret", req);
+    final res = await _invoke("delete_requested_secret", req);
     if (res is EmptyContent || res is JsonContent) {
       return;
     }
-    throw RoomServerException("Invalid response received, expected EmptyContent or JsonContent");
+    throw _unexpectedResponseError("delete_requested_secret");
   }
 
   /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
@@ -3410,15 +4572,18 @@ class SecretsClient extends ChangeEmitter {
     int timeout = 60 * 5,
   }) async {
     final req = {
-      if (connector != null) "connector": connector.toJson(),
-      if (oauth != null) "oauth": oauth.toJson(),
+      "connector": connector?.toJson(),
+      "oauth": oauth?.toJson(),
       "redirect_uri": redirectUri.toString(),
       "timeout": timeout,
       "participant_id": fromParticipantId,
       "delegate_to": delegateTo,
     };
 
-    final res = await room.sendRequest("secrets.request_oauth_token", req) as JsonContent;
+    final res = await _invoke("request_oauth_token", req);
+    if (res is! JsonContent) {
+      throw _unexpectedResponseError("request_oauth_token");
+    }
     final accessToken = (res.json["access_token"] as String?) ?? "";
     if (accessToken.isEmpty) {
       throw RoomServerException("Invalid response: missing access_token");
@@ -3433,13 +4598,13 @@ class SecretsClient extends ChangeEmitter {
     String? delegatedBy,
   }) async {
     final req = <String, dynamic>{
-      if (connector != null) 'connector': connector.toJson(),
-      if (oauth != null) 'oauth': oauth.toJson(),
-      if (delegatedBy != null) 'delegated_by': delegatedBy,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
+      'connector': connector?.toJson(),
+      'oauth': oauth?.toJson(),
+      'delegated_by': delegatedBy,
+      'delegated_to': delegatedTo,
     };
 
-    final res = await room.sendRequest('secrets.get_offline_oauth_token', req);
+    final res = await _invoke('get_offline_oauth_token', req);
 
     if (res is JsonContent) {
       final token = (res.json['access_token'] as String?) ?? '';
@@ -3447,8 +4612,7 @@ class SecretsClient extends ChangeEmitter {
         return null;
       }
       return token;
-    } else {
-      throw RoomServerException('Invalid response received, expected JsonContent');
     }
+    throw _unexpectedResponseError('get_offline_oauth_token');
   }
 }

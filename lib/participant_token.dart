@@ -447,7 +447,7 @@ class ContainersGrant {
 
   ContainersGrant({this.logs = true, this.pull, this.run, this.useContainers = true});
 
-  bool _matchesTag(String rule, String tag) => tag == rule || tag.startsWith(_stripWildcardSuffix(rule));
+  bool _matchesTag(String rule, String tag) => tag == rule || (_hasWildcardSuffix(rule) && tag.startsWith(_stripWildcardSuffix(rule)));
 
   bool canPull(String tag) {
     if (pull == null) return true;
@@ -505,7 +505,7 @@ class ServicesGrant {
 
   Map<String, dynamic> toJson() => {"list": list};
 
-  factory ServicesGrant.fromJson(Map<String, dynamic> j) => ServicesGrant(list: j["list"]);
+  factory ServicesGrant.fromJson(Map<String, dynamic> j) => ServicesGrant(list: j["list"] ?? true);
 }
 
 class OAuthEndpoint {

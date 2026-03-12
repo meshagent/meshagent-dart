@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'room_server_client.dart';
 import 'participant_token.dart';
@@ -17,13 +18,9 @@ void _validateSchemaName(String name) {
 Future<void> deploySchema({required RoomClient room, required MeshSchema schema, required String name, bool overwrite = true}) async {
   _validateSchemaName(name);
 
-  final handle = await room.storage.open('.schemas/$name.json', overwrite: overwrite);
-
   // Convert schema to JSON, then to bytes.
-  final data = utf8.encode(jsonEncode(schema.toJson()));
-
-  await room.storage.write(handle, data);
-  await room.storage.close(handle);
+  final data = Uint8List.fromList(utf8.encode(jsonEncode(schema.toJson())));
+  await room.storage.uploadStream('.schemas/$name.json', Stream.value(data), overwrite: overwrite, size: data.length);
 }
 
 /// Return the base URL for meshagent, checking environment variables first.
