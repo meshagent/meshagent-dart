@@ -1,4 +1,4 @@
-import 'package:meshagent/toolkit_config.dart';
+import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
