@@ -1,3 +1,6 @@
+## [0.30.1]
+- Stability
+
 ## [0.30.0]
 - Breaking: tool invocation moved to toolkit-based `room.invoke` with `room.*` tool-call events and streaming tool-call chunks.
 - Added containers and services clients to the Dart RoomClient, with container exec/log streaming and service list/restart support.
