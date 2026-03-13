@@ -264,7 +264,7 @@ class Connector {
   final OAuthClientConfig? oauth;
   final MCPServer server;
 
-  String? get _oauthClientSecretIdFromHeaders {
+  static String? _oauthClientSecretIdFromHeaders(MCPServer server) {
     final value = server.headers?['Meshagent-OAuth-Client-Secret-Id'];
     if (value is String && value.trim().isNotEmpty) {
       return value.trim();
@@ -272,10 +272,14 @@ class Connector {
     return null;
   }
 
-  ConnectorRef? _buildConnectorRef() {
-    final clientSecretId = _oauthClientSecretIdFromHeaders;
+  static ConnectorRef? buildConnectorRef({required MCPServer server, OAuthClientConfig? oauth}) {
+    final clientSecretId = _oauthClientSecretIdFromHeaders(server);
     final serverUrl = server.serverUrl;
     final hasServerUrl = serverUrl != null && serverUrl.trim().isNotEmpty;
+    final requiresOAuth = oauth != null || server.openaiConnectorId != null || clientSecretId != null;
+    if (!requiresOAuth) {
+      return null;
+    }
     if (server.openaiConnectorId == null && clientSecretId == null && !hasServerUrl) {
       return null;
     }
@@ -284,6 +288,10 @@ class Connector {
       serverUrl: hasServerUrl ? serverUrl.trim() : null,
       clientSecretId: clientSecretId,
     );
+  }
+
+  ConnectorRef? _buildConnectorRef() {
+    return buildConnectorRef(server: server, oauth: oauth);
   }
 
   Future<bool> isConnected(RoomClient room, String agentName) async {
