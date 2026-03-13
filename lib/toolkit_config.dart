@@ -285,7 +285,7 @@ class Connector {
     }
     return ConnectorRef(
       openaiConnectorId: server.openaiConnectorId,
-      serverUrl: hasServerUrl ? serverUrl?.trim() : null,
+      serverUrl: hasServerUrl ? serverUrl.trim() : null,
       clientSecretId: clientSecretId,
     );
   }
