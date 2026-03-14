@@ -3,6 +3,21 @@ import 'package:test/test.dart';
 
 void main() {
   group('Connector.buildConnectorRef', () {
+    test('coerces legacy header maps into strict header entries', () {
+      final server = MCPServer.fromJson({
+        'server_label': 'custom',
+        'headers': {'Meshagent-OAuth-Client-Secret-Id': 'secret-123'},
+      });
+
+      expect(server.headers, isNotNull);
+      expect(server.headers!.map((header) => header.toJson()).toList(), [
+        {'name': 'Meshagent-OAuth-Client-Secret-Id', 'value': 'secret-123'},
+      ]);
+      expect(server.toJson()['headers'], [
+        {'name': 'Meshagent-OAuth-Client-Secret-Id', 'value': 'secret-123'},
+      ]);
+    });
+
     test('returns null for public MCP server with only server_url', () {
       final server = MCPServer(serverLabel: 'deepwiki', serverUrl: 'https://mcp.deepwiki.com/mcp');
 
@@ -39,7 +54,7 @@ void main() {
       final server = MCPServer(
         serverLabel: 'custom',
         serverUrl: 'https://mcp.example.com',
-        headers: {'Meshagent-OAuth-Client-Secret-Id': 'secret-123'},
+        headers: const [MCPHeader(name: 'Meshagent-OAuth-Client-Secret-Id', value: 'secret-123')],
       );
 
       final connectorRef = Connector.buildConnectorRef(server: server);

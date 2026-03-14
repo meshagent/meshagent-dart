@@ -36,12 +36,41 @@ abstract class ToolkitConfig {
 /// MCP CONFIGURATION
 /// ----------------------------------------------
 
+class MCPHeader {
+  final String name;
+  final String value;
+
+  const MCPHeader({required this.name, required this.value});
+
+  factory MCPHeader.fromJson(Map<String, dynamic> json) {
+    return MCPHeader(name: json['name'] as String, value: json['value'] as String);
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'value': value};
+}
+
+List<MCPHeader>? _parseMcpHeaders(Object? value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value is List) {
+    return value.map((entry) => MCPHeader.fromJson(Map<String, dynamic>.from(entry as Map))).toList();
+  }
+
+  if (value is Map) {
+    return value.entries.map((entry) => MCPHeader(name: entry.key.toString(), value: entry.value.toString())).toList();
+  }
+
+  throw ArgumentError.value(value, 'headers', 'Expected a list of header entries or a map');
+}
+
 class MCPServer {
   final String serverLabel;
   final String? authorization;
   final String? serverUrl;
   final List<String>? allowedTools;
-  final Map<String, dynamic>? headers;
+  final List<MCPHeader>? headers;
   final String? requireApproval; // "always" | "never"
   final List<String>? alwaysRequireApproval;
   final List<String>? neverRequireApproval;
@@ -65,7 +94,7 @@ class MCPServer {
       authorization: json['authorization'],
       serverUrl: json['server_url'],
       allowedTools: (json['allowed_tools'])?.cast<String>(),
-      headers: json['headers'] != null ? Map<String, dynamic>.from(json['headers']) : null,
+      headers: _parseMcpHeaders(json['headers']),
       requireApproval: json['require_approval'],
       alwaysRequireApproval: (json['always_require_approval'])?.cast<String>(),
       neverRequireApproval: (json['never_require_approval'])?.cast<String>(),
@@ -79,7 +108,7 @@ class MCPServer {
       'server_url': serverUrl,
       if (authorization != null) 'authorization': authorization,
       if (allowedTools != null) 'allowed_tools': allowedTools,
-      if (headers != null) 'headers': headers,
+      if (headers != null) 'headers': headers!.map((header) => header.toJson()).toList(),
       if (requireApproval != null) 'require_approval': requireApproval,
       if (alwaysRequireApproval != null) 'always_require_approval': alwaysRequireApproval,
       if (neverRequireApproval != null) 'never_require_approval': neverRequireApproval,
@@ -96,7 +125,7 @@ class MCPServer {
     String? authorization,
     String? serverUrl,
     List<String>? allowedTools,
-    Map<String, dynamic>? headers,
+    List<MCPHeader>? headers,
     String? requireApproval,
     List<String>? alwaysRequireApproval,
     List<String>? neverRequireApproval,
@@ -265,9 +294,13 @@ class Connector {
   final MCPServer server;
 
   static String? _oauthClientSecretIdFromHeaders(MCPServer server) {
-    final value = server.headers?['Meshagent-OAuth-Client-Secret-Id'];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
+    for (final header in server.headers ?? const <MCPHeader>[]) {
+      if (header.name == 'Meshagent-OAuth-Client-Secret-Id') {
+        final value = header.value.trim();
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
     }
     return null;
   }
