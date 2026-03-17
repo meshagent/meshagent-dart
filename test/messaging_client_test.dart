@@ -199,4 +199,66 @@ void main() {
 
     await harness.dispose();
   });
+
+  test('messaging client resolves ad-hoc remote participants by id', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    await harness.room.messaging.sendMessage(
+      to: RemoteParticipant(client: harness.room, id: 'remote-1', role: 'member'),
+      type: 'direct',
+      message: {'value': 1},
+    );
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), ['enable', 'send']);
+    final sendInput = harness.server.requests[1].input;
+    expect(sendInput['to_participant_id'], 'remote-1');
+    expect(jsonDecode(sendInput['message_json'] as String), {'value': 1});
+
+    await harness.dispose();
+  });
+
+  test('messaging client ignores offline remotes when ignoreOffline is true', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final remote = harness.room.messaging.remoteParticipants.single;
+    expect(remote.online, isTrue);
+
+    await harness.server.sendIncomingMessage(harness.pair.serverProtocol, type: 'participant.disabled', message: {'id': 'remote-1'});
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(remote.online, isFalse);
+
+    await harness.room.messaging.sendMessage(to: remote, type: 'direct', message: {'value': 1}, ignoreOffline: true);
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), ['enable']);
+
+    await harness.dispose();
+  });
+
+  test('messaging client throws for offline remotes when ignoreOffline is false', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final remote = harness.room.messaging.remoteParticipants.single;
+
+    await harness.server.sendIncomingMessage(harness.pair.serverProtocol, type: 'participant.disabled', message: {'id': 'remote-1'});
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    await expectLater(
+      harness.room.messaging.sendMessage(to: remote, type: 'direct', message: {'value': 1}),
+      throwsA(isA<RoomServerException>().having((exception) => exception.message, 'message', 'the participant was not found')),
+    );
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), ['enable']);
+
+    await harness.dispose();
+  });
 }

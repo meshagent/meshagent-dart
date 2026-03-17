@@ -47,9 +47,14 @@ abstract class Participant {
 }
 
 class RemoteParticipant extends Participant {
-  RemoteParticipant({required super.client, required super.id, required this.role});
+  RemoteParticipant({required super.client, required super.id, required this.role, this.online});
 
   final String role;
+  bool? online;
+
+  void _setOnline(bool online) {
+    this.online = online;
+  }
 }
 
 class LocalParticipant extends Participant {
@@ -2681,6 +2686,7 @@ class MessagingClient extends ChangeEmitter {
   final RoomClient room;
   final Map<String, Completer> pendingStreams = {};
   final Map<String, MessageStream> _streams = {};
+  static final Logger _logger = Logger('messaging_client');
 
   Map<String, dynamic> _messageInput({
     required String type,
@@ -2699,6 +2705,41 @@ class MessagingClient extends ChangeEmitter {
     }
 
     return input;
+  }
+
+  RemoteParticipant? _removeParticipant(String participantId) {
+    final participant = _participants.remove(participantId);
+    if (participant == null) {
+      return null;
+    }
+
+    participant._setOnline(false);
+
+    for (final entry in _streams.entries.toList()) {
+      final streamId = entry.key;
+      final stream = entry.value;
+
+      if (stream.to.id != participant.id) {
+        continue;
+      }
+
+      stream._close();
+      _streams.remove(streamId);
+    }
+
+    return participant;
+  }
+
+  Participant? _resolveMessageRecipient(Participant to) {
+    if (to is! RemoteParticipant) {
+      return to;
+    }
+
+    if (to.online == false) {
+      return null;
+    }
+
+    return _participants[to.id];
   }
 
   Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
@@ -2726,13 +2767,22 @@ class MessagingClient extends ChangeEmitter {
     required String type,
     required Map<String, dynamic> message,
     Uint8List? attachment,
+    bool ignoreOffline = false,
   }) async {
+    final resolvedTo = _resolveMessageRecipient(to);
+    if (resolvedTo == null) {
+      if (ignoreOffline) {
+        return;
+      }
+      throw RoomServerException("the participant was not found");
+    }
+
     await room.invoke(
       toolkit: "messaging",
       tool: "send",
       input: ToolContentInput(
         JsonContent(
-          json: _messageInput(toParticipantId: to.id, type: type, message: message, attachment: attachment),
+          json: _messageInput(toParticipantId: resolvedTo.id, type: type, message: message, attachment: attachment),
         ),
       ),
     );
@@ -2813,7 +2863,7 @@ class MessagingClient extends ChangeEmitter {
 
   void _onParticipantEnabled(RoomMessage message) {
     final data = message.message;
-    final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
+    final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"], online: true);
 
     for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
       participant._attributes[k] = data["attributes"][k];
@@ -2824,7 +2874,10 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onParticipantAttributes(RoomMessage message) {
-    final part = _participants[message.fromParticipantId]!;
+    final part = _participants[message.fromParticipantId];
+    if (part == null) {
+      return;
+    }
     for (final entry in message.message["attributes"].entries) {
       part._attributes[entry.key] = entry.value;
     }
@@ -2832,24 +2885,14 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onParticipantDisabled(RoomMessage message) {
-    final part = _participants.remove(message.message["id"]);
-
-    for (final entry in _streams.entries.toList()) {
-      final streamId = entry.key;
-      final stream = entry.value;
-
-      if (stream.to == part) {
-        stream._close();
-        _streams.remove(streamId);
-      }
-    }
+    _removeParticipant(message.message["id"]);
 
     notifyListeners();
   }
 
   void _onMessagingEnabled(RoomMessage message) {
     for (var data in message.message["participants"]) {
-      final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"]);
+      final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"], online: true);
 
       for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
         participant._attributes[k] = data["attributes"][k];
@@ -2860,7 +2903,10 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onStreamOpen(RoomMessage message) {
-    final from = remoteParticipants.where((x) => x.id == message.fromParticipantId).first;
+    final from = _participants[message.fromParticipantId];
+    if (from == null) {
+      return;
+    }
     final streamId = message.message["stream_id"];
     final controller = StreamController<MessageStreamChunk>();
     final reader = MessageStream._(header: message.message["header"], streamId: streamId, to: from, client: this, controller: controller);
@@ -2869,9 +2915,25 @@ class MessagingClient extends ChangeEmitter {
         throw Exception("streams are not allowed by this client");
       }
       _onStreamAcceptCallback!(reader);
-      sendMessage(to: from, type: "stream.accept", message: {"stream_id": streamId});
+      unawaited(
+        sendMessage(to: from, type: "stream.accept", message: {"stream_id": streamId}, ignoreOffline: true).catchError((
+          Object error,
+          StackTrace stackTrace,
+        ) {
+          _logger.log(Level.WARNING, "unable to send stream response", error, stackTrace);
+        }),
+      );
     } catch (e) {
-      sendMessage(to: from, type: "stream.reject", message: {"stream_id": streamId, "error": e.toString()});
+      unawaited(
+        sendMessage(
+          to: from,
+          type: "stream.reject",
+          message: {"stream_id": streamId, "error": e.toString()},
+          ignoreOffline: true,
+        ).catchError((Object error, StackTrace stackTrace) {
+          _logger.log(Level.WARNING, "unable to send stream response", error, stackTrace);
+        }),
+      );
     }
 
     _streams[streamId] = reader;
