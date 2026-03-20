@@ -3943,16 +3943,23 @@ class QueueChannel extends ChannelSpec {
   }
 }
 
-class ChatChannel extends ChannelSpec {
-  const ChatChannel({List<PromptTemplate>? prompts, super.annotations}) : prompts = prompts ?? const <PromptTemplate>[];
+class MessagingChannel extends ChannelSpec {
+  const MessagingChannel({this.protocol = 'meshagent.agent-message.v1', List<PromptTemplate>? prompts, super.annotations})
+    : prompts = prompts ?? const <PromptTemplate>[];
 
+  final String protocol;
   final List<PromptTemplate> prompts;
 
   @override
-  Map<String, dynamic> toJson() => {if (prompts.isNotEmpty) 'prompts': prompts.map((entry) => entry.toJson()).toList(), ...super.toJson()};
+  Map<String, dynamic> toJson() => {
+    'protocol': protocol,
+    if (prompts.isNotEmpty) 'prompts': prompts.map((entry) => entry.toJson()).toList(),
+    ...super.toJson(),
+  };
 
-  static ChatChannel fromJson(Map<String, dynamic> json) {
-    return ChatChannel(
+  static MessagingChannel fromJson(Map<String, dynamic> json) {
+    return MessagingChannel(
+      protocol: (json['protocol'] as String?) ?? 'meshagent.agent-message.v1',
       prompts: (json['prompts'] as List?)?.map((entry) => PromptTemplate.fromJson(entry as Map<String, dynamic>)).toList(),
       annotations: json['annotations'] != null
           ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
@@ -3960,8 +3967,9 @@ class ChatChannel extends ChannelSpec {
     );
   }
 
-  ChatChannel formatWith(Map<String, String> values) {
-    return ChatChannel(
+  MessagingChannel formatWith(Map<String, String> values) {
+    return MessagingChannel(
+      protocol: protocol.formatWith(values),
       prompts: prompts.map((entry) => entry.formatWith(values)).toList(),
       annotations: _formatStringMap(annotations, values),
     );
@@ -3991,20 +3999,24 @@ class ToolkitChannel extends ChannelSpec {
 }
 
 class ChannelsSpec {
-  const ChannelsSpec({List<EmailChannel>? email, List<ChatChannel>? chat, List<QueueChannel>? queue, List<ToolkitChannel>? toolkit})
-    : email = email ?? const <EmailChannel>[],
-      chat = chat ?? const <ChatChannel>[],
-      queue = queue ?? const <QueueChannel>[],
-      toolkit = toolkit ?? const <ToolkitChannel>[];
+  const ChannelsSpec({
+    List<EmailChannel>? email,
+    List<MessagingChannel>? messaging,
+    List<QueueChannel>? queue,
+    List<ToolkitChannel>? toolkit,
+  }) : email = email ?? const <EmailChannel>[],
+       messaging = messaging ?? const <MessagingChannel>[],
+       queue = queue ?? const <QueueChannel>[],
+       toolkit = toolkit ?? const <ToolkitChannel>[];
 
   final List<EmailChannel> email;
-  final List<ChatChannel> chat;
+  final List<MessagingChannel> messaging;
   final List<QueueChannel> queue;
   final List<ToolkitChannel> toolkit;
 
   Map<String, dynamic> toJson() => {
     if (email.isNotEmpty) 'email': email.map((entry) => entry.toJson()).toList(),
-    if (chat.isNotEmpty) 'chat': chat.map((entry) => entry.toJson()).toList(),
+    if (messaging.isNotEmpty) 'messaging': messaging.map((entry) => entry.toJson()).toList(),
     if (queue.isNotEmpty) 'queue': queue.map((entry) => entry.toJson()).toList(),
     if (toolkit.isNotEmpty) 'toolkit': toolkit.map((entry) => entry.toJson()).toList(),
   };
@@ -4012,7 +4024,7 @@ class ChannelsSpec {
   static ChannelsSpec fromJson(Map<String, dynamic> json) {
     return ChannelsSpec(
       email: (json['email'] as List?)?.map((entry) => EmailChannel.fromJson(entry as Map<String, dynamic>)).toList(),
-      chat: (json['chat'] as List?)?.map((entry) => ChatChannel.fromJson(entry as Map<String, dynamic>)).toList(),
+      messaging: (json['messaging'] as List?)?.map((entry) => MessagingChannel.fromJson(entry as Map<String, dynamic>)).toList(),
       queue: (json['queue'] as List?)?.map((entry) => QueueChannel.fromJson(entry as Map<String, dynamic>)).toList(),
       toolkit: (json['toolkit'] as List?)?.map((entry) => ToolkitChannel.fromJson(entry as Map<String, dynamic>)).toList(),
     );
@@ -4021,7 +4033,7 @@ class ChannelsSpec {
   ChannelsSpec formatWith(Map<String, String> values) {
     return ChannelsSpec(
       email: email.map((entry) => entry.formatWith(values)).toList(),
-      chat: chat.map((entry) => entry.formatWith(values)).toList(),
+      messaging: messaging.map((entry) => entry.formatWith(values)).toList(),
       queue: queue.map((entry) => entry.formatWith(values)).toList(),
       toolkit: toolkit.map((entry) => entry.formatWith(values)).toList(),
     );

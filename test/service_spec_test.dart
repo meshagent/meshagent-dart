@@ -15,8 +15,8 @@ void main() {
             email: [
               EmailChannel(address: 'support@example.com', private: false, annotations: {'label': 'inbox'}),
             ],
-            chat: [
-              ChatChannel(
+            messaging: [
+              MessagingChannel(
                 prompts: [PromptTemplate(name: 'welcome', prompt: 'Hello there')],
               ),
             ],
@@ -37,16 +37,22 @@ void main() {
       ],
     );
 
-    final restored = ServiceSpec.fromJson(service.toJson());
+    final payload = service.toJson();
+    final restored = ServiceSpec.fromJson(payload);
 
     expect(restored.agents, hasLength(1));
     expect(restored.agents.single.channels, isNotNull);
     expect(restored.agents.single.channels!.email, hasLength(1));
     expect(restored.agents.single.channels!.email.single.address, 'support@example.com');
     expect(restored.agents.single.channels!.email.single.private, isFalse);
-    expect(restored.agents.single.channels!.chat.single.prompts, hasLength(1));
-    expect(restored.agents.single.channels!.chat.single.prompts.single.name, 'welcome');
-    expect(restored.agents.single.channels!.chat.single.prompts.single.description, isNull);
+    expect(
+      (((payload['agents'] as List).single as Map<String, dynamic>)['channels'] as Map<String, dynamic>)['messaging'][0]['protocol'],
+      'meshagent.agent-message.v1',
+    );
+    expect(restored.agents.single.channels!.messaging.single.protocol, 'meshagent.agent-message.v1');
+    expect(restored.agents.single.channels!.messaging.single.prompts, hasLength(1));
+    expect(restored.agents.single.channels!.messaging.single.prompts.single.name, 'welcome');
+    expect(restored.agents.single.channels!.messaging.single.prompts.single.description, isNull);
     expect(restored.agents.single.channels!.queue.single.messageSchema, {
       'type': 'object',
       'properties': {
@@ -73,7 +79,7 @@ void main() {
                 'annotations': {'label': '{role}-inbox'},
               },
             ],
-            'chat': [
+            'messaging': [
               {
                 'prompts': [
                   {'name': 'summary-{role}', 'prompt': 'Summarize the {role} request'},
@@ -104,9 +110,10 @@ void main() {
     expect(service.agents.single.annotations['role'], 'ops');
     expect(service.agents.single.channels!.email.single.address, 'support+ops@example.com');
     expect(service.agents.single.channels!.email.single.annotations['label'], 'ops-inbox');
-    expect(service.agents.single.channels!.chat.single.prompts.single.name, 'summary-ops');
-    expect(service.agents.single.channels!.chat.single.prompts.single.description, isNull);
-    expect(service.agents.single.channels!.chat.single.prompts.single.prompt, 'Summarize the ops request');
+    expect(service.agents.single.channels!.messaging.single.protocol, 'meshagent.agent-message.v1');
+    expect(service.agents.single.channels!.messaging.single.prompts.single.name, 'summary-ops');
+    expect(service.agents.single.channels!.messaging.single.prompts.single.description, isNull);
+    expect(service.agents.single.channels!.messaging.single.prompts.single.prompt, 'Summarize the ops request');
     expect(service.agents.single.channels!.queue.single.queue, 'jobs-ops');
     expect(service.agents.single.channels!.queue.single.messageSchema, {'type': 'object', 'description': 'Schema for ops'});
     expect(service.agents.single.channels!.toolkit.single.name, 'docs-ops');
