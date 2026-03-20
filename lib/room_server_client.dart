@@ -3846,15 +3846,203 @@ class ExternalServiceTemplateSpec {
   }
 }
 
+class PromptTemplate {
+  PromptTemplate({required this.name, this.description, required this.prompt, Map<String, String>? annotations})
+    : annotations = annotations ?? const <String, String>{};
+
+  final String name;
+  final String? description;
+  final String prompt;
+  final Map<String, String> annotations;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (description != null) 'description': description,
+    'prompt': prompt,
+    if (annotations.isNotEmpty) 'annotations': annotations,
+  };
+
+  static PromptTemplate fromJson(Map<String, dynamic> json) {
+    return PromptTemplate(
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      prompt: json['prompt'] as String,
+      annotations: json['annotations'] != null
+          ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
+          : null,
+    );
+  }
+
+  PromptTemplate formatWith(Map<String, String> values) {
+    return PromptTemplate(
+      name: name.formatWith(values),
+      description: description?.formatWith(values),
+      prompt: prompt.formatWith(values),
+      annotations: _formatStringMap(annotations, values),
+    );
+  }
+}
+
+class ChannelSpec {
+  const ChannelSpec({Map<String, String>? annotations}) : annotations = annotations ?? const <String, String>{};
+
+  final Map<String, String> annotations;
+
+  Map<String, dynamic> toJson() => {if (annotations.isNotEmpty) 'annotations': annotations};
+}
+
+class EmailChannel extends ChannelSpec {
+  const EmailChannel({required this.address, this.private = true, super.annotations});
+
+  final String address;
+  final bool private;
+
+  @override
+  Map<String, dynamic> toJson() => {'address': address, 'private': private, ...super.toJson()};
+
+  static EmailChannel fromJson(Map<String, dynamic> json) {
+    return EmailChannel(
+      address: json['address'] as String,
+      private: (json['private'] as bool?) ?? true,
+      annotations: json['annotations'] != null
+          ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
+          : null,
+    );
+  }
+
+  EmailChannel formatWith(Map<String, String> values) {
+    return EmailChannel(address: address.formatWith(values), private: private, annotations: _formatStringMap(annotations, values));
+  }
+}
+
+class QueueChannel extends ChannelSpec {
+  const QueueChannel({required this.queue, this.messageSchema, super.annotations});
+
+  final String queue;
+  final Map<String, dynamic>? messageSchema;
+
+  @override
+  Map<String, dynamic> toJson() => {'queue': queue, if (messageSchema != null) 'message_schema': messageSchema, ...super.toJson()};
+
+  static QueueChannel fromJson(Map<String, dynamic> json) {
+    return QueueChannel(
+      queue: json['queue'] as String,
+      messageSchema: (json['message_schema'] as Map?)?.cast<String, dynamic>(),
+      annotations: json['annotations'] != null
+          ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
+          : null,
+    );
+  }
+
+  QueueChannel formatWith(Map<String, String> values) {
+    return QueueChannel(
+      queue: queue.formatWith(values),
+      messageSchema: messageSchema == null ? null : Map<String, dynamic>.from(_formatJsonValue(messageSchema!, values) as Map),
+      annotations: _formatStringMap(annotations, values),
+    );
+  }
+}
+
+class ChatChannel extends ChannelSpec {
+  const ChatChannel({List<PromptTemplate>? prompts, super.annotations}) : prompts = prompts ?? const <PromptTemplate>[];
+
+  final List<PromptTemplate> prompts;
+
+  @override
+  Map<String, dynamic> toJson() => {if (prompts.isNotEmpty) 'prompts': prompts.map((entry) => entry.toJson()).toList(), ...super.toJson()};
+
+  static ChatChannel fromJson(Map<String, dynamic> json) {
+    return ChatChannel(
+      prompts: (json['prompts'] as List?)?.map((entry) => PromptTemplate.fromJson(entry as Map<String, dynamic>)).toList(),
+      annotations: json['annotations'] != null
+          ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
+          : null,
+    );
+  }
+
+  ChatChannel formatWith(Map<String, String> values) {
+    return ChatChannel(
+      prompts: prompts.map((entry) => entry.formatWith(values)).toList(),
+      annotations: _formatStringMap(annotations, values),
+    );
+  }
+}
+
+class ToolkitChannel extends ChannelSpec {
+  const ToolkitChannel({required this.name, super.annotations});
+
+  final String name;
+
+  @override
+  Map<String, dynamic> toJson() => {'name': name, ...super.toJson()};
+
+  static ToolkitChannel fromJson(Map<String, dynamic> json) {
+    return ToolkitChannel(
+      name: json['name'] as String,
+      annotations: json['annotations'] != null
+          ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
+          : null,
+    );
+  }
+
+  ToolkitChannel formatWith(Map<String, String> values) {
+    return ToolkitChannel(name: name.formatWith(values), annotations: _formatStringMap(annotations, values));
+  }
+}
+
+class ChannelsSpec {
+  const ChannelsSpec({List<EmailChannel>? email, List<ChatChannel>? chat, List<QueueChannel>? queue, List<ToolkitChannel>? toolkit})
+    : email = email ?? const <EmailChannel>[],
+      chat = chat ?? const <ChatChannel>[],
+      queue = queue ?? const <QueueChannel>[],
+      toolkit = toolkit ?? const <ToolkitChannel>[];
+
+  final List<EmailChannel> email;
+  final List<ChatChannel> chat;
+  final List<QueueChannel> queue;
+  final List<ToolkitChannel> toolkit;
+
+  Map<String, dynamic> toJson() => {
+    if (email.isNotEmpty) 'email': email.map((entry) => entry.toJson()).toList(),
+    if (chat.isNotEmpty) 'chat': chat.map((entry) => entry.toJson()).toList(),
+    if (queue.isNotEmpty) 'queue': queue.map((entry) => entry.toJson()).toList(),
+    if (toolkit.isNotEmpty) 'toolkit': toolkit.map((entry) => entry.toJson()).toList(),
+  };
+
+  static ChannelsSpec fromJson(Map<String, dynamic> json) {
+    return ChannelsSpec(
+      email: (json['email'] as List?)?.map((entry) => EmailChannel.fromJson(entry as Map<String, dynamic>)).toList(),
+      chat: (json['chat'] as List?)?.map((entry) => ChatChannel.fromJson(entry as Map<String, dynamic>)).toList(),
+      queue: (json['queue'] as List?)?.map((entry) => QueueChannel.fromJson(entry as Map<String, dynamic>)).toList(),
+      toolkit: (json['toolkit'] as List?)?.map((entry) => ToolkitChannel.fromJson(entry as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  ChannelsSpec formatWith(Map<String, String> values) {
+    return ChannelsSpec(
+      email: email.map((entry) => entry.formatWith(values)).toList(),
+      chat: chat.map((entry) => entry.formatWith(values)).toList(),
+      queue: queue.map((entry) => entry.formatWith(values)).toList(),
+      toolkit: toolkit.map((entry) => entry.formatWith(values)).toList(),
+    );
+  }
+}
+
 class AgentSpec {
-  AgentSpec({required this.name, this.description, Map<String, dynamic>? annotations}) : annotations = annotations ?? {};
+  AgentSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels}) : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final Map<String, dynamic> annotations;
+  final ChannelsSpec? channels;
 
   Map<String, dynamic> toJson() {
-    return {"name": name, if (description != null) "description": description, "annotations": annotations};
+    return {
+      "name": name,
+      if (description != null) "description": description,
+      "annotations": annotations,
+      if (channels != null) "channels": channels!.toJson(),
+    };
   }
 
   static AgentSpec fromJson(Map<String, dynamic> json) {
@@ -3862,19 +4050,27 @@ class AgentSpec {
       name: json["name"],
       description: json["description"],
       annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
+      channels: json['channels'] != null ? ChannelsSpec.fromJson(json['channels'] as Map<String, dynamic>) : null,
     );
   }
 }
 
 class AgentTemplateSpec {
-  AgentTemplateSpec({required this.name, this.description, Map<String, dynamic>? annotations}) : annotations = annotations ?? {};
+  AgentTemplateSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels})
+    : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final Map<String, dynamic> annotations;
+  final ChannelsSpec? channels;
 
   Map<String, dynamic> toJson() {
-    return {"name": name, if (description != null) "description": description, "annotations": annotations};
+    return {
+      "name": name,
+      if (description != null) "description": description,
+      "annotations": annotations,
+      if (channels != null) "channels": channels!.toJson(),
+    };
   }
 
   static AgentTemplateSpec fromJson(Map<String, dynamic> json) {
@@ -3882,6 +4078,16 @@ class AgentTemplateSpec {
       name: json["name"],
       description: json["description"],
       annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
+      channels: json['channels'] != null ? ChannelsSpec.fromJson(json['channels'] as Map<String, dynamic>) : null,
+    );
+  }
+
+  AgentSpec toAgentSpec({required Map<String, String> values}) {
+    return AgentSpec(
+      name: name.formatWith(values),
+      description: description?.formatWith(values),
+      annotations: Map<String, dynamic>.from(_formatJsonValue(annotations, values) as Map),
+      channels: channels?.formatWith(values),
     );
   }
 }
@@ -3940,7 +4146,7 @@ class ServiceTemplateSpec {
     return ServiceSpec(
       version: Version.v1,
       kind: Kind.service,
-      agents: [for (final a in agents) AgentSpec(name: a.name, description: a.description, annotations: a.annotations)],
+      agents: [for (final a in agents) a.toAgentSpec(values: values)],
       metadata: ServiceMetadata(
         name: metadata.name,
         description: metadata.description,
@@ -3953,6 +4159,23 @@ class ServiceTemplateSpec {
       external: external?.toExternalSpec(values: values),
     );
   }
+}
+
+Map<String, String> _formatStringMap(Map<String, String> original, Map<String, String> values) {
+  return {for (final entry in original.entries) entry.key: entry.value.formatWith(values)};
+}
+
+Object? _formatJsonValue(Object? value, Map<String, String> values) {
+  if (value is String) {
+    return value.formatWith(values);
+  }
+  if (value is Map) {
+    return {for (final entry in value.entries) entry.key: _formatJsonValue(entry.value, values)};
+  }
+  if (value is List) {
+    return value.map((entry) => _formatJsonValue(entry, values)).toList();
+  }
+  return value;
 }
 
 extension _StringTemplate on String {
