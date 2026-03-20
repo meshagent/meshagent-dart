@@ -3916,17 +3916,24 @@ class EmailChannel extends ChannelSpec {
 }
 
 class QueueChannel extends ChannelSpec {
-  const QueueChannel({required this.queue, this.messageSchema, super.annotations});
+  const QueueChannel({required this.queue, this.threadingMode, this.messageSchema, super.annotations});
 
   final String queue;
+  final String? threadingMode;
   final Map<String, dynamic>? messageSchema;
 
   @override
-  Map<String, dynamic> toJson() => {'queue': queue, if (messageSchema != null) 'message_schema': messageSchema, ...super.toJson()};
+  Map<String, dynamic> toJson() => {
+    'queue': queue,
+    if (threadingMode != null) 'threading_mode': threadingMode,
+    if (messageSchema != null) 'message_schema': messageSchema,
+    ...super.toJson(),
+  };
 
   static QueueChannel fromJson(Map<String, dynamic> json) {
     return QueueChannel(
       queue: json['queue'] as String,
+      threadingMode: json['threading_mode'] as String?,
       messageSchema: (json['message_schema'] as Map?)?.cast<String, dynamic>(),
       annotations: json['annotations'] != null
           ? {for (final entry in (json['annotations'] as Map).entries) entry.key as String: entry.value as String}
@@ -3937,6 +3944,7 @@ class QueueChannel extends ChannelSpec {
   QueueChannel formatWith(Map<String, String> values) {
     return QueueChannel(
       queue: queue.formatWith(values),
+      threadingMode: threadingMode?.formatWith(values),
       messageSchema: messageSchema == null ? null : Map<String, dynamic>.from(_formatJsonValue(messageSchema!, values) as Map),
       annotations: _formatStringMap(annotations, values),
     );

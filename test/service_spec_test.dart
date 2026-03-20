@@ -23,6 +23,7 @@ void main() {
             queue: [
               QueueChannel(
                 queue: 'jobs',
+                threadingMode: 'default-new',
                 messageSchema: {
                   'type': 'object',
                   'properties': {
@@ -53,6 +54,7 @@ void main() {
     expect(restored.agents.single.channels!.messaging.single.prompts, hasLength(1));
     expect(restored.agents.single.channels!.messaging.single.prompts.single.name, 'welcome');
     expect(restored.agents.single.channels!.messaging.single.prompts.single.description, isNull);
+    expect(restored.agents.single.channels!.queue.single.threadingMode, 'default-new');
     expect(restored.agents.single.channels!.queue.single.messageSchema, {
       'type': 'object',
       'properties': {
@@ -89,6 +91,7 @@ void main() {
             'queue': [
               {
                 'queue': 'jobs-{role}',
+                'threading_mode': 'default-new',
                 'message_schema': {'type': 'object', 'description': 'Schema for {role}'},
               },
             ],
@@ -115,6 +118,7 @@ void main() {
     expect(service.agents.single.channels!.messaging.single.prompts.single.description, isNull);
     expect(service.agents.single.channels!.messaging.single.prompts.single.prompt, 'Summarize the ops request');
     expect(service.agents.single.channels!.queue.single.queue, 'jobs-ops');
+    expect(service.agents.single.channels!.queue.single.threadingMode, 'default-new');
     expect(service.agents.single.channels!.queue.single.messageSchema, {'type': 'object', 'description': 'Schema for ops'});
     expect(service.agents.single.channels!.toolkit.single.name, 'docs-ops');
   });
