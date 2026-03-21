@@ -162,4 +162,103 @@ void main() {
       await pair.dispose();
     }
   });
+
+  test('sync client waits for close to finish before reopening the same document', () async {
+    final pair = _ProtocolPair();
+    final schema = MeshSchema(
+      rootTagName: 'thread',
+      elements: [ElementType(tagName: 'thread', description: '', properties: [])],
+    );
+
+    var openRequestCount = 0;
+    var reopenedBeforeFirstCloseCompleted = false;
+    var firstCloseCompleted = false;
+    final closeRequested = Completer<void>();
+    final allowClose = Completer<void>();
+
+    pair.serverProtocol.start(
+      onMessage: (protocol, messageId, type, data) async {
+        if (type == 'room.invoke_tool') {
+          final request = unpackMessage(data).header;
+          expect(request['toolkit'], 'sync');
+          expect(request['tool'], 'open');
+          openRequestCount++;
+          if (openRequestCount > 1 && !firstCloseCompleted) {
+            reopenedBeforeFirstCloseCompleted = true;
+          }
+          await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
+          return;
+        }
+
+        if (type != 'room.tool_call_request_chunk') {
+          return;
+        }
+
+        final message = unpackMessage(data);
+        final header = message.header;
+        final toolCallId = header['tool_call_id'] as String;
+        final chunkHeader = Map<String, dynamic>.from(header['chunk'] as Map);
+        final packedChunk = packMessage(chunkHeader, message.payload.isEmpty ? null : message.payload);
+        final chunk = unpackContent(packedChunk);
+        await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+
+        if (chunk is BinaryContent && chunk.headers['kind'] == 'start') {
+          await _sendToolCallResponseChunk(
+            protocol: protocol,
+            toolCallId: toolCallId,
+            chunk: BinaryContent(data: Uint8List(0), headers: {'kind': 'state', 'path': 'thread.thread', 'schema': schema.toJson()}),
+          );
+          return;
+        }
+
+        if (chunk is ControlContent && chunk.method == 'close') {
+          if (!closeRequested.isCompleted) {
+            closeRequested.complete();
+          }
+          unawaited(() async {
+            await allowClose.future;
+            firstCloseCompleted = true;
+            await _sendToolCallResponseChunk(
+              protocol: protocol,
+              toolCallId: toolCallId,
+              chunk: ControlContent(method: 'close'),
+            );
+          }());
+        }
+      },
+    );
+
+    final room = RoomClient(protocol: pair.clientProtocol);
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    try {
+      DocumentRuntime.instance = _FakeDocumentRuntime();
+
+      final firstDoc = await room.sync.open('/thread.thread').timeout(const Duration(seconds: 1));
+      expect(await firstDoc.synchronized.timeout(const Duration(seconds: 1)), isTrue);
+
+      final closeFuture = room.sync.close('/thread.thread');
+      await closeRequested.future.timeout(const Duration(seconds: 1));
+
+      final reopenFuture = room.sync.open('/thread.thread');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(openRequestCount, 1);
+      expect(reopenedBeforeFirstCloseCompleted, isFalse);
+
+      allowClose.complete();
+
+      final reopenedDoc = await reopenFuture.timeout(const Duration(seconds: 1));
+      expect(await reopenedDoc.synchronized.timeout(const Duration(seconds: 1)), isTrue);
+      await closeFuture.timeout(const Duration(seconds: 1));
+
+      expect(openRequestCount, 2);
+      expect(reopenedBeforeFirstCloseCompleted, isFalse);
+    } finally {
+      room.dispose();
+      await pair.dispose();
+    }
+  });
 }

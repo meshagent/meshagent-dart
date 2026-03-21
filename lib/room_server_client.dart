@@ -1763,10 +1763,12 @@ class SyncClient extends ChangeEmitter {
     }
     _connectedDocuments.clear();
     _connectingDocuments.clear();
+    _closingDocuments.clear();
     _started = false;
   }
 
   final _connectingDocuments = <String, Future<_RefCount<MeshDocument>>>{};
+  final _closingDocuments = <String, Future<void>>{};
   final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
   final _documentStreams = <String, _SyncOpenStreamState>{};
   bool _started = false;
@@ -1804,6 +1806,10 @@ class SyncClient extends ChangeEmitter {
 
   Future<MeshDocument> open(String path, {bool create = true, Map<String, dynamic>? initialJson, MeshSchema? schema}) async {
     final normalizedPath = _normalizeSyncPath(path);
+    final closing = _closingDocuments[normalizedPath];
+    if (closing != null) {
+      await closing;
+    }
     final pending = _connectingDocuments[normalizedPath];
 
     if (pending != null) {
@@ -1896,15 +1902,26 @@ class SyncClient extends ChangeEmitter {
     if (doc.count == 0) {
       _connectedDocuments.remove(normalizedPath);
       final streamState = _documentStreams.remove(normalizedPath);
-      if (streamState != null) {
-        streamState.closeInputStream();
-        try {
-          await streamState.wait();
-        } finally {
+      late final Future<void> closeFuture;
+      closeFuture = () async {
+        if (streamState != null) {
+          streamState.closeInputStream();
+          try {
+            await streamState.wait();
+          } finally {
+            DocumentRuntime.instance!.unregisterDocument(doc.ref);
+          }
+        } else {
           DocumentRuntime.instance!.unregisterDocument(doc.ref);
         }
-      } else {
-        DocumentRuntime.instance!.unregisterDocument(doc.ref);
+      }();
+      _closingDocuments[normalizedPath] = closeFuture;
+      try {
+        await closeFuture;
+      } finally {
+        if (identical(_closingDocuments[normalizedPath], closeFuture)) {
+          _closingDocuments.remove(normalizedPath);
+        }
       }
     }
   }
