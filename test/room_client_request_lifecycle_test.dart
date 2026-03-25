@@ -9,6 +9,33 @@ import 'package:test/test.dart';
 
 const _retryableCloseStatusCode = 1013;
 
+class _CloseWithStatusProtocolChannel extends ProtocolChannel {
+  _CloseWithStatusProtocolChannel({required this.closeCode, this.reason});
+
+  final int closeCode;
+  final String? reason;
+  bool _started = false;
+
+  @override
+  void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
+    if (_started) {
+      throw Exception('Already started');
+    }
+    _started = true;
+    scheduleMicrotask(() {
+      onError?.call(ProtocolCloseException(closeCode: closeCode, reason: reason));
+    });
+  }
+
+  @override
+  void dispose() {
+    _started = false;
+  }
+
+  @override
+  Future<void> sendData(Uint8List data) async {}
+}
+
 class _ProtocolPair {
   _ProtocolPair() {
     clientProtocol = Protocol(
@@ -83,17 +110,11 @@ Future<void> _sendWebSocketProtocolMessage(
 
 void main() {
   test('start surfaces retryable websocket close status', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-
-    final serverTask = () async {
-      final request = await server.first;
-      final websocket = await WebSocketTransformer.upgrade(request);
-      await websocket.close(_retryableCloseStatusCode, 'try_again_later');
-    }();
-
     final room = RoomClient(
       protocol: Protocol(
-        channel: WebSocketProtocolChannel(url: Uri.parse('ws://127.0.0.1:${server.port}/rooms/test-room'), jwt: 'token'),
+        // dart:io server-side WebSocket.close() rejects 1013 as reserved,
+        // so simulate the websocket close surfaced by the protocol layer.
+        channel: _CloseWithStatusProtocolChannel(closeCode: _retryableCloseStatusCode, reason: 'try_again_later'),
       ),
     );
 
@@ -102,12 +123,10 @@ void main() {
       throwsA(
         isA<RoomServerException>()
             .having((error) => error.statusCode, 'statusCode', 1013)
+            .having((error) => error.retryable, 'retryable', true)
             .having((error) => error.message, 'message', 'try_again_later'),
       ),
     );
-
-    await serverTask;
-    await server.close(force: true);
   });
 
   test('sendRequest fails when room client is disposed before response', () async {
