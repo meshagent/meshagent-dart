@@ -7,6 +7,7 @@ import 'package:async/async.dart';
 import 'package:logging/logging.dart';
 import 'package:meshagent/meshagent.dart';
 import 'package:meshagent/queues_client.dart';
+import 'package:web_socket_channel/status.dart' as ws_status;
 import 'package:meshagent/yaml/yaml.dart';
 
 import 'package:path/path.dart' as path;
@@ -16,16 +17,49 @@ import 'database_client.dart';
 import 'runtime.dart';
 
 class RoomServerException implements Exception {
-  RoomServerException(this.message, {this.statusCode, this.code});
+  RoomServerException(this.message, {this.statusCode, this.code, this.retryable = false});
 
   final String message;
   final int? statusCode;
   final int? code;
+  final bool retryable;
 
   @override
   String toString() {
     return message;
   }
+}
+
+RoomServerException _wrapRoomConnectionError(Object? error) {
+  if (error is RoomServerException) {
+    return error;
+  }
+  if (error is ProtocolCloseException) {
+    final reason = error.reason;
+    return RoomServerException(
+      reason == null || reason.isEmpty ? 'room connection closed with status ${error.closeCode}' : reason,
+      statusCode: error.closeCode,
+      retryable: error.closeCode == 1013,
+    );
+  }
+  return RoomServerException("room connection error: $error");
+}
+
+RoomServerException _roomClosedBeforeReadyError(Protocol protocol) {
+  final channel = protocol.channel;
+  if (channel is WebSocketProtocolChannel) {
+    final closeCode = channel.webSocket?.closeCode;
+    if (closeCode != null && closeCode != ws_status.normalClosure) {
+      final closeReason = channel.webSocket?.closeReason;
+      return RoomServerException(
+        closeReason == null || closeReason.isEmpty ? 'room connection closed with status $closeCode' : closeReason,
+        statusCode: closeCode,
+        retryable: closeCode == 1013,
+      );
+    }
+  }
+
+  return RoomServerException("room connection closed before request completed", retryable: true);
 }
 
 abstract class Participant {
@@ -344,7 +378,7 @@ class RoomClient extends ChangeEmitter {
       protocol.done.then((error) {
         final wrapped = error == null
             ? RoomServerException("room client was closed before tool call completed")
-            : RoomServerException("room client closed with error: $error");
+            : _wrapRoomConnectionError(error);
         return _failToolCallStreams(error: wrapped);
       }),
     );
@@ -404,7 +438,7 @@ class RoomClient extends ChangeEmitter {
   Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
     protocol.start(
       onDone: () {
-        final error = RoomServerException("room connection closed before request completed");
+        final error = _roomClosedBeforeReadyError(protocol);
         _failPendingRequests(error);
         unawaited(_failToolCallStreams(error: error));
         if (!_ready.isCompleted) {
@@ -415,14 +449,14 @@ class RoomClient extends ChangeEmitter {
         }
       },
       onError: (error) {
-        final wrapped = RoomServerException("room connection error: $error");
+        final wrapped = _wrapRoomConnectionError(error);
         _failPendingRequests(wrapped);
         unawaited(_failToolCallStreams(error: wrapped));
         if (!_ready.isCompleted) {
           _ready.completeError(wrapped);
         }
         if (onError != null) {
-          onError(error);
+          onError(wrapped);
         }
       },
     );

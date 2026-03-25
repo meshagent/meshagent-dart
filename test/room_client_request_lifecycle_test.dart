@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
+
+const _retryableCloseStatusCode = 1013;
 
 class _ProtocolPair {
   _ProtocolPair() {
@@ -44,7 +49,67 @@ Future<void> _sendRoomReady(Protocol protocol) async {
   );
 }
 
+Future<void> _sendWebSocketProtocolMessage(
+  WebSocket websocket, {
+  required int messageId,
+  required String type,
+  required Uint8List data,
+}) async {
+  final packets = (data.length / 1024).ceil();
+
+  final header = ByteData(16);
+  header.setUint32(0, messageId >> 32, Endian.big);
+  header.setUint32(4, messageId & 0xffffffff, Endian.big);
+  header.setInt32(8, 0, Endian.big);
+  header.setInt32(12, packets, Endian.big);
+
+  final packet = BytesBuilder();
+  packet.add(Uint8List.view(header.buffer));
+  packet.add(utf8.encode(type));
+  websocket.add(packet.toBytes());
+
+  for (var i = 0; i < packets; i++) {
+    final packetHeader = ByteData(12);
+    packetHeader.setUint32(0, messageId >> 32, Endian.big);
+    packetHeader.setUint32(4, messageId & 0xffffffff, Endian.big);
+    packetHeader.setInt32(8, i + 1, Endian.big);
+
+    final chunk = BytesBuilder();
+    chunk.add(Uint8List.view(packetHeader.buffer));
+    chunk.add(Uint8List.sublistView(data, i * 1024, math.min((i + 1) * 1024, data.length).toInt()));
+    websocket.add(chunk.toBytes());
+  }
+}
+
 void main() {
+  test('start surfaces retryable websocket close status', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    final serverTask = () async {
+      final request = await server.first;
+      final websocket = await WebSocketTransformer.upgrade(request);
+      await websocket.close(_retryableCloseStatusCode, 'try_again_later');
+    }();
+
+    final room = RoomClient(
+      protocol: Protocol(
+        channel: WebSocketProtocolChannel(url: Uri.parse('ws://127.0.0.1:${server.port}/rooms/test-room'), jwt: 'token'),
+      ),
+    );
+
+    await expectLater(
+      room.start(),
+      throwsA(
+        isA<RoomServerException>()
+            .having((error) => error.statusCode, 'statusCode', 1013)
+            .having((error) => error.message, 'message', 'try_again_later'),
+      ),
+    );
+
+    await serverTask;
+    await server.close(force: true);
+  });
+
   test('sendRequest fails when room client is disposed before response', () async {
     final pair = _ProtocolPair();
     final requestReceived = Completer<void>();
@@ -147,5 +212,33 @@ void main() {
     }
 
     await pair.dispose();
+  });
+
+  test('websocket room_ready message can be delivered over a raw socket', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    final serverTask = () async {
+      final request = await server.first;
+      final websocket = await WebSocketTransformer.upgrade(request);
+      await _sendWebSocketProtocolMessage(
+        websocket,
+        messageId: 0,
+        type: 'room_ready',
+        data: packMessage({'room_name': 'test-room', 'room_url': 'ws://example/rooms/test-room', 'session_id': 'session-1'}),
+      );
+    }();
+
+    final room = RoomClient(
+      protocol: Protocol(
+        channel: WebSocketProtocolChannel(url: Uri.parse('ws://127.0.0.1:${server.port}/rooms/test-room'), jwt: 'token'),
+      ),
+    );
+
+    await room.start();
+    expect(room.ready, completes);
+
+    room.dispose();
+    await serverTask;
+    await server.close(force: true);
   });
 }

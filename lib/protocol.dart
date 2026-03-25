@@ -17,6 +17,21 @@ class ProtocolMessage {
   final Completer sent;
 }
 
+class ProtocolCloseException implements Exception {
+  ProtocolCloseException({required this.closeCode, this.reason});
+
+  final int closeCode;
+  final String? reason;
+
+  @override
+  String toString() {
+    if (reason == null || reason == "") {
+      return "connection closed with status $closeCode";
+    }
+    return reason!;
+  }
+}
+
 abstract class ProtocolChannel {
   ProtocolChannel();
 
@@ -75,7 +90,18 @@ class WebSocketProtocolChannel extends ProtocolChannel {
     this.onDataReceived = onDataReceived;
 
     webSocket = WebSocketChannel.connect(url.replace(queryParameters: {"token": jwt, "v": version}));
-    sub = webSocket!.stream.listen(onData, onDone: onDone, onError: onError);
+    sub = webSocket!.stream.listen(
+      onData,
+      onDone: () {
+        final closeCode = webSocket?.closeCode;
+        if (closeCode != null && closeCode != status.normalClosure) {
+          onError?.call(ProtocolCloseException(closeCode: closeCode, reason: webSocket?.closeReason));
+          return;
+        }
+        onDone?.call();
+      },
+      onError: onError,
+    );
   }
 
   void onData(dynamic data) {
