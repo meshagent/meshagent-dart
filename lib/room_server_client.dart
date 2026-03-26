@@ -1514,13 +1514,677 @@ class ListServicesResult {
   }
 }
 
+RoomServerException _memoryUnexpectedResponseError(String operation) {
+  return RoomServerException("Invalid return type from memory.$operation call");
+}
+
+Map<String, dynamic> _memoryJsonMap(dynamic value, String operation) {
+  if (value is! Map) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+  return Map<String, dynamic>.fromEntries(
+    value.entries.map((entry) {
+      final key = entry.key;
+      if (key is! String) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return MapEntry(key, entry.value);
+    }),
+  );
+}
+
+List<String>? _memoryOptionalStringList(dynamic value, String operation) {
+  if (value == null) {
+    return null;
+  }
+  if (value is! List) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+  return value
+      .map((item) {
+        if (item is! String) {
+          throw _memoryUnexpectedResponseError(operation);
+        }
+        return item;
+      })
+      .toList(growable: false);
+}
+
+Map<String, String>? _memoryOptionalStringMap(dynamic value, String operation) {
+  if (value == null) {
+    return null;
+  }
+  if (value is! Map) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+  return Map<String, String>.fromEntries(
+    value.entries.map((entry) {
+      if (entry.key is! String || entry.value is! String) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return MapEntry(entry.key as String, entry.value as String);
+    }),
+  );
+}
+
+String _memoryRequiredString(dynamic value, String operation) {
+  if (value is! String) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+  return value;
+}
+
+int? _memoryOptionalInt(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return null;
+}
+
+double? _memoryOptionalDouble(dynamic value) {
+  if (value is double) {
+    return value;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  return null;
+}
+
+dynamic _memoryDecodeRowsValue(dynamic value, String operation) {
+  final json = _memoryJsonMap(value, operation);
+  final type = json["type"];
+  if (type is! String) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+
+  switch (type) {
+    case "null":
+      return null;
+    case "bool":
+      final decoded = json["value"];
+      if (decoded is! bool) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return decoded;
+    case "int":
+      final decoded = _memoryOptionalInt(json["value"]);
+      if (decoded == null) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return decoded;
+    case "float":
+      final decoded = _memoryOptionalDouble(json["value"]);
+      if (decoded == null) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return decoded;
+    case "text":
+    case "date":
+    case "timestamp":
+      final decoded = json["value"];
+      if (decoded is! String) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return decoded;
+    case "binary":
+      final data = json["data"];
+      if (data is! String) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return base64Decode(data);
+    case "list":
+      final items = json["items"];
+      if (items is! List) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return items.map((item) => _memoryDecodeRowsValue(item, operation)).toList(growable: false);
+    case "struct":
+      final fields = json["fields"];
+      if (fields is! List) {
+        throw _memoryUnexpectedResponseError(operation);
+      }
+      return Map<String, dynamic>.fromEntries(
+        fields.map((field) {
+          final fieldJson = _memoryJsonMap(field, operation);
+          final name = fieldJson["name"];
+          if (name is! String) {
+            throw _memoryUnexpectedResponseError(operation);
+          }
+          return MapEntry(name, _memoryDecodeRowsValue(fieldJson["value"], operation));
+        }),
+      );
+  }
+
+  throw _memoryUnexpectedResponseError(operation);
+}
+
+List<Map<String, dynamic>> _memoryRecordsFromRowsChunk(Map<String, dynamic> json, String operation) {
+  if (json["kind"] != "rows") {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+  final rows = json["rows"];
+  if (rows is! List) {
+    throw _memoryUnexpectedResponseError(operation);
+  }
+
+  return rows
+      .map((row) {
+        final rowJson = _memoryJsonMap(row, operation);
+        final columns = rowJson["columns"];
+        if (columns is! List) {
+          throw _memoryUnexpectedResponseError(operation);
+        }
+        return Map<String, dynamic>.fromEntries(
+          columns.map((column) {
+            final columnJson = _memoryJsonMap(column, operation);
+            final name = columnJson["name"];
+            if (name is! String) {
+              throw _memoryUnexpectedResponseError(operation);
+            }
+            return MapEntry(name, _memoryDecodeRowsValue(columnJson["value"], operation));
+          }),
+        );
+      })
+      .toList(growable: false);
+}
+
+enum MemoryIngestStrategy { heuristic, llm }
+
+extension MemoryIngestStrategyValue on MemoryIngestStrategy {
+  String get value {
+    switch (this) {
+      case MemoryIngestStrategy.heuristic:
+        return "heuristic";
+      case MemoryIngestStrategy.llm:
+        return "llm";
+    }
+  }
+}
+
+class MemoryEntityRecord {
+  MemoryEntityRecord({
+    this.entityId,
+    required this.name,
+    this.entityType,
+    this.context,
+    this.confidence,
+    this.createdAt,
+    this.validAt,
+    this.metadata,
+  });
+
+  final String? entityId;
+  final String name;
+  final String? entityType;
+  final String? context;
+  final double? confidence;
+  final String? createdAt;
+  final String? validAt;
+  final Map<String, String>? metadata;
+
+  factory MemoryEntityRecord.fromJson(Map<String, dynamic> json) {
+    return MemoryEntityRecord(
+      entityId: json["entity_id"] as String?,
+      name: _memoryRequiredString(json["name"], "upsert_nodes"),
+      entityType: json["entity_type"] as String?,
+      context: json["context"] as String?,
+      confidence: _memoryOptionalDouble(json["confidence"]),
+      createdAt: json["created_at"] as String?,
+      validAt: json["valid_at"] as String?,
+      metadata: _memoryOptionalStringMap(json["metadata"], "upsert_nodes"),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "entity_id": entityId,
+      "name": name,
+      "entity_type": entityType,
+      "context": context,
+      "confidence": confidence,
+      "created_at": createdAt,
+      "valid_at": validAt,
+      "metadata": metadata,
+    };
+  }
+}
+
+class MemoryRelationshipRecord {
+  MemoryRelationshipRecord({
+    required this.sourceEntityId,
+    required this.targetEntityId,
+    this.relationshipType = "RELATED_TO",
+    this.description,
+    this.confidence,
+    this.createdAt,
+    this.validAt,
+    this.expiredAt,
+    this.invalidAt,
+    this.sourceEntityName,
+    this.targetEntityName,
+    this.metadata,
+  });
+
+  final String sourceEntityId;
+  final String targetEntityId;
+  final String relationshipType;
+  final String? description;
+  final double? confidence;
+  final String? createdAt;
+  final String? validAt;
+  final String? expiredAt;
+  final String? invalidAt;
+  final String? sourceEntityName;
+  final String? targetEntityName;
+  final Map<String, String>? metadata;
+
+  factory MemoryRelationshipRecord.fromJson(Map<String, dynamic> json) {
+    final relationshipType = json["relationship_type"];
+    return MemoryRelationshipRecord(
+      sourceEntityId: _memoryRequiredString(json["source_entity_id"], "upsert_relationships"),
+      targetEntityId: _memoryRequiredString(json["target_entity_id"], "upsert_relationships"),
+      relationshipType: relationshipType is String && relationshipType.isNotEmpty ? relationshipType : "RELATED_TO",
+      description: json["description"] as String?,
+      confidence: _memoryOptionalDouble(json["confidence"]),
+      createdAt: json["created_at"] as String?,
+      validAt: json["valid_at"] as String?,
+      expiredAt: json["expired_at"] as String?,
+      invalidAt: json["invalid_at"] as String?,
+      sourceEntityName: json["source_entity_name"] as String?,
+      targetEntityName: json["target_entity_name"] as String?,
+      metadata: _memoryOptionalStringMap(json["metadata"], "upsert_relationships"),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "source_entity_id": sourceEntityId,
+      "target_entity_id": targetEntityId,
+      "relationship_type": relationshipType,
+      "description": description,
+      "confidence": confidence,
+      "created_at": createdAt,
+      "valid_at": validAt,
+      "expired_at": expiredAt,
+      "invalid_at": invalidAt,
+      "source_entity_name": sourceEntityName,
+      "target_entity_name": targetEntityName,
+      "metadata": metadata,
+    };
+  }
+}
+
+class MemoryDatasetSummary {
+  MemoryDatasetSummary({required this.name, required this.rows, required this.columns});
+
+  final String name;
+  final int rows;
+  final List<String> columns;
+
+  factory MemoryDatasetSummary.fromJson(Map<String, dynamic> json) {
+    return MemoryDatasetSummary(
+      name: _memoryRequiredString(json["name"], "inspect"),
+      rows: _memoryOptionalInt(json["rows"]) ?? 0,
+      columns: _memoryOptionalStringList(json["columns"], "inspect") ?? const <String>[],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "rows": rows, "columns": columns};
+  }
+}
+
+class MemoryDetails {
+  MemoryDetails({required this.name, required this.namespace, required this.path, required this.datasets});
+
+  final String name;
+  final List<String>? namespace;
+  final String path;
+  final List<MemoryDatasetSummary> datasets;
+
+  factory MemoryDetails.fromJson(Map<String, dynamic> json) {
+    final rawDatasets = json["datasets"];
+    if (rawDatasets != null && rawDatasets is! List) {
+      throw _memoryUnexpectedResponseError("inspect");
+    }
+
+    return MemoryDetails(
+      name: _memoryRequiredString(json["name"], "inspect"),
+      namespace: _memoryOptionalStringList(json["namespace"], "inspect"),
+      path: _memoryRequiredString(json["path"], "inspect"),
+      datasets: (rawDatasets as List? ?? const [])
+          .map((item) => MemoryDatasetSummary.fromJson(_memoryJsonMap(item, "inspect")))
+          .toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "name": name,
+      "namespace": namespace,
+      "path": path,
+      "datasets": datasets.map((entry) => entry.toJson()).toList(growable: false),
+    };
+  }
+}
+
+class MemoryIngestStats {
+  MemoryIngestStats({required this.entities, required this.relationships, required this.sources});
+
+  final int entities;
+  final int relationships;
+  final int sources;
+
+  factory MemoryIngestStats.fromJson(Map<String, dynamic> json) {
+    return MemoryIngestStats(
+      entities: _memoryOptionalInt(json["entities"]) ?? 0,
+      relationships: _memoryOptionalInt(json["relationships"]) ?? 0,
+      sources: _memoryOptionalInt(json["sources"]) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"entities": entities, "relationships": relationships, "sources": sources};
+  }
+}
+
+class MemoryIngestResult {
+  MemoryIngestResult({required this.name, required this.stats, required this.entityIds});
+
+  final String name;
+  final MemoryIngestStats stats;
+  final List<String> entityIds;
+
+  factory MemoryIngestResult.fromJson(Map<String, dynamic> json, {String operation = "ingest_text"}) {
+    return MemoryIngestResult(
+      name: _memoryRequiredString(json["name"], operation),
+      stats: MemoryIngestStats.fromJson(_memoryJsonMap(json["stats"], operation)),
+      entityIds: _memoryOptionalStringList(json["entity_ids"], operation) ?? const <String>[],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "stats": stats.toJson(), "entity_ids": entityIds};
+  }
+}
+
+class MemoryRecallRelationship {
+  MemoryRecallRelationship({
+    required this.sourceEntityId,
+    required this.targetEntityId,
+    required this.relationshipType,
+    this.description,
+    this.createdAt,
+    this.validAt,
+    this.expiredAt,
+    this.invalidAt,
+  });
+
+  final String sourceEntityId;
+  final String targetEntityId;
+  final String relationshipType;
+  final String? description;
+  final String? createdAt;
+  final String? validAt;
+  final String? expiredAt;
+  final String? invalidAt;
+
+  factory MemoryRecallRelationship.fromJson(Map<String, dynamic> json) {
+    return MemoryRecallRelationship(
+      sourceEntityId: _memoryRequiredString(json["source_entity_id"], "recall"),
+      targetEntityId: _memoryRequiredString(json["target_entity_id"], "recall"),
+      relationshipType: _memoryRequiredString(json["relationship_type"], "recall"),
+      description: json["description"] as String?,
+      createdAt: json["created_at"] as String?,
+      validAt: json["valid_at"] as String?,
+      expiredAt: json["expired_at"] as String?,
+      invalidAt: json["invalid_at"] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "source_entity_id": sourceEntityId,
+      "target_entity_id": targetEntityId,
+      "relationship_type": relationshipType,
+      "description": description,
+      "created_at": createdAt,
+      "valid_at": validAt,
+      "expired_at": expiredAt,
+      "invalid_at": invalidAt,
+    };
+  }
+}
+
+class MemoryRecallItem {
+  MemoryRecallItem({
+    required this.entityId,
+    required this.name,
+    required this.entityType,
+    this.context,
+    this.confidence,
+    this.createdAt,
+    this.validAt,
+    required this.score,
+    required this.relationships,
+  });
+
+  final String entityId;
+  final String name;
+  final String entityType;
+  final String? context;
+  final double? confidence;
+  final String? createdAt;
+  final String? validAt;
+  final double score;
+  final List<MemoryRecallRelationship> relationships;
+
+  factory MemoryRecallItem.fromJson(Map<String, dynamic> json) {
+    final rawRelationships = json["relationships"];
+    if (rawRelationships != null && rawRelationships is! List) {
+      throw _memoryUnexpectedResponseError("recall");
+    }
+
+    final score = _memoryOptionalDouble(json["score"]);
+    if (score == null) {
+      throw _memoryUnexpectedResponseError("recall");
+    }
+
+    return MemoryRecallItem(
+      entityId: _memoryRequiredString(json["entity_id"], "recall"),
+      name: _memoryRequiredString(json["name"], "recall"),
+      entityType: _memoryRequiredString(json["entity_type"], "recall"),
+      context: json["context"] as String?,
+      confidence: _memoryOptionalDouble(json["confidence"]),
+      createdAt: json["created_at"] as String?,
+      validAt: json["valid_at"] as String?,
+      score: score,
+      relationships: (rawRelationships as List? ?? const [])
+          .map((item) => MemoryRecallRelationship.fromJson(_memoryJsonMap(item, "recall")))
+          .toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "entity_id": entityId,
+      "name": name,
+      "entity_type": entityType,
+      "context": context,
+      "confidence": confidence,
+      "created_at": createdAt,
+      "valid_at": validAt,
+      "score": score,
+      "relationships": relationships.map((entry) => entry.toJson()).toList(growable: false),
+    };
+  }
+}
+
+class MemoryRecallResult {
+  MemoryRecallResult({required this.name, required this.query, required this.items});
+
+  final String name;
+  final String query;
+  final List<MemoryRecallItem> items;
+
+  factory MemoryRecallResult.fromJson(Map<String, dynamic> json) {
+    final rawItems = json["items"];
+    if (rawItems != null && rawItems is! List) {
+      throw _memoryUnexpectedResponseError("recall");
+    }
+
+    return MemoryRecallResult(
+      name: _memoryRequiredString(json["name"], "recall"),
+      query: _memoryRequiredString(json["query"], "recall"),
+      items: (rawItems as List? ?? const [])
+          .map((item) => MemoryRecallItem.fromJson(_memoryJsonMap(item, "recall")))
+          .toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "query": query, "items": items.map((entry) => entry.toJson()).toList(growable: false)};
+  }
+}
+
+class MemoryDeleteEntitiesResult {
+  MemoryDeleteEntitiesResult({required this.name, required this.deletedEntities, required this.deletedRelationships});
+
+  final String name;
+  final int deletedEntities;
+  final int deletedRelationships;
+
+  factory MemoryDeleteEntitiesResult.fromJson(Map<String, dynamic> json) {
+    return MemoryDeleteEntitiesResult(
+      name: _memoryRequiredString(json["name"], "delete_entities"),
+      deletedEntities: _memoryOptionalInt(json["deleted_entities"]) ?? 0,
+      deletedRelationships: _memoryOptionalInt(json["deleted_relationships"]) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "deleted_entities": deletedEntities, "deleted_relationships": deletedRelationships};
+  }
+}
+
+class MemoryRelationshipSelector {
+  MemoryRelationshipSelector({required this.sourceEntityId, required this.targetEntityId, this.relationshipType});
+
+  final String sourceEntityId;
+  final String targetEntityId;
+  final String? relationshipType;
+
+  factory MemoryRelationshipSelector.fromJson(Map<String, dynamic> json) {
+    return MemoryRelationshipSelector(
+      sourceEntityId: _memoryRequiredString(json["source_entity_id"], "delete_relationships"),
+      targetEntityId: _memoryRequiredString(json["target_entity_id"], "delete_relationships"),
+      relationshipType: json["relationship_type"] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"source_entity_id": sourceEntityId, "target_entity_id": targetEntityId, "relationship_type": relationshipType};
+  }
+}
+
+class MemoryDeleteRelationshipsResult {
+  MemoryDeleteRelationshipsResult({required this.name, required this.deletedRelationships});
+
+  final String name;
+  final int deletedRelationships;
+
+  factory MemoryDeleteRelationshipsResult.fromJson(Map<String, dynamic> json) {
+    return MemoryDeleteRelationshipsResult(
+      name: _memoryRequiredString(json["name"], "delete_relationships"),
+      deletedRelationships: _memoryOptionalInt(json["deleted_relationships"]) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "deleted_relationships": deletedRelationships};
+  }
+}
+
+class MemoryOptimizeDatasetStats {
+  MemoryOptimizeDatasetStats({
+    required this.dataset,
+    required this.fragmentsAdded,
+    required this.fragmentsRemoved,
+    required this.filesAdded,
+    required this.filesRemoved,
+    required this.oldVersionsRemoved,
+    required this.bytesRemoved,
+  });
+
+  final String dataset;
+  final int fragmentsAdded;
+  final int fragmentsRemoved;
+  final int filesAdded;
+  final int filesRemoved;
+  final int oldVersionsRemoved;
+  final int bytesRemoved;
+
+  factory MemoryOptimizeDatasetStats.fromJson(Map<String, dynamic> json) {
+    return MemoryOptimizeDatasetStats(
+      dataset: _memoryRequiredString(json["dataset"], "optimize"),
+      fragmentsAdded: _memoryOptionalInt(json["fragments_added"]) ?? 0,
+      fragmentsRemoved: _memoryOptionalInt(json["fragments_removed"]) ?? 0,
+      filesAdded: _memoryOptionalInt(json["files_added"]) ?? 0,
+      filesRemoved: _memoryOptionalInt(json["files_removed"]) ?? 0,
+      oldVersionsRemoved: _memoryOptionalInt(json["old_versions_removed"]) ?? 0,
+      bytesRemoved: _memoryOptionalInt(json["bytes_removed"]) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "dataset": dataset,
+      "fragments_added": fragmentsAdded,
+      "fragments_removed": fragmentsRemoved,
+      "files_added": filesAdded,
+      "files_removed": filesRemoved,
+      "old_versions_removed": oldVersionsRemoved,
+      "bytes_removed": bytesRemoved,
+    };
+  }
+}
+
+class MemoryOptimizeResult {
+  MemoryOptimizeResult({required this.name, required this.datasets});
+
+  final String name;
+  final List<MemoryOptimizeDatasetStats> datasets;
+
+  factory MemoryOptimizeResult.fromJson(Map<String, dynamic> json) {
+    final rawDatasets = json["datasets"];
+    if (rawDatasets != null && rawDatasets is! List) {
+      throw _memoryUnexpectedResponseError("optimize");
+    }
+
+    return MemoryOptimizeResult(
+      name: _memoryRequiredString(json["name"], "optimize"),
+      datasets: (rawDatasets as List? ?? const [])
+          .map((item) => MemoryOptimizeDatasetStats.fromJson(_memoryJsonMap(item, "optimize")))
+          .toList(growable: false),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {"name": name, "datasets": datasets.map((entry) => entry.toJson()).toList(growable: false)};
+  }
+}
+
 class MemoryClient {
   MemoryClient({required this.room});
 
   final RoomClient room;
 
   RoomServerException _unexpectedResponseError(String operation) {
-    return RoomServerException("Invalid return type from memory.$operation call");
+    return _memoryUnexpectedResponseError(operation);
   }
 
   Future<Content> _invoke(String operation, Map<String, dynamic> input) async {
@@ -1535,11 +2199,16 @@ class MemoryClient {
     return output.content;
   }
 
-  Future<List<String>> list({List<String>? namespace}) async {
-    final response = await _invoke("list", {"namespace": namespace});
+  Future<JsonContent> _invokeJson(String operation, Map<String, dynamic> input) async {
+    final response = await _invoke(operation, input);
     if (response is! JsonContent) {
-      throw _unexpectedResponseError("list");
+      throw _unexpectedResponseError(operation);
     }
+    return response;
+  }
+
+  Future<List<String>> list({List<String>? namespace}) async {
+    final response = await _invokeJson("list", {"namespace": namespace});
     final memories = response.json["memories"];
     if (memories is! List) {
       return [];
@@ -1553,6 +2222,221 @@ class MemoryClient {
 
   Future<void> drop({required String name, List<String>? namespace, bool ignoreMissing = false}) async {
     await _invoke("drop", {"name": name, "namespace": namespace, "ignore_missing": ignoreMissing});
+  }
+
+  Future<MemoryDetails> inspect({required String name, List<String>? namespace}) async {
+    final response = await _invokeJson("inspect", {"name": name, "namespace": namespace});
+    return MemoryDetails.fromJson(response.json);
+  }
+
+  Future<List<Map<String, dynamic>>> query({required String name, required String statement, List<String>? namespace}) async {
+    final response = await _invokeJson("query", {"name": name, "namespace": namespace, "statement": statement});
+    final results = response.json["results"];
+    if (results is List) {
+      return results.map((item) => _memoryJsonMap(item, "query")).toList(growable: false);
+    }
+    return _memoryRecordsFromRowsChunk(response.json, "query");
+  }
+
+  Future<void> upsertTable({
+    required String name,
+    required String table,
+    required List<Map<String, dynamic>> records,
+    List<String>? namespace,
+    bool merge = true,
+  }) async {
+    await _invoke("upsert_table", {
+      "name": name,
+      "namespace": namespace,
+      "table": table,
+      "records_json": jsonEncode(encodeRecords(records)),
+      "merge": merge,
+    });
+  }
+
+  Future<void> upsertNodes({
+    required String name,
+    required List<MemoryEntityRecord> records,
+    List<String>? namespace,
+    bool merge = true,
+  }) async {
+    await _invoke("upsert_nodes", {
+      "name": name,
+      "namespace": namespace,
+      "records_json": jsonEncode(records.map((record) => record.toJson()).toList(growable: false)),
+      "merge": merge,
+    });
+  }
+
+  Future<void> upsertRelationships({
+    required String name,
+    required List<MemoryRelationshipRecord> records,
+    List<String>? namespace,
+    bool merge = true,
+  }) async {
+    await _invoke("upsert_relationships", {
+      "name": name,
+      "namespace": namespace,
+      "records_json": jsonEncode(records.map((record) => record.toJson()).toList(growable: false)),
+      "merge": merge,
+    });
+  }
+
+  Future<MemoryIngestResult> ingestText({
+    required String name,
+    required String text,
+    List<String>? namespace,
+    MemoryIngestStrategy strategy = MemoryIngestStrategy.heuristic,
+    String? llmModel,
+    double? llmTemperature,
+  }) async {
+    final response = await _invokeJson("ingest_text", {
+      "name": name,
+      "namespace": namespace,
+      "text": text,
+      "strategy": strategy.value,
+      "llm_model": llmModel,
+      "llm_temperature": llmTemperature,
+    });
+    return MemoryIngestResult.fromJson(response.json, operation: "ingest_text");
+  }
+
+  Future<MemoryIngestResult> ingestImage({
+    required String name,
+    String? caption,
+    Uint8List? data,
+    String? mimeType,
+    String? source,
+    Map<String, String>? annotations,
+    List<String>? namespace,
+    MemoryIngestStrategy strategy = MemoryIngestStrategy.heuristic,
+    String? llmModel,
+    double? llmTemperature,
+  }) async {
+    final response = await _invokeJson("ingest_image", {
+      "name": name,
+      "namespace": namespace,
+      "caption": caption,
+      "data_base64": data == null ? null : base64Encode(data),
+      "mime_type": mimeType,
+      "source": source,
+      "annotations_json": annotations == null ? null : jsonEncode(annotations),
+      "strategy": strategy.value,
+      "llm_model": llmModel,
+      "llm_temperature": llmTemperature,
+    });
+    return MemoryIngestResult.fromJson(response.json, operation: "ingest_image");
+  }
+
+  Future<MemoryIngestResult> ingestFile({
+    required String name,
+    String? path,
+    String? text,
+    String? mimeType,
+    List<String>? namespace,
+    MemoryIngestStrategy strategy = MemoryIngestStrategy.heuristic,
+    String? llmModel,
+    double? llmTemperature,
+  }) async {
+    final response = await _invokeJson("ingest_file", {
+      "name": name,
+      "namespace": namespace,
+      "path": path,
+      "text": text,
+      "mime_type": mimeType,
+      "strategy": strategy.value,
+      "llm_model": llmModel,
+      "llm_temperature": llmTemperature,
+    });
+    return MemoryIngestResult.fromJson(response.json, operation: "ingest_file");
+  }
+
+  Future<MemoryIngestResult> ingestFromTable({
+    required String name,
+    required String table,
+    List<String>? textColumns,
+    List<String>? tableNamespace,
+    int? limit,
+    List<String>? namespace,
+    MemoryIngestStrategy strategy = MemoryIngestStrategy.heuristic,
+    String? llmModel,
+    double? llmTemperature,
+  }) async {
+    final response = await _invokeJson("ingest_from_table", {
+      "name": name,
+      "namespace": namespace,
+      "table": table,
+      "table_namespace": tableNamespace,
+      "text_columns": textColumns,
+      "limit": limit,
+      "strategy": strategy.value,
+      "llm_model": llmModel,
+      "llm_temperature": llmTemperature,
+    });
+    return MemoryIngestResult.fromJson(response.json, operation: "ingest_from_table");
+  }
+
+  Future<MemoryIngestResult> ingestFromStorage({
+    required String name,
+    required List<String> paths,
+    List<String>? namespace,
+    MemoryIngestStrategy strategy = MemoryIngestStrategy.heuristic,
+    String? llmModel,
+    double? llmTemperature,
+  }) async {
+    final response = await _invokeJson("ingest_from_storage", {
+      "name": name,
+      "namespace": namespace,
+      "paths": paths,
+      "strategy": strategy.value,
+      "llm_model": llmModel,
+      "llm_temperature": llmTemperature,
+    });
+    return MemoryIngestResult.fromJson(response.json, operation: "ingest_from_storage");
+  }
+
+  Future<MemoryRecallResult> recall({
+    required String name,
+    required String query,
+    List<String>? namespace,
+    int limit = 5,
+    bool includeRelationships = true,
+  }) async {
+    final response = await _invokeJson("recall", {
+      "name": name,
+      "namespace": namespace,
+      "query": query,
+      "limit": limit,
+      "include_relationships": includeRelationships,
+    });
+    return MemoryRecallResult.fromJson(response.json);
+  }
+
+  Future<MemoryDeleteEntitiesResult> deleteEntities({
+    required String name,
+    required List<String> entityIds,
+    List<String>? namespace,
+  }) async {
+    final response = await _invokeJson("delete_entities", {"name": name, "namespace": namespace, "entity_ids": entityIds});
+    return MemoryDeleteEntitiesResult.fromJson(response.json);
+  }
+
+  Future<MemoryDeleteRelationshipsResult> deleteRelationships({
+    required String name,
+    required List<MemoryRelationshipSelector> relationships,
+    List<String>? namespace,
+  }) async {
+    final response = await _invokeJson("delete_relationships", {
+      "name": name,
+      "namespace": namespace,
+      "relationships": relationships.map((relationship) => relationship.toJson()).toList(growable: false),
+    });
+    return MemoryDeleteRelationshipsResult.fromJson(response.json);
+  }
+
+  Future<MemoryOptimizeResult> optimize({required String name, List<String>? namespace, bool compact = true, bool cleanup = true}) async {
+    final response = await _invokeJson("optimize", {"name": name, "namespace": namespace, "compact": compact, "cleanup": cleanup});
+    return MemoryOptimizeResult.fromJson(response.json);
   }
 }
 
