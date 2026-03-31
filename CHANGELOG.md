@@ -1,3 +1,6 @@
+## [0.35.2]
+- Stability
+
 ## [0.35.1]
 - Flutter dev tooling now provides a mount-aware terminal launch dialog for image/container sessions (room/image mounts) and integrates it into the developer console, with improved image list sorting/labels.
 - Flutter ShadCN attachment previews now key by file path and surface upload failures with toast + destructive styling.
