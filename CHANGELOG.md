@@ -1,3 +1,7 @@
+## [0.35.1]
+- Flutter dev tooling now provides a mount-aware terminal launch dialog for image/container sessions (room/image mounts) and integrates it into the developer console, with improved image list sorting/labels.
+- Flutter ShadCN attachment previews now key by file path and surface upload failures with toast + destructive styling.
+
 ## [0.35.0]
 - Managed secret APIs were added with project/room CRUD, base64 payloads, managed secret models, and external OAuth registration CRUD for project and room scopes.
 - Meshagent client now accepts an optional custom HTTP client, and legacy secret helpers now wrap the managed secret APIs.
