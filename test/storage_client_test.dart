@@ -66,6 +66,8 @@ class _InMemoryStorageServer {
 
   String? invalidOperation;
   Content? invalidResponse;
+  int? uploadPullChunkSize = 128 * 1024;
+  int lastUploadChunkCount = 0;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     if (type == 'room.tool_call_request_chunk') {
@@ -120,6 +122,7 @@ class _InMemoryStorageServer {
       case 'upload':
         final toolCallId = request['tool_call_id'] as String;
         _streamingUploads[toolCallId] = BytesBuilder(copy: false);
+        lastUploadChunkCount = 0;
         await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
         return;
       case 'download':
@@ -205,18 +208,11 @@ class _InMemoryStorageServer {
         } else {
           _uploadExpectedSizes[toolCallId] = null;
         }
-        await _sendToolCallChunk(
-          protocol,
-          toolCallId: toolCallId,
-          chunk: BinaryContent(data: Uint8List(0), headers: {'kind': 'pull'}),
-        );
+        await _sendToolCallChunk(protocol, toolCallId: toolCallId, chunk: _makeUploadPullChunk());
       } else if (chunk is BinaryContent && chunk.headers['kind'] == 'data') {
+        lastUploadChunkCount++;
         _streamingUploads[toolCallId]!.add(chunk.data);
-        await _sendToolCallChunk(
-          protocol,
-          toolCallId: toolCallId,
-          chunk: BinaryContent(data: Uint8List(0), headers: {'kind': 'pull'}),
-        );
+        await _sendToolCallChunk(protocol, toolCallId: toolCallId, chunk: _makeUploadPullChunk());
       } else {
         throw StateError('storage.upload expected BinaryContent chunks');
       }
@@ -320,6 +316,15 @@ class _InMemoryStorageServer {
     }).toList();
   }
 
+  BinaryContent _makeUploadPullChunk() {
+    final headers = <String, Object>{'kind': 'pull'};
+    final chunkSize = uploadPullChunkSize;
+    if (chunkSize != null) {
+      headers['chunk_size'] = chunkSize;
+    }
+    return BinaryContent(data: Uint8List(0), headers: headers);
+  }
+
   Future<void> _sendToolCallChunk(Protocol protocol, {required String toolCallId, required Content chunk}) async {
     final packed = unpackMessage(chunk.pack());
     await protocol.send(
@@ -402,6 +407,21 @@ void main() {
       'size': (64 * 1024) + 3,
     });
     expect(chunks.skip(1).expand((chunk) => chunk.data).toList(), [...List<int>.filled(64 * 1024, 1), 2, 3, 4]);
+    expect(harness.server.lastUploadChunkCount, 1);
+
+    await harness.dispose();
+  });
+
+  test('storage uploadStream falls back to default chunk size when pull omits it', () async {
+    final harness = await _startStorageHarness();
+    harness.server.uploadPullChunkSize = null;
+
+    final bytes = Uint8List.fromList(List<int>.filled((64 * 1024) + 17, 7));
+    await harness.room.storage.uploadStream('docs/fallback.txt', Stream.value(bytes), size: bytes.length);
+
+    final downloaded = await harness.room.storage.download('docs/fallback.txt');
+    expect(downloaded.data, orderedEquals(bytes));
+    expect(harness.server.lastUploadChunkCount, 2);
 
     await harness.dispose();
   });

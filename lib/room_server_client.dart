@@ -3222,7 +3222,8 @@ class StorageClient extends ChangeEmitter {
         if (chunk is! BinaryContent || chunk.headers["kind"] != "pull") {
           throw _unexpectedResponseError("upload");
         }
-        input.requestNext();
+        final rawChunkSize = chunk.headers["chunk_size"];
+        input.requestNext(rawChunkSize is int && rawChunkSize > 0 ? rawChunkSize : null);
       }
     } finally {
       input.close();
@@ -3392,7 +3393,7 @@ class _StorageUploadInputStream {
   final String name;
   final String? mimeType;
   final StreamQueue<Uint8List> _source;
-  final _pulls = StreamController<void>();
+  final _pulls = StreamController<int?>();
   bool _closed = false;
   Uint8List _pendingChunk = Uint8List(0);
   int _pendingOffset = 0;
@@ -3403,11 +3404,11 @@ class _StorageUploadInputStream {
       data: Uint8List(0),
       headers: {"kind": "start", "path": path, "overwrite": overwrite, "name": name, "mime_type": mimeType, "size": size},
     );
-    await for (final _ in _pulls.stream) {
+    await for (final requestedChunkSize in _pulls.stream) {
       if (_closed) {
         return;
       }
-      final chunk = await _nextChunk();
+      final chunk = await _nextChunk(requestedChunkSize is int && requestedChunkSize > 0 ? requestedChunkSize : chunkSize);
       if (chunk == null) {
         return;
       }
@@ -3415,22 +3416,25 @@ class _StorageUploadInputStream {
     }
   }
 
-  Future<Uint8List?> _nextChunk() async {
-    while (true) {
+  Future<Uint8List?> _nextChunk(int requestedChunkSize) async {
+    final bytes = BytesBuilder(copy: false);
+
+    while (bytes.length < requestedChunkSize) {
       if (_pendingOffset < _pendingChunk.length) {
-        final end = math.min(_pendingOffset + chunkSize, _pendingChunk.length);
-        final chunk = Uint8List.sublistView(_pendingChunk, _pendingOffset, end);
+        final remaining = requestedChunkSize - bytes.length;
+        final end = math.min(_pendingOffset + remaining, _pendingChunk.length);
+        bytes.add(Uint8List.sublistView(_pendingChunk, _pendingOffset, end));
         _pendingOffset = end;
-        return Uint8List.fromList(chunk);
+        continue;
       }
 
       if (_sourceExhausted) {
-        return null;
+        break;
       }
 
       if (!await _source.hasNext) {
         _sourceExhausted = true;
-        return null;
+        break;
       }
 
       final nextChunk = await _source.next;
@@ -3440,13 +3444,18 @@ class _StorageUploadInputStream {
       _pendingChunk = nextChunk;
       _pendingOffset = 0;
     }
+
+    if (bytes.length == 0) {
+      return null;
+    }
+    return bytes.takeBytes();
   }
 
-  void requestNext() {
+  void requestNext([int? requestedChunkSize]) {
     if (_closed) {
       return;
     }
-    _pulls.add(null);
+    _pulls.add(requestedChunkSize);
   }
 
   void close() {
