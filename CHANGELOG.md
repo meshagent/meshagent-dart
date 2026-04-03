@@ -1,3 +1,11 @@
+## [0.35.6]
+- Dart StorageClient now honors server-provided `chunk_size` pull headers when streaming uploads.
+- Flutter developer tools now sort containers by name/image/starter for stable ordering, and the trace viewer deduplicates span updates with improved timeline layout and timestamp formatting.
+- New coordinated context-menu system adds adaptive anchoring and shared controller coordination across chat, attachments, and file previews.
+- Chat UI refinements improve reaction/attachment menus, action visibility timing, and context-menu boundaries for cleaner interactions.
+- Meeting controls are redesigned with pending mic/camera states, error toasts, responsive layouts, and a unified device settings dialog.
+- Participant tiles now use camera publications and updated overlays, while voice agent calling adds start-session error handling and responsive waveform/controls.
+
 ## [0.35.5]
 - Chat threads now keep a dedicated scroll controller and auto-scroll to the latest message after send.
 - Chat bubble context menus now coordinate a single active menu and close on outside taps, with improved controller cleanup.
