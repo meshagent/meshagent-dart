@@ -421,6 +421,23 @@ class RoomClient extends ChangeEmitter {
 
   final Protocol protocol;
 
+  ParticipantToken? get participantToken {
+    final protocol = this.protocol;
+    if (protocol is! WebSocketClientProtocol) {
+      return null;
+    }
+
+    try {
+      return ParticipantToken.fromJwt(protocol.channel.jwt, verify: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  ApiScope? get apiGrant {
+    return participantToken?.getApiGrant();
+  }
+
   void _failPendingRequests(RoomServerException error) {
     if (_pendingRequests.isEmpty) {
       return;
