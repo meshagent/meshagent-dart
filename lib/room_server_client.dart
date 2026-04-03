@@ -422,13 +422,13 @@ class RoomClient extends ChangeEmitter {
   final Protocol protocol;
 
   ParticipantToken? get participantToken {
-    final protocol = this.protocol;
-    if (protocol is! WebSocketClientProtocol) {
+    final channel = protocol.channel;
+    if (channel is! WebSocketProtocolChannel) {
       return null;
     }
 
     try {
-      return ParticipantToken.fromJwt(protocol.channel.jwt, verify: false);
+      return ParticipantToken.fromJwt(channel.jwt, verify: false);
     } catch (_) {
       return null;
     }
