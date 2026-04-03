@@ -66,6 +66,7 @@ class _FakeContainersServer {
   final requests = <_RecordedRequest>[];
   final execChunks = <BinaryContent>[];
   final logChunks = <BinaryContent>[];
+  final buildLogChunks = <BinaryContent>[];
   final _streamTools = <String, String>{};
   final _logCloseCompleters = <String, Completer<void>>{};
   final _execCloseCompleters = <String, Completer<void>>{};
@@ -96,7 +97,7 @@ class _FakeContainersServer {
       }
 
       final tool = request['tool'] as String;
-      if (tool == 'exec' || tool == 'logs') {
+      if (tool == 'exec' || tool == 'logs' || tool == 'get_build_logs') {
         final toolCallId = request['tool_call_id'] as String;
         _streamTools[toolCallId] = tool;
         if (tool == 'exec') {
@@ -125,7 +126,9 @@ class _FakeContainersServer {
                     'id': 'img-1',
                     'tags': ['demo:latest'],
                     'size': 1,
-                    'labels': <String, dynamic>{},
+                    'labels': [
+                      {'key': 'role', 'value': 'demo'},
+                    ],
                   },
                 ],
               },
@@ -135,12 +138,47 @@ class _FakeContainersServer {
           return;
         case 'run':
         case 'run_service':
+        case 'push_image':
+        case 'load_image':
+        case 'save_image':
           await protocol.send('__response__', JsonContent(json: {'container_id': '$tool-ctr'}).pack(), id: messageId);
           return;
+        case 'build':
+        case 'start_build':
+          await protocol.send('__response__', JsonContent(json: {'build_id': '$tool-job'}).pack(), id: messageId);
+          return;
+        case 'load':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'resolved_ref': 'room.meshagent.com/images/example.tar:latest',
+                'refs': ['room.meshagent.com/images/example.tar:latest'],
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
         case 'pull_image':
+        case 'delete_image':
+        case 'cancel_build':
+        case 'delete_build':
         case 'stop_container':
         case 'delete_container':
           await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+          return;
+        case 'list_builds':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'builds': [
+                  {'id': 'build-1', 'tag': 'demo:latest', 'status': 'succeeded', 'exit_code': 0},
+                ],
+              },
+            ).pack(),
+            id: messageId,
+          );
           return;
         case 'list_containers':
           await protocol.send(
@@ -226,6 +264,18 @@ class _FakeContainersServer {
             protocol,
             toolCallId: toolCallId,
             chunk: BinaryContent(
+              data: Uint8List.fromList('stderr'.codeUnits),
+              headers: {
+                'request_id': execChunks.first.headers['request_id'],
+                'container_id': execChunks.first.headers['container_id'],
+                'channel': 2,
+              },
+            ),
+          );
+          await _sendToolCallChunk(
+            protocol,
+            toolCallId: toolCallId,
+            chunk: BinaryContent(
               data: Uint8List.fromList(utf8.encode('{"status": 0}')),
               headers: {
                 'request_id': execChunks.first.headers['request_id'],
@@ -240,6 +290,25 @@ class _FakeContainersServer {
             chunk: ControlContent(method: 'close'),
           );
         }
+      } else if (tool == 'get_build_logs') {
+        buildLogChunks.add(chunk);
+        requests.add(_RecordedRequest(tool: 'get_build_logs', input: Map<String, dynamic>.from(chunk.headers)));
+        await _sendToolCallChunk(
+          protocol,
+          toolCallId: toolCallId,
+          chunk: BinaryContent(
+            data: Uint8List.fromList('build line'.codeUnits),
+            headers: {'request_id': chunk.headers['request_id'], 'build_id': chunk.headers['build_id'], 'channel': 1},
+          ),
+        );
+        await _sendToolCallChunk(
+          protocol,
+          toolCallId: toolCallId,
+          chunk: BinaryContent(
+            data: Uint8List.fromList(utf8.encode('{"status": 0}')),
+            headers: {'request_id': chunk.headers['request_id'], 'build_id': chunk.headers['build_id'], 'channel': 3},
+          ),
+        );
       } else if (tool == 'logs') {
         logChunks.add(chunk);
         requests.add(_RecordedRequest(tool: 'logs', input: Map<String, dynamic>.from(chunk.headers)));
@@ -313,6 +382,7 @@ void main() {
     expect(await harness.room.containers.runService(serviceId: 'svc-1', env: {'A': '1'}), 'run_service-ctr');
     final images = await harness.room.containers.listImages();
     expect(images.single.tags, ['demo:latest']);
+    expect(images.single.labels, {'role': 'demo'});
     final containers = await harness.room.containers.list();
     expect(containers.single.id, 'container-1');
     expect(await harness.room.containers.waitForExit(containerId: 'container-1'), 0);
@@ -321,6 +391,7 @@ void main() {
     await exec.write(Uint8List.fromList('ping'.codeUnits));
     expect(await exec.result.timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('exec.result timed out')), 0);
     expect(utf8.decode(exec.previousOutput.single), 'hello');
+    expect(utf8.decode(exec.previousError.single), 'stderr');
     final execToolCallId = harness.server._streamTools.entries.singleWhere((entry) => entry.value == 'exec').key;
     await harness.server
         .waitForExecClose(execToolCallId)
@@ -410,6 +481,104 @@ void main() {
     expect(harness.server.execChunks[1].headers['channel'], 4);
     expect(harness.server.execChunks[1].headers['width'], 80);
     expect(harness.server.execChunks[1].headers['height'], 24);
+
+    await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
+  });
+
+  test('containers client supports build and image archive operations', () async {
+    final harness = await _startContainersHarness();
+    final mounts = <ContainerMountSpec>[
+      ContainerMountSpec(room: [RoomStorageMountSpec(path: '/workspace', readOnly: false)]),
+    ];
+
+    await harness.room.containers.deleteImage(image: 'demo:latest');
+    expect(await harness.room.containers.pushImage(tag: 'demo:latest', private: true), 'push_image-ctr');
+
+    final imported = await harness.room.containers.load(archivePath: '/images/example.tar');
+    expect(imported.resolvedRef, 'room.meshagent.com/images/example.tar:latest');
+    expect(imported.refs, ['room.meshagent.com/images/example.tar:latest']);
+
+    expect(await harness.room.containers.loadImage(mounts: mounts, archivePath: '/workspace/example.tar', private: true), 'load_image-ctr');
+    expect(
+      await harness.room.containers.saveImage(tag: 'demo:latest', mounts: mounts, archivePath: '/workspace/example.tar', private: true),
+      'save_image-ctr',
+    );
+    expect(
+      await harness.room.containers.build(
+        tag: 'example:latest',
+        mounts: mounts,
+        contextPath: '/workspace',
+        dockerfilePath: '/workspace/Dockerfile',
+      ),
+      'build-job',
+    );
+    expect(
+      await harness.room.containers.startBuild(
+        tag: 'example:latest',
+        mounts: mounts,
+        contextPath: '/workspace',
+        contextArchivePath: '/website',
+        contextArchiveRef: 'room.meshagent.com/website:latest',
+        contextArchiveMountPath: '/context',
+        contextArchiveArch: 'amd64',
+      ),
+      'start_build-job',
+    );
+
+    final builds = await harness.room.containers.listBuilds();
+    expect(builds, hasLength(1));
+    expect(builds.single.id, 'build-1');
+    expect(builds.single.tag, 'demo:latest');
+    expect(builds.single.status, 'succeeded');
+    expect(builds.single.exitCode, 0);
+
+    await harness.room.containers.cancelBuild(buildId: 'build-1');
+    await harness.room.containers.deleteBuild(buildId: 'build-1');
+
+    final buildLogs = harness.room.containers.getBuildLogs(buildId: 'build-1', follow: true);
+    expect(await buildLogs.stream.toList().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('build logs timed out')), [
+      'build line',
+    ]);
+    expect(await buildLogs.result.timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('build log result timed out')), 0);
+
+    await harness.room.containers.stop(containerId: 'container-1');
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), [
+      'delete_image',
+      'push_image',
+      'load',
+      'load_image',
+      'save_image',
+      'build',
+      'start_build',
+      'list_builds',
+      'cancel_build',
+      'delete_build',
+      'get_build_logs',
+      'stop_container',
+    ]);
+
+    final loadImageInput = harness.server.requests[3].input;
+    expect(loadImageInput['archive_path'], '/workspace/example.tar');
+    expect(loadImageInput['private'], true);
+
+    final buildInput = harness.server.requests[5].input;
+    expect(buildInput['context_archive_path'], isNull);
+    expect(buildInput['dockerfile_path'], '/workspace/Dockerfile');
+
+    final startBuildInput = harness.server.requests[6].input;
+    expect(startBuildInput['context_archive_path'], '/website');
+    expect(startBuildInput['context_archive_ref'], 'room.meshagent.com/website:latest');
+    expect(startBuildInput['context_archive_mount_path'], '/context');
+    expect(startBuildInput['context_archive_arch'], 'amd64');
+
+    final buildLogsInput = harness.server.requests[10].input;
+    expect(buildLogsInput['kind'], 'start');
+    expect(buildLogsInput['build_id'], 'build-1');
+    expect(buildLogsInput['follow'], true);
+
+    final stopInput = harness.server.requests[11].input;
+    expect(stopInput['force'], false);
 
     await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
   });

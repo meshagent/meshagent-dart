@@ -895,23 +895,30 @@ class DockerSecret {
 // Data‑transfer objects
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Single build (as returned by `containers.list_builds`)
 class BuildInfo {
-  BuildInfo({required this.requestId, required this.tag, required this.status, this.error, this.result});
+  BuildInfo({required this.id, required this.tag, required this.status, this.exitCode});
 
-  final String requestId;
+  final String id;
   final String tag;
-  final String status; // "running" | "finished" | "errored"
-  final String? error; // present when status == "errored"
-  final dynamic result; // whatever `aux` object the backend returned
+  final String status;
+  final int? exitCode;
 
   factory BuildInfo.fromJson(Map<String, dynamic> json) => BuildInfo(
-    requestId: json['request_id'] as String,
+    id: json['id'] as String,
     tag: json['tag'] as String,
     status: json['status'] as String,
-    error: json['error'] as String?,
-    result: json['result'],
+    exitCode: json['exit_code'] as int?,
   );
+}
+
+class ImportedImage {
+  ImportedImage({required this.resolvedRef, required this.refs});
+
+  final String resolvedRef;
+  final List<String> refs;
+
+  factory ImportedImage.fromJson(Map<String, dynamic> json) =>
+      ImportedImage(resolvedRef: json['resolved_ref'] as String, refs: (json['refs'] as List?)?.cast<String>() ?? const []);
 }
 
 /// Lightweight image description (from `containers.list_images`)
@@ -964,6 +971,48 @@ List<Map<String, dynamic>> _containerCredentials(List<DockerSecret> values) {
   return values
       .map((entry) => {'registry': entry.registry, 'username': entry.username, 'password': entry.password})
       .toList(growable: false);
+}
+
+Map<String, dynamic> _buildRequestPayload({
+  required String tag,
+  required List<ContainerMountSpec> mounts,
+  required String contextPath,
+  String? dockerfilePath,
+  bool private = false,
+  List<DockerSecret> credentials = const [],
+  String? contextArchivePath,
+  String? contextArchiveRef,
+  String? contextArchiveMountPath,
+  String? contextArchiveArch,
+}) {
+  return {
+    'tag': tag,
+    'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false),
+    'context_path': contextPath,
+    'dockerfile_path': dockerfilePath,
+    'private': private,
+    'credentials': _containerCredentials(credentials),
+    'context_archive_path': contextArchivePath,
+    'context_archive_ref': contextArchiveRef,
+    'context_archive_mount_path': contextArchiveMountPath,
+    'context_archive_arch': contextArchiveArch,
+  };
+}
+
+String _decodeContainerUtf8(Uint8List data, {required String operation}) {
+  try {
+    return utf8.decode(data);
+  } on FormatException {
+    throw RoomServerException('containers.$operation returned invalid UTF-8 data');
+  }
+}
+
+int _decodeContainerStatusPayload(Uint8List data, {required String operation}) {
+  final payload = jsonDecode(_decodeContainerUtf8(data, operation: operation));
+  if (payload is Map && payload['status'] is int) {
+    return payload['status'] as int;
+  }
+  throw RoomServerException('containers.$operation returned an invalid status payload');
 }
 
 class ExecSession {
@@ -1030,11 +1079,17 @@ class ExecSession {
   }
 
   late final _stdoutController = StreamController<Uint8List>.broadcast()..stream.listen((data) => previousOutput.add(data));
+  late final _stderrController = StreamController<Uint8List>.broadcast()..stream.listen((data) => previousError.add(data));
 
   List<Uint8List> previousOutput = [];
+  List<Uint8List> previousError = [];
 
   Stream<Uint8List> get output {
     return _stdoutController.stream;
+  }
+
+  Stream<Uint8List> get stderr {
+    return _stderrController.stream;
   }
 
   void _close(int code) {
@@ -1044,6 +1099,7 @@ class ExecSession {
     _closed = true;
     _closeInputStream();
     _stdoutController.close();
+    _stderrController.close();
   }
 
   void _closeError(Object error) {
@@ -1053,6 +1109,7 @@ class ExecSession {
     _closed = true;
     _closeInputStream();
     _stdoutController.close();
+    _stderrController.close();
   }
 
   Future<void> stop() async {
@@ -1115,6 +1172,18 @@ class ContainersClient extends ChangeEmitter {
       throw _unexpectedResponseError(operation: 'push_image');
     }
     return (output.content as JsonContent).json['container_id'] as String;
+  }
+
+  Future<ImportedImage> load({required String archivePath}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'load',
+      input: ToolContentInput(JsonContent(json: {'archive_path': archivePath})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'load');
+    }
+    return ImportedImage.fromJson((output.content as JsonContent).json);
   }
 
   Future<String> loadImage({required List<ContainerMountSpec> mounts, required String archivePath, bool private = false}) async {
@@ -1205,6 +1274,44 @@ class ContainersClient extends ChangeEmitter {
     return (output.content as JsonContent).json['container_id'] as String;
   }
 
+  Future<String> startBuild({
+    required String tag,
+    required List<ContainerMountSpec> mounts,
+    required String contextPath,
+    String? dockerfilePath,
+    bool private = false,
+    List<DockerSecret> credentials = const [],
+    String? contextArchivePath,
+    String? contextArchiveRef,
+    String? contextArchiveMountPath,
+    String? contextArchiveArch,
+  }) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'start_build',
+      input: ToolContentInput(
+        JsonContent(
+          json: _buildRequestPayload(
+            tag: tag,
+            mounts: mounts,
+            contextPath: contextPath,
+            dockerfilePath: dockerfilePath,
+            private: private,
+            credentials: credentials,
+            contextArchivePath: contextArchivePath,
+            contextArchiveRef: contextArchiveRef,
+            contextArchiveMountPath: contextArchiveMountPath,
+            contextArchiveArch: contextArchiveArch,
+          ),
+        ),
+      ),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'start_build');
+    }
+    return (output.content as JsonContent).json['build_id'] as String;
+  }
+
   Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
     final output = await room.invoke(
       toolkit: 'containers',
@@ -1232,6 +1339,12 @@ class ContainersClient extends ChangeEmitter {
             if (chunk is ErrorContent) {
               throw RoomServerException(chunk.text, code: chunk.code);
             }
+            if (chunk is ControlContent) {
+              if (chunk.method == 'close') {
+                break;
+              }
+              throw _unexpectedResponseError(operation: 'exec');
+            }
             if (chunk is! BinaryContent) {
               throw _unexpectedResponseError(operation: 'exec');
             }
@@ -1245,13 +1358,13 @@ class ContainersClient extends ChangeEmitter {
               session._stdoutController.add(chunk.data);
               continue;
             }
+            if (rawChannel == 2) {
+              session._stderrController.add(chunk.data);
+              continue;
+            }
             if (rawChannel == 3) {
-              final payload = jsonDecode(utf8.decode(chunk.data));
-              if (payload is Map && payload['status'] is int) {
-                session._close(payload['status'] as int);
-                return;
-              }
-              throw RoomServerException('containers.exec returned an invalid status payload');
+              session._close(_decodeContainerStatusPayload(chunk.data, operation: 'exec'));
+              return;
             }
           }
 
@@ -1271,30 +1384,70 @@ class ContainersClient extends ChangeEmitter {
     String? dockerfilePath,
     bool private = false,
     List<DockerSecret> credentials = const [],
+    String? contextArchivePath,
+    String? contextArchiveRef,
+    String? contextArchiveMountPath,
+    String? contextArchiveArch,
   }) async {
     final output = await room.invoke(
       toolkit: 'containers',
       tool: 'build',
       input: ToolContentInput(
         JsonContent(
-          json: {
-            'tag': tag,
-            'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false),
-            'context_path': contextPath,
-            'dockerfile_path': dockerfilePath,
-            'private': private,
-            'credentials': _containerCredentials(credentials),
-          },
+          json: _buildRequestPayload(
+            tag: tag,
+            mounts: mounts,
+            contextPath: contextPath,
+            dockerfilePath: dockerfilePath,
+            private: private,
+            credentials: credentials,
+            contextArchivePath: contextArchivePath,
+            contextArchiveRef: contextArchiveRef,
+            contextArchiveMountPath: contextArchiveMountPath,
+            contextArchiveArch: contextArchiveArch,
+          ),
         ),
       ),
     );
     if (output is! ToolContentOutput || output.content is! JsonContent) {
       throw _unexpectedResponseError(operation: 'build');
     }
-    return (output.content as JsonContent).json['container_id'] as String;
+    return (output.content as JsonContent).json['build_id'] as String;
   }
 
-  Future<void> stop({required String containerId, bool force = true}) async {
+  Future<List<BuildInfo>> listBuilds() async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_builds',
+      input: ToolContentInput(JsonContent(json: {})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list_builds');
+    }
+    final builds = (output.content as JsonContent).json['builds'];
+    if (builds is! List) {
+      throw _unexpectedResponseError(operation: 'list_builds');
+    }
+    return builds.map((entry) => BuildInfo.fromJson(entry as Map<String, dynamic>)).toList(growable: false);
+  }
+
+  Future<void> cancelBuild({required String buildId}) async {
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'cancel_build',
+      input: ToolContentInput(JsonContent(json: {'build_id': buildId})),
+    );
+  }
+
+  Future<void> deleteBuild({required String buildId}) async {
+    await room.invoke(
+      toolkit: 'containers',
+      tool: 'delete_build',
+      input: ToolContentInput(JsonContent(json: {'build_id': buildId})),
+    );
+  }
+
+  Future<void> stop({required String containerId, bool force = false}) async {
     await room.invoke(
       toolkit: 'containers',
       tool: 'stop_container',
@@ -1374,6 +1527,18 @@ class ContainersClient extends ChangeEmitter {
             if (chunk is ErrorContent) {
               throw RoomServerException(chunk.text, code: chunk.code);
             }
+            if (chunk is ControlContent) {
+              if (chunk.method == 'close') {
+                closeInputStream();
+                unawaited(controller.close());
+                unawaited(progress.close());
+                if (!completer.isCompleted) {
+                  completer.complete();
+                }
+                return;
+              }
+              throw _unexpectedResponseError(operation: 'logs');
+            }
             if (chunk is! BinaryContent) {
               throw _unexpectedResponseError(operation: 'logs');
             }
@@ -1385,12 +1550,112 @@ class ContainersClient extends ChangeEmitter {
             if (rawChannel != 1) {
               continue;
             }
-            controller.add(utf8.decode(chunk.data));
+            controller.add(_decodeContainerUtf8(chunk.data, operation: 'logs'));
           }
           closeInputStream();
           unawaited(controller.close());
           unawaited(progress.close());
-          completer.complete();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        })
+        .catchError((Object error) async {
+          closeInputStream();
+          unawaited(controller.close());
+          unawaited(progress.close());
+          if (!completer.isCompleted) {
+            completer.completeError(error);
+          }
+        });
+
+    return stream;
+  }
+
+  LogStream<int?> getBuildLogs({required String buildId, bool follow = true}) {
+    final requestId = const Uuid().v4();
+    final closeInput = Completer<void>();
+    var inputClosed = false;
+
+    void closeInputStream() {
+      if (inputClosed) {
+        return;
+      }
+      inputClosed = true;
+      if (!closeInput.isCompleted) {
+        closeInput.complete();
+      }
+    }
+
+    Stream<Content> inputStream() async* {
+      yield BinaryContent(data: Uint8List(0), headers: {'kind': 'start', 'request_id': requestId, 'build_id': buildId, 'follow': follow});
+      await closeInput.future;
+    }
+
+    final completer = Completer<int?>();
+    final controller = StreamController<String>(
+      onCancel: () async {
+        closeInputStream();
+        await completer.future.catchError((_) => null);
+      },
+    );
+    final progress = StreamController<LogProgress>();
+
+    final stream = LogStream._(completer, controller.stream, progress.stream, () async {
+      closeInputStream();
+      await completer.future.catchError((_) => null);
+    });
+
+    room
+        .invoke(toolkit: 'containers', tool: 'get_build_logs', input: ToolStreamInput(inputStream()))
+        .then((output) async {
+          if (output is! ToolStreamOutput) {
+            throw _unexpectedResponseError(operation: 'get_build_logs');
+          }
+
+          await for (final chunk in output.stream) {
+            if (chunk is ErrorContent) {
+              throw RoomServerException(chunk.text, code: chunk.code);
+            }
+            if (chunk is ControlContent) {
+              if (chunk.method == 'close') {
+                closeInputStream();
+                unawaited(controller.close());
+                unawaited(progress.close());
+                if (!completer.isCompleted) {
+                  completer.complete(null);
+                }
+                return;
+              }
+              throw _unexpectedResponseError(operation: 'get_build_logs');
+            }
+            if (chunk is! BinaryContent) {
+              throw _unexpectedResponseError(operation: 'get_build_logs');
+            }
+
+            final rawChannel = chunk.headers['channel'];
+            if (rawChannel is! int) {
+              throw RoomServerException('containers.get_build_logs returned a chunk without a valid channel');
+            }
+            if (rawChannel == 1) {
+              controller.add(_decodeContainerUtf8(chunk.data, operation: 'get_build_logs'));
+              continue;
+            }
+            if (rawChannel == 3) {
+              closeInputStream();
+              unawaited(controller.close());
+              unawaited(progress.close());
+              if (!completer.isCompleted) {
+                completer.complete(_decodeContainerStatusPayload(chunk.data, operation: 'get_build_logs'));
+              }
+              return;
+            }
+          }
+          closeInputStream();
+          unawaited(controller.close());
+          unawaited(progress.close());
+          if (!completer.isCompleted) {
+            completer.complete(null);
+          }
         })
         .catchError((Object error) async {
           closeInputStream();
@@ -3123,6 +3388,38 @@ class ToolDescription {
 }
 
 class StorageClient extends ChangeEmitter {
+  static const String _defaultUploadMimeTypeValue = 'application/octet-stream';
+  static const Map<String, String> _uploadMimeTypesBySuffix = {'.tar.gz': 'application/x-tar', '.tgz': 'application/x-tar'};
+  static const Map<String, String> _uploadMimeTypesByExtension = {
+    '.bin': 'application/octet-stream',
+    '.css': 'text/css',
+    '.csv': 'text/csv',
+    '.gif': 'image/gif',
+    '.gz': 'application/gzip',
+    '.htm': 'text/html',
+    '.html': 'text/html',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
+    '.js': 'text/javascript',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.tar': 'application/x-tar',
+    '.ts': 'text/typescript',
+    '.tsx': 'text/tsx',
+    '.txt': 'text/plain',
+    '.wasm': 'application/wasm',
+    '.webp': 'image/webp',
+    '.xml': 'application/xml',
+    '.yaml': 'application/yaml',
+    '.yml': 'application/yaml',
+    '.zip': 'application/zip',
+  };
+
   StorageClient({required this.room}) {
     room.protocol.addHandler("storage.file.deleted", _handleFileDeleted);
     room.protocol.addHandler("storage.file.updated", _handleFileUpdated);
@@ -3177,7 +3474,7 @@ class StorageClient extends ChangeEmitter {
     }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  Future<void> delete(String path, {bool? recursive = false}) async {
+  Future<void> delete(String path, {bool? recursive}) async {
     await _invoke("delete", {"path": path, "recursive": recursive});
   }
 
@@ -3189,11 +3486,41 @@ class StorageClient extends ChangeEmitter {
     return result.json["exists"];
   }
 
+  Future<StorageEntry?> stat(String path) async {
+    final response = await _invoke("stat", {"path": path});
+    if (response is! JsonContent) {
+      throw _unexpectedResponseError("stat");
+    }
+    if (response.json["exists"] == false) {
+      return null;
+    }
+    return StorageEntry(
+      name: response.json["name"],
+      isFolder: response.json["is_folder"],
+      size: response.json["size"] is int ? response.json["size"] : null,
+      createdAt: response.json["created_at"] == null ? null : DateTime.parse(response.json["created_at"]),
+      updatedAt: response.json["updated_at"] == null ? null : DateTime.parse(response.json["updated_at"]),
+    );
+  }
+
   String _defaultUploadName(String uploadPath, {String? name}) {
     if (name != null && name.isNotEmpty) {
       return name;
     }
     return path.basename(uploadPath);
+  }
+
+  String _defaultUploadMimeType(String name, {String? mimeType}) {
+    if (mimeType != null && mimeType.isNotEmpty) {
+      return mimeType;
+    }
+    final lowerName = name.toLowerCase();
+    for (final entry in _uploadMimeTypesBySuffix.entries) {
+      if (lowerName.endsWith(entry.key)) {
+        return entry.value;
+      }
+    }
+    return _uploadMimeTypesByExtension[path.extension(lowerName)] ?? _defaultUploadMimeTypeValue;
   }
 
   Future<void> upload(String path, Uint8List bytes, {bool overwrite = false, String? name, String? mimeType}) async {
@@ -3209,14 +3536,15 @@ class StorageClient extends ChangeEmitter {
     String? name,
     String? mimeType,
   }) async {
+    final resolvedName = _defaultUploadName(path, name: name);
     final input = _StorageUploadInputStream(
       path: path,
       overwrite: overwrite,
       chunks: chunks,
       chunkSize: chunkSize,
       size: size,
-      name: _defaultUploadName(path, name: name),
-      mimeType: mimeType,
+      name: resolvedName,
+      mimeType: _defaultUploadMimeType(resolvedName, mimeType: mimeType),
     );
     final output = await room.invoke(toolkit: "storage", tool: "upload", input: ToolStreamInput(input.inputStream()));
 
@@ -3279,6 +3607,9 @@ class StorageClient extends ChangeEmitter {
 
           final kind = chunk.headers["kind"];
           if (kind == "start") {
+            if (metadataReceived) {
+              throw _unexpectedResponseError("download");
+            }
             final chunkName = chunk.headers["name"];
             final chunkMimeType = chunk.headers["mime_type"];
             final chunkSizeValue = chunk.headers["size"];
@@ -3578,60 +3909,6 @@ class DeveloperClient extends ChangeEmitter {
   }
 }
 
-class MessageStream {
-  MessageStream._({
-    required String streamId,
-    required this.header,
-    required this.to,
-    required MessagingClient client,
-    required StreamController<MessageStreamChunk> controller,
-  }) : _streamId = streamId,
-       _client = client,
-       _controller = controller;
-
-  final Map<String, dynamic> header;
-  final Participant to;
-
-  // ignore: unused_field
-  final String _streamId;
-  final MessagingClient _client;
-  final StreamController<MessageStreamChunk> _controller;
-  var closed = false;
-
-  Stream<MessageStreamChunk> get incoming {
-    return _controller.stream;
-  }
-
-  void write(MessageStreamChunk chunk) async {
-    if (closed) {
-      throw RoomServerException("cannot write a closed MessageStream");
-    }
-    await _client.sendMessage(
-      to: to,
-      type: "stream.chunk",
-      message: {"stream_id": _streamId, "header": chunk.header},
-      attachment: chunk.data,
-    );
-  }
-
-  void _close() {
-    _controller.close();
-    closed = true;
-  }
-
-  void close() async {
-    _close();
-    await _client.sendMessage(to: to, type: "stream.close", message: {"stream_id": _streamId});
-  }
-}
-
-class MessageStreamChunk {
-  MessageStreamChunk({required this.header, this.data});
-
-  final Map<String, dynamic> header;
-  final Uint8List? data;
-}
-
 class Queue {
   Queue({required this.name, required this.size});
 
@@ -3645,9 +3922,6 @@ class MessagingClient extends ChangeEmitter {
   }
 
   final RoomClient room;
-  final Map<String, Completer> pendingStreams = {};
-  final Map<String, MessageStream> _streams = {};
-  static final Logger _logger = Logger('messaging_client');
 
   Map<String, dynamic> _messageInput({
     required String type,
@@ -3676,18 +3950,6 @@ class MessagingClient extends ChangeEmitter {
 
     participant._setOnline(false);
 
-    for (final entry in _streams.entries.toList()) {
-      final streamId = entry.key;
-      final stream = entry.value;
-
-      if (stream.to.id != participant.id) {
-        continue;
-      }
-
-      stream._close();
-      _streams.remove(streamId);
-    }
-
     return participant;
   }
 
@@ -3701,26 +3963,6 @@ class MessagingClient extends ChangeEmitter {
     }
 
     return _participants[to.id];
-  }
-
-  Future<MessageStream> createStream({required Participant to, required Map<String, dynamic> header}) async {
-    final streamId = Uuid().v4();
-
-    final stream = MessageStream._(
-      header: header,
-      streamId: streamId,
-      to: to,
-      client: this,
-      controller: StreamController<MessageStreamChunk>(),
-    );
-    final completer = Completer();
-    pendingStreams[streamId] = completer;
-    _streams[streamId] = stream;
-    await completer.future;
-
-    await sendMessage(to: to, type: "stream.open", message: {"stream_id": streamId, "header": header});
-
-    return stream;
   }
 
   Future<void> sendMessage({
@@ -3749,16 +3991,12 @@ class MessagingClient extends ChangeEmitter {
     );
   }
 
-  void Function(MessageStream reader)? _onStreamAcceptCallback;
-
-  Future<void> enable({void Function(MessageStream reader)? onStreamAccept}) async {
+  Future<void> enable() async {
     await room.invoke(
       toolkit: "messaging",
       tool: "enable",
       input: ToolContentInput(JsonContent(json: {})),
     );
-
-    _onStreamAcceptCallback = onStreamAccept;
   }
 
   Future<void> disable() async {
@@ -3807,16 +4045,6 @@ class MessagingClient extends ChangeEmitter {
       _onParticipantEnabled(message);
     } else if (message.type == "participant.disabled") {
       _onParticipantDisabled(message);
-    } else if (message.type == "stream.open") {
-      _onStreamOpen(message);
-    } else if (message.type == "stream.accept") {
-      _onStreamAccept(message);
-    } else if (message.type == "stream.reject") {
-      _onStreamReject(message);
-    } else if (message.type == "stream.chunk") {
-      _onStreamChunk(message);
-    } else if (message.type == "stream.close") {
-      _onStreamClose(message);
     }
 
     room._eventsController.add(RoomMessageEvent(message: message));
@@ -3861,66 +4089,6 @@ class MessagingClient extends ChangeEmitter {
       _participants[data["id"]] = participant;
     }
     notifyListeners();
-  }
-
-  void _onStreamOpen(RoomMessage message) {
-    final from = _participants[message.fromParticipantId];
-    if (from == null) {
-      return;
-    }
-    final streamId = message.message["stream_id"];
-    final controller = StreamController<MessageStreamChunk>();
-    final reader = MessageStream._(header: message.message["header"], streamId: streamId, to: from, client: this, controller: controller);
-    try {
-      if (_onStreamAcceptCallback == null) {
-        throw Exception("streams are not allowed by this client");
-      }
-      _onStreamAcceptCallback!(reader);
-      unawaited(
-        sendMessage(to: from, type: "stream.accept", message: {"stream_id": streamId}, ignoreOffline: true).catchError((
-          Object error,
-          StackTrace stackTrace,
-        ) {
-          _logger.log(Level.WARNING, "unable to send stream response", error, stackTrace);
-        }),
-      );
-    } catch (e) {
-      unawaited(
-        sendMessage(
-          to: from,
-          type: "stream.reject",
-          message: {"stream_id": streamId, "error": e.toString()},
-          ignoreOffline: true,
-        ).catchError((Object error, StackTrace stackTrace) {
-          _logger.log(Level.WARNING, "unable to send stream response", error, stackTrace);
-        }),
-      );
-    }
-
-    _streams[streamId] = reader;
-    notifyListeners();
-  }
-
-  void _onStreamAccept(RoomMessage message) {
-    final streamId = message.message["stream_id"];
-    pendingStreams[streamId]!.complete(true);
-  }
-
-  void _onStreamReject(RoomMessage message) {
-    final streamId = message.message["stream_id"];
-    _streams.remove(streamId);
-    pendingStreams[streamId]!.completeError(Exception("The stream was rejected by the remote client"));
-  }
-
-  void _onStreamChunk(RoomMessage message) {
-    final streamId = message.message["stream_id"];
-    _streams[streamId]!._controller.add(MessageStreamChunk(header: message.message, data: message.attachment));
-  }
-
-  void _onStreamClose(RoomMessage message) {
-    final streamId = message.message["stream_id"];
-    _streams[streamId]!._controller.close();
-    _streams.remove(streamId);
   }
 }
 
@@ -5568,7 +5736,7 @@ class OAuthTokenRequest {
   });
 
   final String? challenge;
-  final String clientId;
+  final String? clientId;
   final String requestId;
   final String authorizationEndpoint;
   final String tokenEndpoint;
@@ -5576,7 +5744,7 @@ class OAuthTokenRequest {
 }
 
 /// Optional: if you want a typedef for clarity
-typedef OAuthTokenRequestHandler = void Function(OAuthTokenRequest request);
+typedef OAuthTokenRequestHandler = FutureOr<void> Function(OAuthTokenRequest request);
 
 class SecretRequest {
   SecretRequest({required this.requestId, required this.url, required this.type, this.delegateTo});
@@ -5587,7 +5755,7 @@ class SecretRequest {
   final String? delegateTo;
 }
 
-typedef SecretRequestHandler = void Function(SecretRequest request);
+typedef SecretRequestHandler = FutureOr<void> Function(SecretRequest request);
 
 class SecretInfo {
   const SecretInfo({required this.id, required this.type, required this.name, this.delegatedTo});
@@ -5658,7 +5826,7 @@ class SecretsClient extends ChangeEmitter {
     // }
     final String requestId = header["request_id"] as String;
     final req = header["request"]["oauth"] as Map<String, dynamic>;
-    final String clientId = req["client_id"] as String;
+    final String? clientId = req["client_id"] as String?;
 
     if (oauthTokenRequestHandler == null) {
       // Mirror Python behavior (raise if no handler).
@@ -5676,13 +5844,11 @@ class SecretsClient extends ChangeEmitter {
 
     // Fire and forget, just like the Python version creates a task.
     // Your handler should eventually call `provideOAuthToken(...)`.
-    () async {
-      try {
-        oauthTokenRequestHandler!(authReq);
-      } catch (e, st) {
-        Logger.root.warning("OAuth token request handler threw", e, st);
-      }
-    }();
+    unawaited(
+      Future.sync(() => oauthTokenRequestHandler!(authReq)).catchError((Object error, StackTrace stackTrace) {
+        Logger.root.warning("OAuth token request handler threw", error, stackTrace);
+      }),
+    );
   }
 
   Future<void> _handleClientSecretRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
@@ -5702,13 +5868,11 @@ class SecretsClient extends ChangeEmitter {
       delegateTo: req["delegate_to"] as String?,
     );
 
-    () async {
-      try {
-        secretRequestHandler!(secretReq);
-      } catch (e, st) {
-        Logger.root.warning("Secret request handler threw", e, st);
-      }
-    }();
+    unawaited(
+      Future.sync(() => secretRequestHandler!(secretReq)).catchError((Object error, StackTrace stackTrace) {
+        Logger.root.warning("Secret request handler threw", error, stackTrace);
+      }),
+    );
   }
 
   /// Client -> server: Provide the OAuth token in response to a prior inbound request.
@@ -5751,8 +5915,8 @@ class SecretsClient extends ChangeEmitter {
     throw _unexpectedResponseError("request_secret");
   }
 
-  Future<FileContent?> getSecret({required String secretId, String? delegatedTo}) async {
-    final req = <String, dynamic>{"secret_id": secretId, "type": null, "name": null, "delegated_to": delegatedTo};
+  Future<FileContent?> getSecret({String? secretId, String? type, String? name, String? delegatedTo}) async {
+    final req = <String, dynamic>{"secret_id": secretId, "type": type, "name": name, "delegated_to": delegatedTo};
 
     final res = await _invoke("get_secret", req);
     if (res is EmptyContent) {
@@ -5765,8 +5929,9 @@ class SecretsClient extends ChangeEmitter {
   }
 
   Future<void> setSecret({
-    required String secretId,
+    String? secretId,
     required Uint8List data,
+    String? type,
     String? mimeType,
     String? name,
     String? delegatedTo,
@@ -5778,7 +5943,7 @@ class SecretsClient extends ChangeEmitter {
         data: data,
         headers: <String, dynamic>{
           "secret_id": secretId,
-          "type": mimeType,
+          "type": type ?? mimeType,
           "name": name,
           "delegated_to": delegatedTo,
           "for_identity": forIdentity,
@@ -5829,10 +5994,10 @@ class SecretsClient extends ChangeEmitter {
   ///
   /// This matches the Python signature:
   ///   request_oauth_token(authorization_endpoint, token_endpoint, scopes, timeout, from_participant_id)
-  Future<String> requestOAuthToken({
+  Future<String?> requestOAuthToken({
     required String fromParticipantId,
     required Uri redirectUri,
-    required String delegateTo,
+    String? delegateTo,
     ConnectorRef? connector,
     OAuthClientConfig? oauth,
     int timeout = 60 * 5,
@@ -5850,9 +6015,9 @@ class SecretsClient extends ChangeEmitter {
     if (res is! JsonContent) {
       throw _unexpectedResponseError("request_oauth_token");
     }
-    final accessToken = (res.json["access_token"] as String?) ?? "";
+    final accessToken = (res.json["access_token"] as String?) ?? '';
     if (accessToken.isEmpty) {
-      throw RoomServerException("Invalid response: missing access_token");
+      return null;
     }
     return accessToken;
   }

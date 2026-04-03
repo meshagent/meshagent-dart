@@ -182,6 +182,9 @@ void main() {
     final secret = await harness.room.secrets.getSecret(secretId: 'secret-1');
     expect(secret, isNotNull);
     expect(utf8.decode(secret!.data), 'secret');
+    await harness.room.secrets.setSecret(type: 'text/plain', name: 'named-secret', data: Uint8List.fromList('named'.codeUnits));
+    final namedSecret = await harness.room.secrets.getSecret(type: 'text/plain', name: 'named-secret');
+    expect(namedSecret, isNotNull);
 
     expect(harness.server.requests.map((entry) => entry.tool).toList(), [
       'provide_oauth_authorization',
@@ -194,6 +197,8 @@ void main() {
       'delete_secret',
       'delete_requested_secret',
       'request_secret',
+      'set_secret',
+      'get_secret',
       'set_secret',
       'get_secret',
     ]);
@@ -223,6 +228,26 @@ void main() {
     final getSecretInput = harness.server.requests[11].input;
     expect(getSecretInput, isA<JsonContent>());
     expect((getSecretInput as JsonContent).json['secret_id'], 'secret-1');
+
+    final namedSetSecretInput = harness.server.requests[12].input;
+    expect(namedSetSecretInput, isA<BinaryContent>());
+    expect((namedSetSecretInput as BinaryContent).headers, {
+      "secret_id": null,
+      "type": "text/plain",
+      "name": "named-secret",
+      "delegated_to": null,
+      "for_identity": null,
+      "has_data": true,
+    });
+
+    final namedGetSecretInput = harness.server.requests[13].input;
+    expect(namedGetSecretInput, isA<JsonContent>());
+    expect((namedGetSecretInput as JsonContent).json, {
+      'secret_id': null,
+      'type': 'text/plain',
+      'name': 'named-secret',
+      'delegated_to': null,
+    });
 
     await harness.dispose();
   });

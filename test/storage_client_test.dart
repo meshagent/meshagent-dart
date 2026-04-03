@@ -49,12 +49,17 @@ class _StorageHarness {
   final _InMemoryStorageServer server;
 
   Future<void> dispose() async {
+    await Future<void>.delayed(Duration.zero);
     room.dispose();
+    await Future<void>.delayed(Duration.zero);
     await pair.dispose();
   }
 }
 
 class _InMemoryStorageServer {
+  static const String createdAt = '2025-01-01T00:00:00Z';
+  static const String updatedAt = '2025-01-02T00:00:00Z';
+
   final Map<String, Uint8List> _files = {};
   final Map<String, BytesBuilder> _streamingUploads = {};
   final Map<String, String> _uploadPaths = {};
@@ -68,6 +73,8 @@ class _InMemoryStorageServer {
   Content? invalidResponse;
   int? uploadPullChunkSize = 128 * 1024;
   int lastUploadChunkCount = 0;
+  Map<String, dynamic>? lastUploadStartHeaders;
+  bool? lastDeleteRecursive;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     if (type == 'room.tool_call_request_chunk') {
@@ -109,8 +116,8 @@ class _InMemoryStorageServer {
                 'name': path.split('/').last,
                 'is_folder': false,
                 'size': _files[path]!.length,
-                'created_at': null,
-                'updated_at': null,
+                'created_at': createdAt,
+                'updated_at': updatedAt,
               },
             ).pack(),
             id: messageId,
@@ -146,6 +153,7 @@ class _InMemoryStorageServer {
         return;
       case 'delete':
         final path = _jsonPath(input);
+        lastDeleteRecursive = _jsonPayload(input)['recursive'] as bool?;
         _files.remove(path);
         await protocol.send('__response__', EmptyContent().pack(), id: messageId);
         await protocol.send('storage.file.deleted', packMessage({'path': path, 'participant_id': 'participant-1'}));
@@ -192,6 +200,7 @@ class _InMemoryStorageServer {
         );
         await protocol.send('storage.file.updated', packMessage({'path': path, 'participant_id': 'participant-1'}));
       } else if (chunk is BinaryContent && chunk.headers['kind'] == 'start') {
+        lastUploadStartHeaders = Map<String, dynamic>.from(chunk.headers);
         final path = chunk.headers['path'];
         if (path is! String) {
           throw StateError('storage.upload missing path header');
@@ -312,7 +321,7 @@ class _InMemoryStorageServer {
     return names.map((name) {
       final fullPath = prefix.isEmpty ? name : '$prefix$name';
       final bytes = _files[fullPath];
-      return {'name': name, 'is_folder': entries[name], 'size': bytes?.length, 'created_at': null, 'updated_at': null};
+      return {'name': name, 'is_folder': entries[name], 'size': bytes?.length, 'created_at': createdAt, 'updated_at': updatedAt};
     }).toList();
   }
 
@@ -353,6 +362,25 @@ void main() {
 
     final exists = await harness.room.storage.exists('missing.txt');
     expect(exists, isFalse);
+
+    await harness.dispose();
+  });
+
+  test('storage stat returns metadata and null when file is absent', () async {
+    final harness = await _startStorageHarness();
+
+    final bytes = Uint8List.fromList('hello storage'.codeUnits);
+    await harness.room.storage.uploadStream('docs/example.txt', Stream.value(bytes), size: bytes.length);
+
+    final stat = await harness.room.storage.stat('docs/example.txt');
+    expect(stat, isNotNull);
+    expect(stat!.name, 'example.txt');
+    expect(stat.size, bytes.length);
+    expect(stat.createdAt, DateTime.parse(_InMemoryStorageServer.createdAt));
+    expect(stat.updatedAt, DateTime.parse(_InMemoryStorageServer.updatedAt));
+
+    final missing = await harness.room.storage.stat('docs/missing.txt');
+    expect(missing, isNull);
 
     await harness.dispose();
   });
@@ -426,6 +454,21 @@ void main() {
     await harness.dispose();
   });
 
+  test('storage uploadStream defaults upload name and mime type', () async {
+    final harness = await _startStorageHarness();
+
+    await harness.room.storage.uploadStream('docs/example.txt', Stream.value(Uint8List.fromList([1, 2, 3])), size: 3);
+    expect(harness.server.lastUploadStartHeaders, isNotNull);
+    expect(harness.server.lastUploadStartHeaders!['name'], 'example.txt');
+    expect(harness.server.lastUploadStartHeaders!['mime_type'], 'text/plain');
+
+    await harness.room.storage.uploadStream('docs/blob', Stream.value(Uint8List.fromList([4])), size: 1);
+    expect(harness.server.lastUploadStartHeaders!['name'], 'blob');
+    expect(harness.server.lastUploadStartHeaders!['mime_type'], 'application/octet-stream');
+
+    await harness.dispose();
+  });
+
   test('storage downloadUrl returns URL string', () async {
     final harness = await _startStorageHarness();
 
@@ -446,10 +489,16 @@ void main() {
 
     final listing = await harness.room.storage.list('folder');
     expect(listing.map((entry) => entry.name).toList(), ['a.txt', 'b.txt']);
+    expect(listing.first.createdAt, DateTime.parse(_InMemoryStorageServer.createdAt));
+    expect(listing.first.updatedAt, DateTime.parse(_InMemoryStorageServer.updatedAt));
 
     await harness.room.storage.delete('folder/a.txt');
+    expect(harness.server.lastDeleteRecursive, isNull);
     expect(await harness.room.storage.exists('folder/a.txt'), isFalse);
     expect(await harness.room.storage.exists('folder/b.txt'), isTrue);
+
+    await harness.room.storage.delete('folder', recursive: true);
+    expect(harness.server.lastDeleteRecursive, isTrue);
 
     await harness.dispose();
   });
