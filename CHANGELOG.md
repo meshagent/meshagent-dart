@@ -1,3 +1,12 @@
+## [0.35.7]
+- Added container build lifecycle support in the Dart SDK (start/build returning `build_id`, list/cancel/delete builds, build logs, image load) plus exec stderr streaming and stricter status decoding.
+- Breaking: container build APIs now return build IDs and BuildInfo fields changed; container stop defaults to non-forced.
+- Added storage upgrades: `stat`, upload MIME-type inference, storage entries now include created/updated timestamps, and stricter download metadata validation.
+- Added secrets client enhancements: async OAuth/secret request handlers, optional client ID, flexible get/set secret by id/type/name, and requestOAuthToken returns null when no token is provided.
+- Added database version metadata (TableVersion now includes metadata) and improved where-clause encoding.
+- Added RoomClient helpers to inspect participant tokens and API grants.
+- Breaking: messaging stream APIs removed (stream callbacks and MessageStream types); use streaming toolkits instead.
+
 ## [0.35.6]
 - Dart StorageClient now honors server-provided `chunk_size` pull headers when streaming uploads.
 - Flutter developer tools now sort containers by name/image/starter for stable ordering, and the trace viewer deduplicates span updates with improved timeline layout and timestamp formatting.
