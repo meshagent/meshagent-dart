@@ -435,6 +435,12 @@ void main() {
     expect(sqlRows, hasLength(1));
     expect(sqlRows.single['id'], 1);
     expect(utf8.decode(sqlRows.single['payload'] as Uint8List), 'sql-result');
+
+    final versions = await harness.room.database.listVersions('records');
+    expect(versions, hasLength(1));
+    expect(versions.single.version, 1);
+    expect(versions.single.metadata, {'kind': 'demo'});
+
     expect(harness.server.readStarts['search']!.single, {
       'kind': 'start',
       'table': 'records',
@@ -463,6 +469,16 @@ void main() {
       {'kind': 'pull'},
       {'kind': 'pull'},
     ]);
+
+    await harness.dispose();
+  });
+
+  test('database where maps use json semantics', () async {
+    final harness = await _startDatabaseHarness();
+
+    await harness.room.database.search(table: 'records', where: {'id': 1, 'active': true, 'name': "O'Reilly"});
+
+    expect(harness.server.readStarts['search']!.single['where'], 'id = 1 AND active = true AND name = "O\'Reilly"');
 
     await harness.dispose();
   });

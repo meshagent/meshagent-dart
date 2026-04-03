@@ -280,10 +280,10 @@ List<List<Map<String, dynamic>>> _rowChunks(List<Map<String, dynamic>> rows, {in
 }
 
 String? _whereClause(dynamic where) {
-  if (where is Map<String, dynamic>) {
+  if (where is Map) {
     final parts = <String>[];
     where.forEach((key, value) {
-      parts.add("$key = ${_escapeValue(value)}");
+      parts.add("${key.toString()} = ${jsonEncode(_encodeRecordValue(value))}");
     });
     return parts.join(" AND ");
   }
@@ -291,10 +291,6 @@ String? _whereClause(dynamic where) {
     return where;
   }
   return null;
-}
-
-String _escapeValue(dynamic value) {
-  return "'${value.toString().replaceAll("'", "''")}'";
 }
 
 class _DatabaseWriteInputStream {
@@ -717,7 +713,19 @@ class DatabaseClient {
           if (value is! Map) {
             throw RoomServerException("unexpected return type from database.list_versions call");
           }
-          return TableVersion(version: (value["version"] as num).toInt(), timestamp: DateTime.parse(value["timestamp"] as String));
+          final metadataJson = value["metadata_json"];
+          if (metadataJson is! String) {
+            throw RoomServerException("unexpected return type from database.list_versions call");
+          }
+          final metadata = jsonDecode(metadataJson);
+          if (metadata is! Map) {
+            throw RoomServerException("unexpected return type from database.list_versions call");
+          }
+          return TableVersion(
+            version: (value["version"] as num).toInt(),
+            timestamp: DateTime.parse(value["timestamp"] as String),
+            metadata: Map<String, dynamic>.from(metadata),
+          );
         })
         .toList(growable: false);
   }
@@ -753,10 +761,11 @@ class DatabaseClient {
 }
 
 class TableVersion {
-  const TableVersion({required this.version, required this.timestamp});
+  const TableVersion({required this.version, required this.timestamp, required this.metadata});
 
   final int version;
   final DateTime timestamp;
+  final Map<String, dynamic> metadata;
 }
 
 class TableIndex {
