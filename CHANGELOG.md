@@ -1,3 +1,9 @@
+## [0.35.8]
+- Live trace viewer and developer console now support trace search filtering across span metadata while preserving parent/child context.
+- File preview components now reload code from room/url/text with error handling, load PDFs from room storage, improve image loading/error states, and recognize plaintext files as code.
+- Context menus can optionally center within boundaries and refresh anchors on viewport changes.
+- Dart SDK examples updated to use storage upload and decode bytes, with cleanup of empty example stubs.
+
 ## [0.35.7]
 - Added container build lifecycle support in the Dart SDK (start/build returning `build_id`, list/cancel/delete builds, build logs, image load) plus exec stderr streaming and stricter status decoding.
 - Breaking: container build APIs now return build IDs and BuildInfo fields changed; container stop defaults to non-forced.
