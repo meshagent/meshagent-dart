@@ -11,6 +11,16 @@ void main() {
           name: 'agent-1',
           description: 'Handles requests',
           annotations: {'role': 'support'},
+          email: EmailSpec(address: 'assistant@example.com', public: true),
+          heartbeat: HeartbeatSpec(
+            queue: 'assistant-scheduled-tasks',
+            threadId: '/agents/assistant/threads/heartbeats/{YYYY}/{MM}/{DD}/{HH}/{mm}/heartbeat.thread',
+            prompt: [
+              AgentFileContent(url: 'room:///agents/assistant/heartbeat.md'),
+              AgentTextContent(text: 'Review the latest support queue.'),
+            ],
+            minutes: 60,
+          ),
           channels: ChannelsSpec(
             email: [
               EmailChannel(address: 'support@example.com', private: false, annotations: {'label': 'inbox'}),
@@ -43,6 +53,18 @@ void main() {
 
     expect(restored.agents, hasLength(1));
     expect(restored.agents.single.channels, isNotNull);
+    expect(restored.agents.single.email, isNotNull);
+    expect(restored.agents.single.email!.address, 'assistant@example.com');
+    expect(restored.agents.single.email!.public, isTrue);
+    expect(restored.agents.single.heartbeat, isNotNull);
+    expect(restored.agents.single.heartbeat!.queue, 'assistant-scheduled-tasks');
+    expect(restored.agents.single.heartbeat!.threadId, '/agents/assistant/threads/heartbeats/{YYYY}/{MM}/{DD}/{HH}/{mm}/heartbeat.thread');
+    expect(restored.agents.single.heartbeat!.minutes, 60);
+    expect(restored.agents.single.heartbeat!.prompt, hasLength(2));
+    expect(restored.agents.single.heartbeat!.prompt.first, isA<AgentFileContent>());
+    expect((restored.agents.single.heartbeat!.prompt.first as AgentFileContent).url, 'room:///agents/assistant/heartbeat.md');
+    expect(restored.agents.single.heartbeat!.prompt.last, isA<AgentTextContent>());
+    expect((restored.agents.single.heartbeat!.prompt.last as AgentTextContent).text, 'Review the latest support queue.');
     expect(restored.agents.single.channels!.email, hasLength(1));
     expect(restored.agents.single.channels!.email.single.address, 'support@example.com');
     expect(restored.agents.single.channels!.email.single.private, isFalse);
@@ -74,6 +96,16 @@ void main() {
           'name': 'helper-{role}',
           'description': 'Handles {role}',
           'annotations': {'role': '{role}'},
+          'email': {'address': 'assistant+{role}@example.com'},
+          'heartbeat': {
+            'queue': 'assistant-scheduled-tasks-{role}',
+            'thread_id': '/agents/{role}/heartbeat.thread',
+            'prompt': [
+              {'type': 'file', 'url': 'room:///agents/{role}/heartbeat.md'},
+              {'type': 'text', 'text': 'Review the {role} queue'},
+            ],
+            'minutes': 60,
+          },
           'channels': {
             'email': [
               {
@@ -111,6 +143,18 @@ void main() {
     expect(service.agents.single.name, 'helper-ops');
     expect(service.agents.single.description, 'Handles ops');
     expect(service.agents.single.annotations['role'], 'ops');
+    expect(service.agents.single.email, isNotNull);
+    expect(service.agents.single.email!.address, 'assistant+ops@example.com');
+    expect(service.agents.single.email!.public, isFalse);
+    expect(service.agents.single.heartbeat, isNotNull);
+    expect(service.agents.single.heartbeat!.queue, 'assistant-scheduled-tasks-ops');
+    expect(service.agents.single.heartbeat!.threadId, '/agents/ops/heartbeat.thread');
+    expect(service.agents.single.heartbeat!.minutes, 60);
+    expect(service.agents.single.heartbeat!.prompt, hasLength(2));
+    expect(service.agents.single.heartbeat!.prompt.first, isA<AgentFileContent>());
+    expect((service.agents.single.heartbeat!.prompt.first as AgentFileContent).url, 'room:///agents/ops/heartbeat.md');
+    expect(service.agents.single.heartbeat!.prompt.last, isA<AgentTextContent>());
+    expect((service.agents.single.heartbeat!.prompt.last as AgentTextContent).text, 'Review the ops queue');
     expect(service.agents.single.channels!.email.single.address, 'support+ops@example.com');
     expect(service.agents.single.channels!.email.single.annotations['label'], 'ops-inbox');
     expect(service.agents.single.channels!.messaging.single.protocol, 'meshagent.agent-message.v1');

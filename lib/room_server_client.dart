@@ -5177,13 +5177,122 @@ class ChannelsSpec {
   }
 }
 
+abstract class AgentInputContent {
+  const AgentInputContent();
+
+  Map<String, dynamic> toJson();
+
+  AgentInputContent formatWith(Map<String, String> values);
+
+  static AgentInputContent fromJson(Map<String, dynamic> json) {
+    switch (json['type']) {
+      case 'text':
+        return AgentTextContent.fromJson(json);
+      case 'file':
+        return AgentFileContent.fromJson(json);
+    }
+    throw ArgumentError.value(json['type'], 'json[type]', 'unsupported agent input content type');
+  }
+}
+
+class AgentTextContent extends AgentInputContent {
+  const AgentTextContent({required this.text});
+
+  final String text;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'text', 'text': text};
+
+  static AgentTextContent fromJson(Map<String, dynamic> json) {
+    return AgentTextContent(text: json['text'] as String);
+  }
+
+  @override
+  AgentTextContent formatWith(Map<String, String> values) {
+    return AgentTextContent(text: text.formatWith(values));
+  }
+}
+
+class AgentFileContent extends AgentInputContent {
+  const AgentFileContent({required this.url});
+
+  final String url;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'file', 'url': url};
+
+  static AgentFileContent fromJson(Map<String, dynamic> json) {
+    return AgentFileContent(url: json['url'] as String);
+  }
+
+  @override
+  AgentFileContent formatWith(Map<String, String> values) {
+    return AgentFileContent(url: url.formatWith(values));
+  }
+}
+
+class EmailSpec {
+  const EmailSpec({required this.address, this.public = false});
+
+  final String address;
+  final bool public;
+
+  Map<String, dynamic> toJson() => {'address': address, 'public': public};
+
+  static EmailSpec fromJson(Map<String, dynamic> json) {
+    return EmailSpec(address: json['address'] as String, public: (json['public'] as bool?) ?? false);
+  }
+
+  EmailSpec formatWith(Map<String, String> values) {
+    return EmailSpec(address: address.formatWith(values), public: public);
+  }
+}
+
+class HeartbeatSpec {
+  const HeartbeatSpec({required this.queue, this.threadId, List<AgentInputContent>? prompt, required this.minutes})
+    : prompt = prompt ?? const <AgentInputContent>[];
+
+  final String queue;
+  final String? threadId;
+  final List<AgentInputContent> prompt;
+  final int minutes;
+
+  Map<String, dynamic> toJson() => {
+    'queue': queue,
+    if (threadId != null) 'thread_id': threadId,
+    if (prompt.isNotEmpty) 'prompt': prompt.map((entry) => entry.toJson()).toList(),
+    'minutes': minutes,
+  };
+
+  static HeartbeatSpec fromJson(Map<String, dynamic> json) {
+    return HeartbeatSpec(
+      queue: json['queue'] as String,
+      threadId: json['thread_id'] as String?,
+      prompt: (json['prompt'] as List?)?.map((entry) => AgentInputContent.fromJson(entry as Map<String, dynamic>)).toList(),
+      minutes: (json['minutes'] as num).toInt(),
+    );
+  }
+
+  HeartbeatSpec formatWith(Map<String, String> values) {
+    return HeartbeatSpec(
+      queue: queue.formatWith(values),
+      threadId: threadId?.formatWith(values),
+      prompt: prompt.map((entry) => entry.formatWith(values)).toList(),
+      minutes: minutes,
+    );
+  }
+}
+
 class AgentSpec {
-  AgentSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels}) : annotations = annotations ?? {};
+  AgentSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels, this.email, this.heartbeat})
+    : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final Map<String, dynamic> annotations;
   final ChannelsSpec? channels;
+  final EmailSpec? email;
+  final HeartbeatSpec? heartbeat;
 
   Map<String, dynamic> toJson() {
     return {
@@ -5191,6 +5300,8 @@ class AgentSpec {
       if (description != null) "description": description,
       "annotations": annotations,
       if (channels != null) "channels": channels!.toJson(),
+      if (email != null) "email": email!.toJson(),
+      if (heartbeat != null) "heartbeat": heartbeat!.toJson(),
     };
   }
 
@@ -5200,18 +5311,22 @@ class AgentSpec {
       description: json["description"],
       annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
       channels: json['channels'] != null ? ChannelsSpec.fromJson(json['channels'] as Map<String, dynamic>) : null,
+      email: json['email'] != null ? EmailSpec.fromJson(json['email'] as Map<String, dynamic>) : null,
+      heartbeat: json['heartbeat'] != null ? HeartbeatSpec.fromJson(json['heartbeat'] as Map<String, dynamic>) : null,
     );
   }
 }
 
 class AgentTemplateSpec {
-  AgentTemplateSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels})
+  AgentTemplateSpec({required this.name, this.description, Map<String, dynamic>? annotations, this.channels, this.email, this.heartbeat})
     : annotations = annotations ?? {};
 
   final String name;
   final String? description;
   final Map<String, dynamic> annotations;
   final ChannelsSpec? channels;
+  final EmailSpec? email;
+  final HeartbeatSpec? heartbeat;
 
   Map<String, dynamic> toJson() {
     return {
@@ -5219,6 +5334,8 @@ class AgentTemplateSpec {
       if (description != null) "description": description,
       "annotations": annotations,
       if (channels != null) "channels": channels!.toJson(),
+      if (email != null) "email": email!.toJson(),
+      if (heartbeat != null) "heartbeat": heartbeat!.toJson(),
     };
   }
 
@@ -5228,6 +5345,8 @@ class AgentTemplateSpec {
       description: json["description"],
       annotations: json['annotations'] != null ? {for (final entry in (json['annotations'] as Map).entries) entry.key: entry.value} : {},
       channels: json['channels'] != null ? ChannelsSpec.fromJson(json['channels'] as Map<String, dynamic>) : null,
+      email: json['email'] != null ? EmailSpec.fromJson(json['email'] as Map<String, dynamic>) : null,
+      heartbeat: json['heartbeat'] != null ? HeartbeatSpec.fromJson(json['heartbeat'] as Map<String, dynamic>) : null,
     );
   }
 
@@ -5237,6 +5356,8 @@ class AgentTemplateSpec {
       description: description?.formatWith(values),
       annotations: Map<String, dynamic>.from(_formatJsonValue(annotations, values) as Map),
       channels: channels?.formatWith(values),
+      email: email?.formatWith(values),
+      heartbeat: heartbeat?.formatWith(values),
     );
   }
 }
