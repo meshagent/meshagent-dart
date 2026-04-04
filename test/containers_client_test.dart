@@ -488,7 +488,10 @@ void main() {
   test('containers client supports build and image archive operations', () async {
     final harness = await _startContainersHarness();
     final mounts = <ContainerMountSpec>[
-      ContainerMountSpec(room: [RoomStorageMountSpec(path: '/workspace', readOnly: false)]),
+      ContainerMountSpec(
+        room: [RoomStorageMountSpec(path: '/workspace', readOnly: false)],
+        configs: const [ConfigMountSpec()],
+      ),
     ];
 
     await harness.room.containers.deleteImage(image: 'demo:latest');
@@ -559,6 +562,16 @@ void main() {
     ]);
 
     final loadImageInput = harness.server.requests[3].input;
+    expect(loadImageInput['mounts'], [
+      {
+        'room': [
+          {'path': '/workspace', 'read_only': false},
+        ],
+        'configs': [
+          {'path': '/var/run/meshagent'},
+        ],
+      },
+    ]);
     expect(loadImageInput['archive_path'], '/workspace/example.tar');
     expect(loadImageInput['private'], true);
 

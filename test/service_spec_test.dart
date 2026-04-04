@@ -166,4 +166,31 @@ void main() {
     expect(service.agents.single.channels!.queue.single.messageSchema, {'type': 'object', 'description': 'Schema for ops'});
     expect(service.agents.single.channels!.toolkit.single.name, 'docs-ops');
   });
+
+  test('service template storage preserves files and config mounts', () {
+    final template = ServiceTemplateSpec.fromJson({
+      'version': 'v1',
+      'kind': 'ServiceTemplate',
+      'metadata': {'name': 'storage-template'},
+      'container': {
+        'image': 'meshagent/example',
+        'storage': {
+          'files': [
+            {'path': '/rules/assistant.txt', 'text': 'Follow the rules.'},
+          ],
+          'configs': [{}],
+        },
+      },
+    });
+
+    final service = template.toServiceSpec(values: const {});
+
+    expect(service.container, isNotNull);
+    expect(service.container!.storage, isNotNull);
+    expect(service.container!.storage!.files, hasLength(1));
+    expect(service.container!.storage!.files.single.path, '/rules/assistant.txt');
+    expect(service.container!.storage!.files.single.text, 'Follow the rules.');
+    expect(service.container!.storage!.configs, hasLength(1));
+    expect(service.container!.storage!.configs.single.path, '/var/run/meshagent');
+  });
 }

@@ -4800,26 +4800,51 @@ class RoomStorageMountSpec {
   }
 }
 
-/// Wrapper for all storage mounts on a template (currently only `room`).
+class ConfigMountSpec {
+  final String path;
+
+  const ConfigMountSpec({this.path = '/var/run/meshagent'});
+
+  Map<String, dynamic> toJson() => {'path': path};
+
+  static ConfigMountSpec fromJson(Map<String, dynamic> json) {
+    return ConfigMountSpec(path: json['path'] as String? ?? '/var/run/meshagent');
+  }
+
+  ConfigMountSpec copyWith({String? path}) {
+    return ConfigMountSpec(path: path ?? this.path);
+  }
+}
+
+/// Wrapper for all storage mounts on a template.
 class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
+  final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
+  final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
+  final List<ConfigMountSpec>? configs;
 
-  ServiceTemplateContainerMountSpec({this.room, this.images, this.emptyDirs});
+  ServiceTemplateContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs, this.configs});
 
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      project: (json['project'] as List<dynamic>?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      files: (json['files'] as List<dynamic>?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      configs: (json['configs'] as List<dynamic>?)?.map((e) => ConfigMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     if (room != null) 'room': room!.map((e) => e.toJson()).toList(),
+    if (project != null) 'project': project!.map((e) => e.toJson()).toList(),
     if (images != null) 'images': images!.map((e) => e.toJson()).toList(),
+    if (files != null) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
+    if (configs != null) 'configs': configs!.map((e) => e.toJson()).toList(),
   };
 }
 
@@ -4949,9 +4974,11 @@ class ContainerTemplateSpec {
           ? null
           : ContainerMountSpec(
               room: storage!.room,
+              project: storage!.project,
+              images: storage!.images,
+              files: storage!.files,
               emptyDirs: storage!.emptyDirs,
-              // If you later add `project` to ServiceTemplateContainerMountSpec, map it here:
-              // project: storage!.project,
+              configs: storage!.configs,
             ),
     );
   }
@@ -5567,8 +5594,9 @@ class ContainerMountSpec {
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
+  final List<ConfigMountSpec>? configs;
 
-  const ContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs});
+  const ContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs, this.configs});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
@@ -5576,6 +5604,7 @@ class ContainerMountSpec {
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null && files!.isNotEmpty) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null && emptyDirs!.isNotEmpty) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
+    if (configs != null && configs!.isNotEmpty) 'configs': configs!.map((e) => e.toJson()).toList(),
   };
 
   static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
@@ -5586,6 +5615,7 @@ class ContainerMountSpec {
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
       emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      configs: (json['configs'] as List?)?.map((e) => ConfigMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -5673,7 +5703,6 @@ class ContainerSpec {
     List<String>? secrets,
     this.pullSecret,
     this.storage,
-    this.apiKey,
     this.onDemand,
     this.writableRootFs,
     this.private,
@@ -5687,7 +5716,6 @@ class ContainerSpec {
   final List<String> secrets;
   final String? pullSecret;
   final ContainerMountSpec? storage;
-  final ServiceApiKeySpec? apiKey;
   final bool? onDemand;
   final bool? writableRootFs;
   final bool? private;
@@ -5701,7 +5729,6 @@ class ContainerSpec {
       secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
       pullSecret: json['pull_secret'] as String?,
       storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
-      apiKey: (json['api_key'] == null) ? null : ServiceApiKeySpec.fromJson(json['api_key'] as Map<String, dynamic>),
       onDemand: json["on_demand"],
       writableRootFs: json["writable_root_fs"],
       private: json["private"],
@@ -5717,7 +5744,6 @@ class ContainerSpec {
       if (secrets.isNotEmpty) 'secrets': secrets,
       if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
-      if (apiKey != null) 'api_key': apiKey!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
       if (writableRootFs != null) "writable_root_fs": writableRootFs,
       if (private != null) 'private': private,
