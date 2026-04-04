@@ -188,9 +188,9 @@ void main() {
     expect(service.container, isNotNull);
     expect(service.container!.storage, isNotNull);
     expect(service.container!.storage!.files, hasLength(1));
-    expect(service.container!.storage!.files.single.path, '/rules/assistant.txt');
-    expect(service.container!.storage!.files.single.text, 'Follow the rules.');
+    expect(service.container!.storage!.files!.single.path, '/rules/assistant.txt');
+    expect(service.container!.storage!.files!.single.text, 'Follow the rules.');
     expect(service.container!.storage!.configs, hasLength(1));
-    expect(service.container!.storage!.configs.single.path, '/var/run/meshagent');
+    expect(service.container!.storage!.configs!.single.path, '/var/run/meshagent');
   });
 }
