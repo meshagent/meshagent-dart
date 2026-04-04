@@ -4816,6 +4816,10 @@ class ConfigMountSpec {
   }
 }
 
+Map<String, dynamic> _jsonObject(dynamic value) {
+  return Map<String, dynamic>.from(value as Map);
+}
+
 /// Wrapper for all storage mounts on a template.
 class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
@@ -4829,12 +4833,12 @@ class ServiceTemplateContainerMountSpec {
 
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
-      room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      project: (json['project'] as List<dynamic>?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      files: (json['files'] as List<dynamic>?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      configs: (json['configs'] as List<dynamic>?)?.map((e) => ConfigMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      project: (json['project'] as List<dynamic>?)?.map((e) => ProjectStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      files: (json['files'] as List<dynamic>?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
+      configs: (json['configs'] as List<dynamic>?)?.map((e) => ConfigMountSpec.fromJson(_jsonObject(e))).toList(),
     );
   }
 
@@ -5610,12 +5614,12 @@ class ContainerMountSpec {
   static ContainerMountSpec? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
     return ContainerMountSpec(
-      room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
-      configs: (json['configs'] as List?)?.map((e) => ConfigMountSpec.fromJson(e as Map<String, dynamic>)).toList(),
+      room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
+      configs: (json['configs'] as List?)?.map((e) => ConfigMountSpec.fromJson(_jsonObject(e))).toList(),
     );
   }
 }

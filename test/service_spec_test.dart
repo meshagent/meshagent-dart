@@ -193,4 +193,23 @@ void main() {
     expect(service.container!.storage!.configs, hasLength(1));
     expect(service.container!.storage!.configs!.single.path, '/var/run/meshagent');
   });
+
+  test('service spec storage preserves config mount defaults from dynamic maps', () {
+    final service = ServiceSpec.fromJson({
+      'version': 'v1',
+      'kind': 'Service',
+      'metadata': {'name': 'storage-service'},
+      'container': {
+        'image': 'meshagent/example',
+        'storage': {
+          'configs': [{}],
+        },
+      },
+    });
+
+    expect(service.container, isNotNull);
+    expect(service.container!.storage, isNotNull);
+    expect(service.container!.storage!.configs, hasLength(1));
+    expect(service.container!.storage!.configs!.single.path, '/var/run/meshagent');
+  });
 }
