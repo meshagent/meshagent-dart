@@ -959,6 +959,78 @@ class ContainerImage {
   );
 }
 
+class RegistryRepositoryPage {
+  RegistryRepositoryPage({required this.repositories, required this.nextLast});
+
+  final List<String> repositories;
+  final String? nextLast;
+
+  factory RegistryRepositoryPage.fromJson(Map<String, dynamic> json) =>
+      RegistryRepositoryPage(repositories: (json['repositories'] as List).cast<String>(), nextLast: json['next_last'] as String?);
+}
+
+class RegistryTagVersion {
+  RegistryTagVersion({required this.tag, required this.digest});
+
+  final String tag;
+  final String? digest;
+
+  factory RegistryTagVersion.fromJson(Map<String, dynamic> json) =>
+      RegistryTagVersion(tag: json['tag'] as String, digest: json['digest'] as String?);
+}
+
+class RegistryTagPage {
+  RegistryTagPage({required this.repository, required this.tags, required this.versions, required this.nextLast});
+
+  final String repository;
+  final List<String> tags;
+  final List<RegistryTagVersion> versions;
+  final String? nextLast;
+
+  static List<String> _decodeTags(Object? value) => (value as List?)?.whereType<String>().toList(growable: false) ?? const [];
+
+  factory RegistryTagPage.fromJson(Map<String, dynamic> json) {
+    final tags = _decodeTags(json['tags']);
+    final rawVersions = json['versions'];
+    final versions = rawVersions is List
+        ? rawVersions.whereType<Map>().map((entry) => RegistryTagVersion.fromJson(Map<String, dynamic>.from(entry))).toList(growable: false)
+        : tags.map((tag) => RegistryTagVersion(tag: tag, digest: null)).toList(growable: false);
+
+    return RegistryTagPage(
+      repository: json['repository'] as String,
+      tags: tags.isNotEmpty ? tags : versions.map((entry) => entry.tag).toList(growable: false),
+      versions: versions,
+      nextLast: json['next_last'] as String?,
+    );
+  }
+}
+
+class DeletedRegistryImage {
+  DeletedRegistryImage({required this.repository, required this.digest});
+
+  final String repository;
+  final String digest;
+
+  factory DeletedRegistryImage.fromJson(Map<String, dynamic> json) =>
+      DeletedRegistryImage(repository: json['repository'] as String, digest: json['digest'] as String);
+}
+
+class UpdatedRegistryTag {
+  UpdatedRegistryTag({required this.repository, required this.tag, required this.digest, required this.deletedSource});
+
+  final String repository;
+  final String tag;
+  final String digest;
+  final bool deletedSource;
+
+  factory UpdatedRegistryTag.fromJson(Map<String, dynamic> json) => UpdatedRegistryTag(
+    repository: json['repository'] as String,
+    tag: json['tag'] as String,
+    digest: json['digest'] as String,
+    deletedSource: json['deleted_source'] as bool? ?? false,
+  );
+}
+
 List<Map<String, dynamic>> _containerStringPairList(Map<String, String> values) {
   return values.entries.map((entry) => {'key': entry.key, 'value': entry.value}).toList(growable: false);
 }
@@ -1144,6 +1216,54 @@ class ContainersClient extends ChangeEmitter {
     }
     final res = output.content as JsonContent;
     return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
+  }
+
+  Future<RegistryRepositoryPage> listRegistryImages({String? last, int? n}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_registry_images',
+      input: ToolContentInput(JsonContent(json: {'last': last, 'n': n})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list_registry_images');
+    }
+    return RegistryRepositoryPage.fromJson((output.content as JsonContent).json);
+  }
+
+  Future<RegistryTagPage> listRegistryTags({required String image, String? last, int? n}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_registry_tags',
+      input: ToolContentInput(JsonContent(json: {'image': image, 'last': last, 'n': n})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list_registry_tags');
+    }
+    return RegistryTagPage.fromJson((output.content as JsonContent).json);
+  }
+
+  Future<DeletedRegistryImage> deleteRegistryImage({required String image}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'delete_registry_image',
+      input: ToolContentInput(JsonContent(json: {'image': image})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'delete_registry_image');
+    }
+    return DeletedRegistryImage.fromJson((output.content as JsonContent).json);
+  }
+
+  Future<UpdatedRegistryTag> updateRegistryTag({required String image, required String tag, bool deleteSource = false}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'update_registry_tag',
+      input: ToolContentInput(JsonContent(json: {'image': image, 'tag': tag, 'delete_source': deleteSource})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'update_registry_tag');
+    }
+    return UpdatedRegistryTag.fromJson((output.content as JsonContent).json);
   }
 
   Future<void> deleteImage({required String image}) async {

@@ -136,6 +136,35 @@ class _FakeContainersServer {
             id: messageId,
           );
           return;
+        case 'list_registry_images':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'repositories': ['demo/app', 'website-pack'],
+                'next_last': 'website-pack',
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
+        case 'list_registry_tags':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'repository': input.json['image'] == 'room.meshagent.com/demo/app' ? 'demo/app' : 'website-pack',
+                'tags': ['latest', 'v1'],
+                'versions': [
+                  {'tag': 'latest', 'digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'},
+                  {'tag': 'v1', 'digest': 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'},
+                ],
+                'next_last': null,
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
         case 'run':
         case 'run_service':
         case 'push_image':
@@ -161,11 +190,36 @@ class _FakeContainersServer {
           return;
         case 'pull_image':
         case 'delete_image':
+        case 'delete_registry_image':
         case 'cancel_build':
         case 'delete_build':
         case 'stop_container':
         case 'delete_container':
+          if (tool == 'delete_registry_image') {
+            await protocol.send(
+              '__response__',
+              JsonContent(
+                json: {'repository': 'demo/app', 'digest': 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'},
+              ).pack(),
+              id: messageId,
+            );
+            return;
+          }
           await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+          return;
+        case 'update_registry_tag':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'repository': 'demo/app',
+                'tag': input.json['tag'],
+                'digest': 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+                'deleted_source': input.json['delete_source'] as bool? ?? false,
+              },
+            ).pack(),
+            id: messageId,
+          );
           return;
         case 'list_builds':
           await protocol.send(
@@ -594,6 +648,65 @@ void main() {
     expect(stopInput['force'], false);
 
     await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
+  });
+
+  test('containers client supports registry listing and tag updates', () async {
+    final harness = await _startContainersHarness();
+
+    final repositories = await harness.room.containers.listRegistryImages(last: 'demo/app', n: 50);
+    expect(repositories.repositories, ['demo/app', 'website-pack']);
+    expect(repositories.nextLast, 'website-pack');
+
+    final tags = await harness.room.containers.listRegistryTags(image: 'room.meshagent.com/demo/app');
+    expect(tags.repository, 'demo/app');
+    expect(tags.tags, ['latest', 'v1']);
+    expect(tags.versions, hasLength(2));
+    expect(tags.versions.first.tag, 'latest');
+    expect(tags.versions.first.digest, 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+
+    final deleted = await harness.room.containers.deleteRegistryImage(image: 'room.meshagent.com/demo/app:latest');
+    expect(deleted.repository, 'demo/app');
+    expect(deleted.digest, 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');
+
+    final updated = await harness.room.containers.updateRegistryTag(
+      image: 'room.meshagent.com/demo/app:latest',
+      tag: 'stable',
+      deleteSource: true,
+    );
+    expect(updated.repository, 'demo/app');
+    expect(updated.tag, 'stable');
+    expect(updated.digest, 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd');
+    expect(updated.deletedSource, isTrue);
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), [
+      'list_registry_images',
+      'list_registry_tags',
+      'delete_registry_image',
+      'update_registry_tag',
+    ]);
+
+    expect(harness.server.requests[0].input, {'last': 'demo/app', 'n': 50});
+    expect(harness.server.requests[1].input, {'image': 'room.meshagent.com/demo/app', 'last': null, 'n': null});
+    expect(harness.server.requests[2].input, {'image': 'room.meshagent.com/demo/app:latest'});
+    expect(harness.server.requests[3].input, {'image': 'room.meshagent.com/demo/app:latest', 'tag': 'stable', 'delete_source': true});
+
+    await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
+  });
+
+  test('containers client tolerates legacy registry tag responses without versions', () async {
+    final page = RegistryTagPage.fromJson({
+      'repository': 'website-pack',
+      'tags': ['latest', 'preview'],
+      'next_last': null,
+    });
+
+    expect(page.repository, 'website-pack');
+    expect(page.tags, ['latest', 'preview']);
+    expect(page.versions, hasLength(2));
+    expect(page.versions[0].tag, 'latest');
+    expect(page.versions[0].digest, isNull);
+    expect(page.versions[1].tag, 'preview');
+    expect(page.versions[1].digest, isNull);
   });
 
   test('containers exec stop closes stdin without sending hard-stop control', () async {
