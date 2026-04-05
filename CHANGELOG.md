@@ -1,3 +1,12 @@
+## [0.36.0]
+- Added room registry APIs and Flutter developer console UI for listing, retagging, and deleting registry images.
+- Dart service models now include config mounts and agent email/heartbeat settings with typed prompt content.
+- Breaking: container API key provisioning was removed from Dart container specs.
+- Service template container mounts now round-trip project, image, file, empty-dir, and config mounts.
+- Flutter chat threads now keep attachment-only messages visible and filter unsupported event kinds consistently.
+- Service template editor now defaults enum variables to valid values and normalizes invalid selections.
+- Added `visibility_detector` ^0.4.0+2 as a Flutter Shadcn dev dependency.
+
 ## [0.35.8]
 - Live trace viewer and developer console now support trace search filtering across span metadata while preserving parent/child context.
 - File preview components now reload code from room/url/text with error handling, load PDFs from room storage, improve image loading/error states, and recognize plaintext files as code.
