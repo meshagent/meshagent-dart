@@ -1,3 +1,6 @@
+## [0.36.1]
+- File preview/viewer now recognizes `.thread` files as chat threads and renders them with the thread viewer rather than custom viewers.
+
 ## [0.36.0]
 - Added room registry APIs and Flutter developer console UI for listing, retagging, and deleting registry images.
 - Dart service models now include config mounts and agent email/heartbeat settings with typed prompt content.
