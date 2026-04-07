@@ -1689,6 +1689,10 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/profiles/$encodedUserId');
     final response = await httpClient.get(uri);
 
+    if (response.statusCode == 403) {
+      throw ForbiddenException('Failed to get user profile. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get user profile. Status code: ${response.statusCode}, body: ${response.body}');
     }
