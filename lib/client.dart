@@ -77,28 +77,6 @@ class RoomConnectionInfo {
   }
 }
 
-class RoomShareConnectionInfo extends RoomConnectionInfo {
-  RoomShareConnectionInfo({
-    required super.roomName,
-    required super.projectId,
-    required this.settings,
-    required super.jwt,
-    required super.roomUrl,
-  });
-
-  final Map<String, dynamic> settings;
-
-  static RoomShareConnectionInfo fromJson(Map<String, dynamic> json) {
-    return RoomShareConnectionInfo(
-      roomName: json["room_name"],
-      projectId: json["project_id"],
-      settings: json["settings"],
-      jwt: json["jwt"],
-      roomUrl: Uri.parse(json["room_url"]),
-    );
-  }
-}
-
 class RoomSession {
   final String id;
   final String roomName;
@@ -1480,25 +1458,6 @@ class Meshagent {
     final sharesList = data['shares'] as List<dynamic>? ?? [];
     // Convert each item to Map<String, dynamic>
     return sharesList.whereType<Map<String, dynamic>>().toList();
-  }
-
-  /// Corresponds to: POST /shares/:share_id/connect
-  /// Body: {}
-  /// Returns JSON dict with { "jwt", "room_url" } on success.
-  Future<RoomShareConnectionInfo> connectShare(String shareId) async {
-    final encodedShareId = Uri.encodeComponent(shareId);
-    final uri = Uri.parse('$baseUrl/shares/$encodedShareId/connect');
-
-    final response = await httpClient.post(uri, body: jsonEncode({}));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to connect share. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return RoomShareConnectionInfo.fromJson(jsonDecode(response.body));
   }
 
   /// Corresponds to: POST /accounts/projects
