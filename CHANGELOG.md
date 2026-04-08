@@ -1,3 +1,8 @@
+## [0.36.2]
+- Breaking: Removed share-connect API from the Dart client (`connectShare` / RoomShareConnectionInfo).
+- Added full OAuth scope constants and exported them from the main `meshagent` library.
+- Auth defaults changed to `profile`; the Dart client now raises `ForbiddenException` on 403 profile access and Flutter auth signs out/restarts login (sign-out clears cached user).
+
 ## [0.36.1]
 - File preview/viewer now recognizes `.thread` files as chat threads and renders them with the thread viewer rather than custom viewers.
 
