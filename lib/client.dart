@@ -1490,9 +1490,9 @@ class Meshagent {
   Future<Map<String, dynamic>> addUserToProject(
     String projectId,
     String userId, {
-    bool isAdmin = false,
-    bool isDeveloper = false,
-    bool canCreateRooms = false,
+    bool? isAdmin,
+    bool? isDeveloper,
+    bool? canCreateRooms,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -1500,9 +1500,9 @@ class Meshagent {
     final body = {
       'project_id': projectId,
       'user_id': userId,
-      "is_admin": isAdmin,
-      "is_developer": isDeveloper,
-      "can_create_rooms": canCreateRooms,
+      if (isAdmin != null) "is_admin": isAdmin,
+      if (isDeveloper != null) "is_developer": isDeveloper,
+      if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -1625,18 +1625,18 @@ class Meshagent {
   Future<Map<String, dynamic>> addUserToProjectByEmail(
     String projectId,
     String email, {
-    bool isAdmin = false,
-    bool isDeveloper = false,
-    bool canCreateRooms = false,
+    bool? isAdmin,
+    bool? isDeveloper,
+    bool? canCreateRooms,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
     final body = {
       'project_id': projectId,
       'email': email,
-      "is_admin": isAdmin,
-      "is_developer": isDeveloper,
-      "can_create_rooms": canCreateRooms,
+      if (isAdmin != null) "is_admin": isAdmin,
+      if (isDeveloper != null) "is_developer": isDeveloper,
+      if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
