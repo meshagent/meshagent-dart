@@ -6240,6 +6240,16 @@ class SecretsClient extends ChangeEmitter {
     throw _unexpectedResponseError("list_secrets");
   }
 
+  Future<bool> exists({required String secretId, String? delegatedTo, String? forIdentity}) async {
+    final req = <String, dynamic>{"secret_id": secretId, "delegated_to": delegatedTo, "for_identity": forIdentity};
+
+    final res = await _invoke("exists", req);
+    if (res is JsonContent && res.json["exists"] is bool) {
+      return res.json["exists"] as bool;
+    }
+    throw _unexpectedResponseError("exists");
+  }
+
   Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
     final req = <String, dynamic>{"id": secretId, "delegated_to": delegatedTo};
 

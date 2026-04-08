@@ -107,6 +107,10 @@ class _FakeSecretsServer {
           id: messageId,
         );
         return;
+      case 'exists':
+        final secretId = (input as JsonContent).json['secret_id'] as String?;
+        await protocol.send('__response__', JsonContent(json: {'exists': secretId == 'secret-1'}).pack(), id: messageId);
+        return;
       case 'request_oauth_token':
         await protocol.send('__response__', JsonContent(json: {'access_token': 'oauth-token'}).pack(), id: messageId);
         return;
@@ -248,6 +252,25 @@ void main() {
       'name': 'named-secret',
       'delegated_to': null,
     });
+
+    await harness.dispose();
+  });
+
+  test('secrets exists encodes json payload and parses boolean responses', () async {
+    final harness = await _startSecretsHarness();
+
+    expect(await harness.room.secrets.exists(secretId: 'secret-1', delegatedTo: 'agent', forIdentity: 'agent'), isTrue);
+    expect(await harness.room.secrets.exists(secretId: 'missing'), isFalse);
+
+    expect(harness.server.requests.map((entry) => entry.tool).toList(), ['exists', 'exists']);
+
+    final existsInput = harness.server.requests[0].input;
+    expect(existsInput, isA<JsonContent>());
+    expect((existsInput as JsonContent).json, {'secret_id': 'secret-1', 'delegated_to': 'agent', 'for_identity': 'agent'});
+
+    final missingInput = harness.server.requests[1].input;
+    expect(missingInput, isA<JsonContent>());
+    expect((missingInput as JsonContent).json, {'secret_id': 'missing', 'delegated_to': null, 'for_identity': null});
 
     await harness.dispose();
   });
