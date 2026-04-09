@@ -336,6 +336,20 @@ class FileUpdatedEvent extends RoomEvent {
   String get description => "a file was updated at the path $path";
 }
 
+class FileMovedEvent extends RoomEvent {
+  FileMovedEvent({required this.sourcePath, required this.destinationPath, required this.participantId});
+
+  final String sourcePath;
+  final String destinationPath;
+  final String participantId;
+
+  @override
+  String get name => "file moved";
+
+  @override
+  String get description => "a file was moved from $sourcePath to $destinationPath";
+}
+
 class RoomLogEvent extends RoomEvent {
   RoomLogEvent({required this.type, required this.data});
 
@@ -3542,6 +3556,7 @@ class StorageClient extends ChangeEmitter {
 
   StorageClient({required this.room}) {
     room.protocol.addHandler("storage.file.deleted", _handleFileDeleted);
+    room.protocol.addHandler("storage.file.moved", _handleFileMoved);
     room.protocol.addHandler("storage.file.updated", _handleFileUpdated);
   }
 
@@ -3555,6 +3570,13 @@ class StorageClient extends ChangeEmitter {
   Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
     final data = unpackMessage(bytes).header;
     room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
+  }
+
+  Future<void> _handleFileMoved(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    final data = unpackMessage(bytes).header;
+    room._eventsController.add(
+      FileMovedEvent(sourcePath: data["source_path"], destinationPath: data["destination_path"], participantId: data["participant_id"]),
+    );
   }
 
   RoomServerException _unexpectedResponseError(String operation) {
@@ -3596,6 +3618,10 @@ class StorageClient extends ChangeEmitter {
 
   Future<void> delete(String path, {bool? recursive}) async {
     await _invoke("delete", {"path": path, "recursive": recursive});
+  }
+
+  Future<void> move(String sourcePath, String destinationPath, {bool overwrite = false}) async {
+    await _invoke("move", {"source_path": sourcePath, "destination_path": destinationPath, "overwrite": overwrite});
   }
 
   Future<bool> exists(String path) async {

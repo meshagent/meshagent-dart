@@ -151,6 +151,17 @@ class _InMemoryStorageServer {
         final path = _jsonPath(input);
         await protocol.send('__response__', JsonContent(json: {'files': _listEntries(path)}).pack(), id: messageId);
         return;
+      case 'move':
+        final sourcePath = _jsonSourcePath(input);
+        final destinationPath = _jsonDestinationPath(input);
+        final overwrite = _jsonPayload(input)['overwrite'] as bool? ?? false;
+        _moveEntries(sourcePath, destinationPath, overwrite: overwrite);
+        await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+        await protocol.send(
+          'storage.file.moved',
+          packMessage({'source_path': sourcePath, 'destination_path': destinationPath, 'participant_id': 'participant-1'}),
+        );
+        return;
       case 'delete':
         final path = _jsonPath(input);
         lastDeleteRecursive = _jsonPayload(input)['recursive'] as bool?;
@@ -294,6 +305,39 @@ class _InMemoryStorageServer {
 
   String _jsonPath(Content input) {
     return _jsonPayload(input)['path'] as String;
+  }
+
+  String _jsonSourcePath(Content input) {
+    return _jsonPayload(input)['source_path'] as String;
+  }
+
+  String _jsonDestinationPath(Content input) {
+    return _jsonPayload(input)['destination_path'] as String;
+  }
+
+  void _moveEntries(String sourcePath, String destinationPath, {required bool overwrite}) {
+    final sourcePrefix = '$sourcePath/';
+    final matchingPaths = _files.keys
+        .where((filePath) => filePath == sourcePath || filePath.startsWith(sourcePrefix))
+        .toList(growable: false);
+    if (matchingPaths.isEmpty) {
+      throw StateError('unknown storage path: $sourcePath');
+    }
+
+    final destinationPrefix = destinationPath.isEmpty ? '' : '$destinationPath/';
+    final renamed = <String, Uint8List>{};
+    for (final filePath in matchingPaths) {
+      final nextPath = filePath == sourcePath ? destinationPath : '$destinationPrefix${filePath.substring(sourcePrefix.length)}';
+      if (!overwrite && !matchingPaths.contains(nextPath) && _files.containsKey(nextPath)) {
+        throw StateError('storage.move overwrite=false for existing path $nextPath');
+      }
+      renamed[nextPath] = _files[filePath]!;
+    }
+
+    for (final filePath in matchingPaths) {
+      _files.remove(filePath);
+    }
+    _files.addAll(renamed);
   }
 
   List<Map<String, dynamic>> _listEntries(String path) {
@@ -503,10 +547,31 @@ void main() {
     await harness.dispose();
   });
 
-  test('storage emits file updated and deleted events', () async {
+  test('storage move renames files and folders', () async {
+    final harness = await _startStorageHarness();
+
+    await harness.room.storage.uploadStream('folder/a.txt', Stream.value(Uint8List.fromList([1])), size: 1);
+    await harness.room.storage.uploadStream('folder/sub/b.txt', Stream.value(Uint8List.fromList([2])), size: 1);
+
+    await harness.room.storage.move('folder/a.txt', 'folder/renamed.txt');
+    expect(await harness.room.storage.exists('folder/a.txt'), isFalse);
+    expect(await harness.room.storage.exists('folder/renamed.txt'), isTrue);
+
+    await harness.room.storage.move('folder/sub', 'folder/archive');
+    expect(await harness.room.storage.exists('folder/sub/b.txt'), isFalse);
+    expect(await harness.room.storage.exists('folder/archive/b.txt'), isTrue);
+
+    final listing = await harness.room.storage.list('folder');
+    expect(listing.map((entry) => entry.name).toList(), ['archive', 'renamed.txt']);
+
+    await harness.dispose();
+  });
+
+  test('storage emits file updated deleted and moved events', () async {
     final harness = await _startStorageHarness();
     final updated = Completer<FileUpdatedEvent>();
     final deleted = Completer<FileDeletedEvent>();
+    final moved = Completer<FileMovedEvent>();
 
     final subscription = harness.room.listen((event) {
       if (event is FileUpdatedEvent && !updated.isCompleted) {
@@ -514,6 +579,9 @@ void main() {
       }
       if (event is FileDeletedEvent && !deleted.isCompleted) {
         deleted.complete(event);
+      }
+      if (event is FileMovedEvent && !moved.isCompleted) {
+        moved.complete(event);
       }
     });
 
@@ -524,9 +592,15 @@ void main() {
     expect(updatedEvent.path, 'events/file.txt');
     expect(updatedEvent.participantId, 'participant-1');
 
-    await harness.room.storage.delete('events/file.txt');
+    await harness.room.storage.move('events/file.txt', 'events/renamed.txt');
+    final movedEvent = await moved.future.timeout(const Duration(seconds: 1));
+    expect(movedEvent.sourcePath, 'events/file.txt');
+    expect(movedEvent.destinationPath, 'events/renamed.txt');
+    expect(movedEvent.participantId, 'participant-1');
+
+    await harness.room.storage.delete('events/renamed.txt');
     final deletedEvent = await deleted.future.timeout(const Duration(seconds: 1));
-    expect(deletedEvent.path, 'events/file.txt');
+    expect(deletedEvent.path, 'events/renamed.txt');
     expect(deletedEvent.participantId, 'participant-1');
 
     await subscription.cancel();
