@@ -1,3 +1,9 @@
+## [0.36.3]
+- Storage client now supports move operations and emits file moved events.
+- Secrets client now supports existence checks.
+- Project user add calls now omit permission fields unless explicitly set.
+- Flutter shadcn file preview now loads markdown/PDF/code directly from room storage and surfaces download URL errors.
+
 ## [0.36.2]
 - Breaking: Removed share-connect API from the Dart client (`connectShare` / RoomShareConnectionInfo).
 - Added full OAuth scope constants and exported them from the main `meshagent` library.
