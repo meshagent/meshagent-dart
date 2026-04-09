@@ -165,6 +165,23 @@ class _FakeContainersServer {
             id: messageId,
           );
           return;
+        case 'list_registry_references':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'repository': input.json['image'] == 'room.meshagent.com/demo/app' ? 'demo/app' : 'website-pack',
+                'references': [
+                  {'tag': 'latest', 'digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'},
+                  {'tag': 'v1', 'digest': 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'},
+                  {'tag': null, 'digest': 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'},
+                ],
+                'next_last': '1:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
         case 'run':
         case 'run_service':
         case 'push_image':
@@ -689,6 +706,35 @@ void main() {
     expect(harness.server.requests[1].input, {'image': 'room.meshagent.com/demo/app', 'last': null, 'n': null});
     expect(harness.server.requests[2].input, {'image': 'room.meshagent.com/demo/app:latest'});
     expect(harness.server.requests[3].input, {'image': 'room.meshagent.com/demo/app:latest', 'tag': 'stable', 'delete_source': true});
+
+    await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
+  });
+
+  test('containers client lists registry references including untagged digests', () async {
+    final harness = await _startContainersHarness();
+
+    final page = await harness.room.containers.listRegistryReferences(
+      image: 'room.meshagent.com/demo/app',
+      last: '0:latest:latest:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      n: 10,
+    );
+
+    expect(page.repository, 'demo/app');
+    expect(page.references, hasLength(3));
+    expect(page.references[0].tag, 'latest');
+    expect(page.references[0].digest, 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(page.references[1].tag, 'v1');
+    expect(page.references[1].digest, 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+    expect(page.references[2].tag, isNull);
+    expect(page.references[2].digest, 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');
+    expect(page.nextLast, '1:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');
+
+    expect(harness.server.requests.single.tool, 'list_registry_references');
+    expect(harness.server.requests.single.input, {
+      'image': 'room.meshagent.com/demo/app',
+      'last': '0:latest:latest:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'n': 10,
+    });
 
     await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
   });

@@ -1019,6 +1019,38 @@ class RegistryTagPage {
   }
 }
 
+class RegistryReference {
+  RegistryReference({required this.digest, this.tag});
+
+  final String digest;
+  final String? tag;
+
+  factory RegistryReference.fromJson(Map<String, dynamic> json) =>
+      RegistryReference(digest: json['digest'] as String, tag: json['tag'] as String?);
+}
+
+class RegistryReferencePage {
+  RegistryReferencePage({required this.repository, required this.references, required this.nextLast});
+
+  final String repository;
+  final List<RegistryReference> references;
+  final String? nextLast;
+
+  factory RegistryReferencePage.fromJson(Map<String, dynamic> json) {
+    final rawReferences = json['references'] as List?;
+    return RegistryReferencePage(
+      repository: json['repository'] as String,
+      references: rawReferences == null
+          ? const []
+          : rawReferences
+                .whereType<Map>()
+                .map((entry) => RegistryReference.fromJson(Map<String, dynamic>.from(entry)))
+                .toList(growable: false),
+      nextLast: json['next_last'] as String?,
+    );
+  }
+}
+
 class DeletedRegistryImage {
   DeletedRegistryImage({required this.repository, required this.digest});
 
@@ -1254,6 +1286,18 @@ class ContainersClient extends ChangeEmitter {
       throw _unexpectedResponseError(operation: 'list_registry_tags');
     }
     return RegistryTagPage.fromJson((output.content as JsonContent).json);
+  }
+
+  Future<RegistryReferencePage> listRegistryReferences({required String image, String? last, int? n}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'list_registry_references',
+      input: ToolContentInput(JsonContent(json: {'image': image, 'last': last, 'n': n})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'list_registry_references');
+    }
+    return RegistryReferencePage.fromJson((output.content as JsonContent).json);
   }
 
   Future<DeletedRegistryImage> deleteRegistryImage({required String image}) async {

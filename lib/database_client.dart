@@ -24,14 +24,42 @@ extension CreateModeValue on CreateMode {
 }
 
 class TableRef {
-  TableRef({required this.name, this.namespace, this.alias});
+  TableRef({required this.name, this.namespace, this.alias, this.branch, this.version});
 
   final String name;
   final List<String>? namespace;
   final String? alias;
+  final String? branch;
+  final int? version;
 
   Map<String, dynamic> toJson() {
-    return {"name": name, "namespace": namespace, "alias": alias};
+    return {"name": name, "namespace": namespace, "alias": alias, "branch": branch, "version": version};
+  }
+}
+
+class TableBranch {
+  const TableBranch({
+    required this.name,
+    required this.parentBranch,
+    required this.parentVersion,
+    required this.createdAt,
+    required this.manifestSize,
+  });
+
+  final String name;
+  final String? parentBranch;
+  final int? parentVersion;
+  final DateTime? createdAt;
+  final int? manifestSize;
+
+  static TableBranch fromJson(Map<String, dynamic> json) {
+    return TableBranch(
+      name: json["name"] as String,
+      parentBranch: json["parent_branch"] as String?,
+      parentVersion: (json["parent_version"] as num?)?.toInt(),
+      createdAt: json["created_at"] == null ? null : DateTime.parse(json["created_at"] as String),
+      manifestSize: (json["manifest_size"] as num?)?.toInt(),
+    );
   }
 }
 
@@ -442,8 +470,8 @@ class DatabaseClient {
     }
   }
 
-  Future<List<String>> listTables({List<String>? namespace}) async {
-    final response = await _invoke("list_tables", {"namespace": namespace});
+  Future<List<String>> listTables({List<String>? namespace, String? branch}) async {
+    final response = await _invoke("list_tables", {"namespace": namespace, "branch": branch});
     if (response is! JsonContent) {
       throw RoomServerException("unexpected return type from database.list_tables call");
     }
@@ -458,6 +486,7 @@ class DatabaseClient {
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    String? branch,
     Map<String, dynamic>? metadata,
   }) async {
     final input = _DatabaseWriteInputStream(
@@ -467,6 +496,7 @@ class DatabaseClient {
         "fields": schema == null ? null : _schemaEntries(schema),
         "mode": mode.value,
         "namespace": namespace,
+        "branch": branch,
         "metadata": _metadataEntries(metadata),
       },
       chunks: data ?? Stream<List<Map<String, dynamic>>>.empty(),
@@ -479,9 +509,10 @@ class DatabaseClient {
     required Map<String, DataType> schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    String? branch,
     Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace, metadata: metadata);
+    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
   }
 
   Future<void> createTableFromData({
@@ -489,9 +520,17 @@ class DatabaseClient {
     required List<Map<String, dynamic>> data,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    String? branch,
     Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, data: Stream.fromIterable(_rowChunks(data)), mode: mode, namespace: namespace, metadata: metadata);
+    return _createTable(
+      name: name,
+      data: Stream.fromIterable(_rowChunks(data)),
+      mode: mode,
+      namespace: namespace,
+      branch: branch,
+      metadata: metadata,
+    );
   }
 
   Future<void> createTableFromDataStream({
@@ -500,49 +539,70 @@ class DatabaseClient {
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
+    String? branch,
     Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, data: chunks, schema: schema, mode: mode, namespace: namespace, metadata: metadata);
+    return _createTable(name: name, data: chunks, schema: schema, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
   }
 
-  Future<void> dropTable({required String name, bool ignoreMissing = false, List<String>? namespace}) async {
-    await _invoke("drop_table", {"name": name, "ignore_missing": ignoreMissing, "namespace": namespace});
+  Future<void> dropTable({required String name, bool ignoreMissing = false, List<String>? namespace, String? branch}) async {
+    await _invoke("drop_table", {"name": name, "ignore_missing": ignoreMissing, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> addColumnWithExpression({required String table, required Map<String, String> newColumns, List<String>? namespace}) async {
+  Future<void> addColumnWithExpression({
+    required String table,
+    required Map<String, String> newColumns,
+    List<String>? namespace,
+    String? branch,
+  }) async {
     await _invoke("add_columns", {
       "table": table,
       "columns": newColumns.entries
           .map((entry) => {"name": entry.key, "value_sql": entry.value, "data_type": null})
           .toList(growable: false),
       "namespace": namespace,
+      "branch": branch,
     });
   }
 
-  Future<void> addColumnsOfType({required String table, required Map<String, DataType> newColumns, List<String>? namespace}) async {
+  Future<void> addColumnsOfType({
+    required String table,
+    required Map<String, DataType> newColumns,
+    List<String>? namespace,
+    String? branch,
+  }) async {
     await _invoke("add_columns", {
       "table": table,
       "columns": newColumns.entries
           .map((entry) => {"name": entry.key, "value_sql": null, "data_type": _toolkitDataTypeJson(entry.value)})
           .toList(growable: false),
       "namespace": namespace,
+      "branch": branch,
     });
   }
 
-  Future<void> dropColumns({required String table, required List<String> columns, List<String>? namespace}) async {
-    await _invoke("drop_columns", {"table": table, "columns": columns, "namespace": namespace});
+  Future<void> dropColumns({required String table, required List<String> columns, List<String>? namespace, String? branch}) async {
+    await _invoke("drop_columns", {"table": table, "columns": columns, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> dropIndex({required String table, required String name, List<String>? namespace}) async {
-    await _invoke("drop_index", {"table": table, "name": name, "namespace": namespace});
+  Future<void> dropIndex({required String table, required String name, List<String>? namespace, String? branch}) async {
+    await _invoke("drop_index", {"table": table, "name": name, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> insert({required String table, required List<Map<String, dynamic>> records, List<String>? namespace}) async {
-    await insertStream(table: table, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace);
+  Future<void> insert({required String table, required List<Map<String, dynamic>> records, List<String>? namespace, String? branch}) async {
+    await insertStream(table: table, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
   }
 
-  Future<void> insertStream({required String table, required Stream<List<Map<String, dynamic>>> chunks, List<String>? namespace}) async {
-    final input = _DatabaseWriteInputStream(start: {"kind": "start", "table": table, "namespace": namespace}, chunks: chunks);
+  Future<void> insertStream({
+    required String table,
+    required Stream<List<Map<String, dynamic>>> chunks,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final input = _DatabaseWriteInputStream(
+      start: {"kind": "start", "table": table, "namespace": namespace, "branch": branch},
+      chunks: chunks,
+    );
     await _drainWriteStream("insert", input);
   }
 
@@ -552,6 +612,7 @@ class DatabaseClient {
     Map<String, dynamic>? values,
     Map<String, String>? valuesSql,
     List<String>? namespace,
+    String? branch,
   }) async {
     await _invoke("update", {
       "table": table,
@@ -559,11 +620,12 @@ class DatabaseClient {
       "values": values?.entries.map((entry) => {"column": entry.key, "value_json": _valueJson(entry.value)}).toList(growable: false),
       "values_sql": valuesSql?.entries.map((entry) => {"column": entry.key, "expression": entry.value}).toList(growable: false),
       "namespace": namespace,
+      "branch": branch,
     });
   }
 
-  Future<void> delete({required String table, required String where, List<String>? namespace}) async {
-    await _invoke("delete", {"table": table, "where": where, "namespace": namespace});
+  Future<void> delete({required String table, required String where, List<String>? namespace, String? branch}) async {
+    await _invoke("delete", {"table": table, "where": where, "namespace": namespace, "branch": branch});
   }
 
   Future<void> merge({
@@ -571,8 +633,9 @@ class DatabaseClient {
     required String on,
     required List<Map<String, dynamic>> records,
     List<String>? namespace,
+    String? branch,
   }) async {
-    await mergeStream(table: table, on: on, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace);
+    await mergeStream(table: table, on: on, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
   }
 
   Future<void> mergeStream({
@@ -580,8 +643,12 @@ class DatabaseClient {
     required String on,
     required Stream<List<Map<String, dynamic>>> chunks,
     List<String>? namespace,
+    String? branch,
   }) async {
-    final input = _DatabaseWriteInputStream(start: {"kind": "start", "table": table, "on": on, "namespace": namespace}, chunks: chunks);
+    final input = _DatabaseWriteInputStream(
+      start: {"kind": "start", "table": table, "on": on, "namespace": namespace, "branch": branch},
+      chunks: chunks,
+    );
     await _drainWriteStream("merge", input);
   }
 
@@ -611,6 +678,8 @@ class DatabaseClient {
     int? limit,
     List<String>? select,
     List<String>? namespace,
+    String? branch,
+    int? version,
   }) async {
     final rows = <Map<String, dynamic>>[];
     await for (final chunk in searchStream(
@@ -622,6 +691,8 @@ class DatabaseClient {
       limit: limit,
       select: select,
       namespace: namespace,
+      branch: branch,
+      version: version,
     )) {
       rows.addAll(chunk);
     }
@@ -637,6 +708,8 @@ class DatabaseClient {
     int? limit,
     List<String>? select,
     List<String>? namespace,
+    String? branch,
+    int? version,
   }) {
     return _streamRows("search", {
       "kind": "start",
@@ -649,10 +722,20 @@ class DatabaseClient {
       "limit": limit,
       "select": select,
       "namespace": namespace,
+      "branch": branch,
+      "version": version,
     });
   }
 
-  Future<int> count({required String table, String? text, List<double>? vector, dynamic where, List<String>? namespace}) async {
+  Future<int> count({
+    required String table,
+    String? text,
+    List<double>? vector,
+    dynamic where,
+    List<String>? namespace,
+    String? branch,
+    int? version,
+  }) async {
     final response = await _invoke("count", {
       "table": table,
       "text": text,
@@ -660,6 +743,8 @@ class DatabaseClient {
       "text_columns": null,
       "where": _whereClause(where),
       "namespace": namespace,
+      "branch": branch,
+      "version": version,
     });
     if (response is! JsonContent) {
       throw RoomServerException("unexpected return type from database.count call");
@@ -671,16 +756,16 @@ class DatabaseClient {
     return count.toInt();
   }
 
-  Future<void> optimize({required String table, List<String>? namespace}) async {
-    await _invoke("optimize", {"table": table, "namespace": namespace});
+  Future<void> optimize({required String table, List<String>? namespace, String? branch}) async {
+    await _invoke("optimize", {"table": table, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> restore({required String table, required int version, List<String>? namespace}) async {
-    await _invoke("restore", {"table": table, "version": version, "namespace": namespace});
+  Future<void> restore({required String table, required int version, List<String>? namespace, String? branch}) async {
+    await _invoke("restore", {"table": table, "version": version, "namespace": namespace, "branch": branch});
   }
 
-  Future<Map<String, DataType>> inspect(String table, {List<String>? namespace}) async {
-    final response = await _invoke("inspect", {"table": table, "namespace": namespace});
+  Future<Map<String, DataType>> inspect(String table, {List<String>? namespace, String? branch, int? version}) async {
+    final response = await _invoke("inspect", {"table": table, "namespace": namespace, "branch": branch, "version": version});
     if (response is! JsonContent) {
       throw RoomServerException("unexpected return type from database.inspect call");
     }
@@ -695,12 +780,8 @@ class DatabaseClient {
     };
   }
 
-  Future<void> checkout({required String table, required int version, List<String>? namespace}) async {
-    await _invoke("checkout", {"table": table, "version": version, "namespace": namespace});
-  }
-
-  Future<List<TableVersion>> listVersions(String table, {List<String>? namespace}) async {
-    final response = await _invoke("list_versions", {"table": table, "namespace": namespace});
+  Future<List<TableVersion>> listVersions(String table, {List<String>? namespace, String? branch}) async {
+    final response = await _invoke("list_versions", {"table": table, "namespace": namespace, "branch": branch});
     if (response is! JsonContent) {
       throw RoomServerException("unexpected return type from database.list_versions call");
     }
@@ -730,25 +811,44 @@ class DatabaseClient {
         .toList(growable: false);
   }
 
-  Future<void> createVectorIndex({required String table, required String column, List<String>? namespace, bool replace = false}) async {
-    await _invoke("create_vector_index", {"table": table, "column": column, "namespace": namespace, "replace": replace});
+  Future<void> createVectorIndex({
+    required String table,
+    required String column,
+    List<String>? namespace,
+    String? branch,
+    bool replace = false,
+  }) async {
+    await _invoke("create_vector_index", {"table": table, "column": column, "namespace": namespace, "branch": branch, "replace": replace});
   }
 
-  Future<void> createScalarIndex({required String table, required String column, List<String>? namespace, bool replace = false}) async {
-    await _invoke("create_scalar_index", {"table": table, "column": column, "namespace": namespace, "replace": replace});
+  Future<void> createScalarIndex({
+    required String table,
+    required String column,
+    List<String>? namespace,
+    String? branch,
+    bool replace = false,
+  }) async {
+    await _invoke("create_scalar_index", {"table": table, "column": column, "namespace": namespace, "branch": branch, "replace": replace});
   }
 
   Future<void> createFullTextSearchIndex({
     required String table,
     required String column,
     List<String>? namespace,
+    String? branch,
     bool replace = false,
   }) async {
-    await _invoke("create_full_text_search_index", {"table": table, "column": column, "namespace": namespace, "replace": replace});
+    await _invoke("create_full_text_search_index", {
+      "table": table,
+      "column": column,
+      "namespace": namespace,
+      "branch": branch,
+      "replace": replace,
+    });
   }
 
-  Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace}) async {
-    final response = await _invoke("list_indexes", {"table": table, "namespace": namespace});
+  Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace, String? branch, int? version}) async {
+    final response = await _invoke("list_indexes", {"table": table, "namespace": namespace, "branch": branch, "version": version});
     if (response is! JsonContent) {
       throw RoomServerException("unexpected return type from database.list_indexes call");
     }
@@ -757,6 +857,26 @@ class DatabaseClient {
       throw RoomServerException("unexpected return type from database.list_indexes call");
     }
     return indexes.map((value) => TableIndex.fromJson(Map<String, dynamic>.from(value as Map))).toList(growable: false);
+  }
+
+  Future<List<TableBranch>> listBranches({List<String>? namespace}) async {
+    final response = await _invoke("list_branches", {"namespace": namespace});
+    if (response is! JsonContent) {
+      throw RoomServerException("unexpected return type from database.list_branches call");
+    }
+    final branches = response.json["branches"];
+    if (branches is! List) {
+      throw RoomServerException("unexpected return type from database.list_branches call");
+    }
+    return branches.map((value) => TableBranch.fromJson(Map<String, dynamic>.from(value as Map))).toList(growable: false);
+  }
+
+  Future<void> createBranch({required String branch, String? fromBranch, List<String>? namespace}) async {
+    await _invoke("create_branch", {"branch": branch, "from_branch": fromBranch, "namespace": namespace});
+  }
+
+  Future<void> deleteBranch({required String branch, List<String>? namespace}) async {
+    await _invoke("delete_branch", {"branch": branch, "namespace": namespace});
   }
 }
 

@@ -200,6 +200,19 @@ class _FakeDatabaseServer {
             id: messageId,
           );
           return;
+        case 'list_branches':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'branches': [
+                  {'name': 'main', 'parent_branch': null, 'parent_version': null, 'created_at': '2025-01-01T00:00:00Z', 'manifest_size': 1},
+                ],
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
         case 'list_indexes':
           await protocol.send(
             '__response__',
@@ -339,6 +352,7 @@ void main() {
       schema: {
         'annotations': ListDataType(elementType: StructDataType(fields: {'key': TextDataType(), 'value': TextDataType()})),
       },
+      branch: 'exp',
       metadata: {'kind': 'demo'},
     );
     await harness.room.database.createTableFromData(
@@ -350,6 +364,7 @@ void main() {
     await harness.room.database.insert(
       table: 'records',
       namespace: ['team'],
+      branch: 'exp',
       records: [
         {'payload': Uint8List.fromList('inserted'.codeUnits)},
       ],
@@ -357,6 +372,7 @@ void main() {
     await harness.room.database.merge(
       table: 'records',
       namespace: ['team'],
+      branch: 'exp',
       on: 'id',
       records: [
         {'id': 1, 'payload': Uint8List.fromList('merged'.codeUnits)},
@@ -382,6 +398,7 @@ void main() {
     expect(createStart['metadata'], [
       {'key': 'kind', 'value': 'demo'},
     ]);
+    expect(createStart['branch'], 'exp');
     expect(harness.server.writeChunks['create_table'], [
       _rowsChunk([
         {'created_at': DateTime.utc(2025, 5, 21, 18, 32, 56)},
@@ -391,6 +408,7 @@ void main() {
       'kind': 'start',
       'table': 'records',
       'namespace': ['team'],
+      'branch': 'exp',
     });
     expect(harness.server.writeChunks['insert'], [
       _rowsChunk([
@@ -402,6 +420,7 @@ void main() {
       'table': 'records',
       'on': 'id',
       'namespace': ['team'],
+      'branch': 'exp',
     });
     expect(harness.server.writeChunks['merge'], [
       _rowsChunk([
@@ -415,7 +434,7 @@ void main() {
   test('database inspect, search, and sql decode streamed row chunks', () async {
     final harness = await _startDatabaseHarness();
 
-    final schema = await harness.room.database.inspect('records');
+    final schema = await harness.room.database.inspect('records', branch: 'exp', version: 7);
     expect(schema['annotations'], isA<ListDataType>());
     final annotations = schema['annotations'] as ListDataType;
     expect(annotations.elementType, isA<StructDataType>());
@@ -423,23 +442,40 @@ void main() {
     expect(struct.fields['key'], isA<TextDataType>());
     expect(struct.fields['value'], isA<TextDataType>());
 
-    final rows = await harness.room.database.search(table: 'records');
+    final rows = await harness.room.database.search(table: 'records', branch: 'exp', version: 7);
     expect(rows, hasLength(1));
     expect(rows.single['payload'], isA<Uint8List>());
     expect(utf8.decode(rows.single['payload'] as Uint8List), 'hello');
 
     final sqlRows = await harness.room.database.sql(
       query: 'SELECT * FROM records',
-      tables: [TableRef(name: 'records')],
+      tables: [TableRef(name: 'records', branch: 'exp', version: 7)],
     );
     expect(sqlRows, hasLength(1));
     expect(sqlRows.single['id'], 1);
     expect(utf8.decode(sqlRows.single['payload'] as Uint8List), 'sql-result');
 
-    final versions = await harness.room.database.listVersions('records');
+    final versions = await harness.room.database.listVersions('records', branch: 'exp');
     expect(versions, hasLength(1));
     expect(versions.single.version, 1);
     expect(versions.single.metadata, {'kind': 'demo'});
+
+    final branches = await harness.room.database.listBranches(namespace: ['team']);
+    expect(branches, hasLength(1));
+    expect(branches.single.name, 'main');
+    expect(branches.single.parentBranch, isNull);
+    expect(branches.single.parentVersion, isNull);
+    expect(branches.single.createdAt, DateTime.parse('2025-01-01T00:00:00Z'));
+    expect(branches.single.manifestSize, 1);
+
+    await harness.room.database.createBranch(branch: 'exp', fromBranch: 'main', namespace: ['team']);
+    await harness.room.database.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
+    await harness.room.database.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
+    await harness.room.database.optimize(table: 'records', namespace: ['team'], branch: 'exp');
+    final indexes = await harness.room.database.listIndexes('records', namespace: ['team'], branch: 'exp', version: 7);
+    expect(indexes, hasLength(1));
+    expect(indexes.single.name, 'idx_records_id');
+    await harness.room.database.deleteBranch(branch: 'exp', namespace: ['team']);
 
     expect(harness.server.readStarts['search']!.single, {
       'kind': 'start',
@@ -452,6 +488,8 @@ void main() {
       'limit': null,
       'select': null,
       'namespace': null,
+      'branch': 'exp',
+      'version': 7,
     });
     expect(harness.server.readPulls['search'], [
       {'kind': 'pull'},
@@ -461,7 +499,7 @@ void main() {
       'kind': 'start',
       'query': 'SELECT * FROM records',
       'tables': [
-        {'name': 'records', 'namespace': null, 'alias': null},
+        {'name': 'records', 'namespace': null, 'alias': null, 'branch': 'exp', 'version': 7},
       ],
       'params_json': null,
     });
@@ -469,6 +507,39 @@ void main() {
       {'kind': 'pull'},
       {'kind': 'pull'},
     ]);
+
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'inspect').input, {
+      'table': 'records',
+      'namespace': null,
+      'branch': 'exp',
+      'version': 7,
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'list_versions').input, {
+      'table': 'records',
+      'namespace': null,
+      'branch': 'exp',
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'create_branch').input, {
+      'branch': 'exp',
+      'from_branch': 'main',
+      'namespace': ['team'],
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'restore').input, {
+      'table': 'records',
+      'version': 2,
+      'namespace': ['team'],
+      'branch': 'exp',
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'list_indexes').input, {
+      'table': 'records',
+      'namespace': ['team'],
+      'branch': 'exp',
+      'version': 7,
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'delete_branch').input, {
+      'branch': 'exp',
+      'namespace': ['team'],
+    });
 
     await harness.dispose();
   });
