@@ -866,7 +866,7 @@ class ParticipantToken {
   String toJwt({String? token, String? apiKey, DateTime? expiration}) {
     ApiKey? resolvedApiKey;
     final envApiKey = const String.fromEnvironment('MESHAGENT_API_KEY');
-    final providedApiKey = apiKey != null && apiKey.isNotEmpty ? apiKey : (envApiKey.isNotEmpty ? envApiKey : null);
+    final providedApiKey = apiKey != null && apiKey.isNotEmpty ? apiKey : (token == null && envApiKey.isNotEmpty ? envApiKey : null);
     final usedDefaultSecretPath = token == null && providedApiKey == null;
 
     var resolvedSecret = token;
