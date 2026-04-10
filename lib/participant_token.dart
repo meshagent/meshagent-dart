@@ -847,7 +847,12 @@ class ParticipantToken {
   }
 
   Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{'name': name, 'grants': grants.map((g) => g.toJson()).toList(), 'version': version};
+    final map = <String, dynamic>{
+      if (extra != null) ...extra!,
+      'name': name,
+      'grants': grants.map((g) => g.toJson()).toList(),
+      'version': version,
+    };
     if (projectId != null) map['sub'] = projectId;
     if (apiKeyId != null) map['kid'] = apiKeyId;
     return map;
@@ -860,17 +865,17 @@ class ParticipantToken {
   /// the signing secret and ensures the payload contains the API key metadata.
   String toJwt({String? token, String? apiKey, DateTime? expiration}) {
     ApiKey? resolvedApiKey;
+    final envApiKey = const String.fromEnvironment('MESHAGENT_API_KEY');
+    final providedApiKey = apiKey != null && apiKey.isNotEmpty ? apiKey : (envApiKey.isNotEmpty ? envApiKey : null);
+    final usedDefaultSecretPath = token == null && providedApiKey == null;
 
     var resolvedSecret = token;
-    var providedApiKey = apiKey;
-    providedApiKey ??= const String.fromEnvironment('MESHAGENT_API_KEY');
 
-    if (providedApiKey.isNotEmpty) {
+    if (providedApiKey != null) {
       resolvedApiKey = parseApiKey(providedApiKey);
       resolvedSecret = resolvedApiKey.secret;
     }
 
-    final usingDefaultSecret = resolvedSecret == null;
     resolvedSecret ??= const String.fromEnvironment('MESHAGENT_SECRET');
 
     // Warn if missing ApiScope on newer versions (mirrors Python logger.warning)
@@ -889,20 +894,16 @@ class ParticipantToken {
       payload['sub'] = resolvedApiKey.projectId;
     }
 
-    // Match Python behavior: if exporting with default secret, drop kid.
-    if (usingDefaultSecret && payload.containsKey('kid')) {
+    if (usedDefaultSecretPath && payload.containsKey('kid')) {
       payload.remove('kid');
     }
 
-    // Merge extras
-    final merged = <String, dynamic>{...payload, if (extra != null) ...extra!};
-
     if (expiration != null) {
       // 'exp' is a NumericDate (seconds since epoch)
-      merged['exp'] = (expiration.millisecondsSinceEpoch / 1000).floor();
+      payload['exp'] = (expiration.millisecondsSinceEpoch / 1000).floor();
     }
 
-    final jwt = JWT(merged);
+    final jwt = JWT(payload);
     return jwt.sign(SecretKey(resolvedSecret), algorithm: JWTAlgorithm.HS256);
   }
 

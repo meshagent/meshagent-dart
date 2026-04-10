@@ -1,4 +1,5 @@
 import 'package:meshagent/meshagent.dart';
+import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -31,5 +32,25 @@ void main() {
     expect(grant.canUseProvider('google'), isFalse);
     expect(grant.canUseModel(provider: 'openai', model: 'gpt-4o-mini'), isTrue);
     expect(grant.canUseModel(provider: 'openai', model: 'gpt-4.1'), isFalse);
+  });
+
+  test('participant token json round trip preserves extra payload', () {
+    final token = ParticipantToken(name: 'user', extra: {'meshagent_bootstrap': true});
+    token.addRoomGrant('room');
+
+    final decoded = ParticipantToken.fromJson(token.toJson());
+
+    expect(decoded.extra, containsPair('meshagent_bootstrap', true));
+    expect(decoded.grantScope('room'), equals('room'));
+  });
+
+  test('explicit raw secret preserves kid on participant tokens', () {
+    final token = ParticipantToken(name: 'user', projectId: 'project-1', apiKeyId: 'should-preserve');
+
+    final jwt = token.toJwt(token: 'explicit-secret');
+    final decoded = JWT.verify(jwt, SecretKey('explicit-secret'), checkHeaderType: false);
+
+    expect(decoded.payload['kid'], equals('should-preserve'));
+    expect(decoded.payload['sub'], equals('project-1'));
   });
 }
