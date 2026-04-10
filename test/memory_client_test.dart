@@ -416,7 +416,11 @@ void main() {
       'statement': 'MATCH (e) RETURN e.name as name',
     });
     expect(jsonDecode(harness.server.requests[5].input['records_json'] as String), [
-      {'entity_id': 'acme', 'note': 'Renewal in Q3', 'seen_at': '2025-01-01T00:00:00.000Z'},
+      {
+        'entity_id': 'acme',
+        'note': 'Renewal in Q3',
+        'seen_at': {'timestamp': '2025-01-01T00:00:00.000Z'},
+      },
     ]);
     expect(jsonDecode(harness.server.requests[6].input['records_json'] as String), [
       {
