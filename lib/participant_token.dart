@@ -508,6 +508,48 @@ class ServicesGrant {
   factory ServicesGrant.fromJson(Map<String, dynamic> j) => ServicesGrant(list: j["list"] ?? true);
 }
 
+class LLMGrant {
+  final List<String>? models;
+
+  LLMGrant({this.models});
+
+  bool canUseProvider(String provider) {
+    final normalizedProvider = provider.trim();
+    if (normalizedProvider.isEmpty) {
+      return false;
+    }
+    if (models == null) {
+      return true;
+    }
+
+    final prefix = '$normalizedProvider/';
+    return models!.any((pattern) => pattern.trim().startsWith(prefix));
+  }
+
+  bool canUseModel({required String provider, required String model}) {
+    final normalizedProvider = provider.trim();
+    final normalizedModel = model.trim();
+    if (normalizedProvider.isEmpty || normalizedModel.isEmpty) {
+      return false;
+    }
+    if (models == null) {
+      return true;
+    }
+
+    final value = '$normalizedProvider/$normalizedModel';
+    for (final pattern in models!) {
+      if (value == pattern || (_hasWildcardSuffix(pattern) && value.startsWith(_stripWildcardSuffix(pattern)))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Map<String, dynamic> toJson() => {if (models != null) 'models': models};
+
+  factory LLMGrant.fromJson(Map<String, dynamic> j) => LLMGrant(models: (j['models'] as List?)?.cast<String>());
+}
+
 class OAuthEndpoint {
   final String endpoint;
   final String clientId;
@@ -569,6 +611,7 @@ class ApiScope {
   final ContainersGrant? containers;
   final DeveloperGrant? developer;
   final AgentsGrant? agents;
+  final LLMGrant? llm;
   final AdminGrant? admin;
   final SecretsGrant? secrets;
   final TunnelsGrant? tunnels;
@@ -585,6 +628,7 @@ class ApiScope {
     this.containers,
     this.developer,
     this.agents,
+    this.llm,
     this.admin,
     this.secrets,
     this.tunnels,
@@ -602,6 +646,7 @@ class ApiScope {
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
+    llm: LLMGrant(),
     services: ServicesGrant(),
   );
 
@@ -615,6 +660,7 @@ class ApiScope {
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
+    llm: LLMGrant(),
     secrets: SecretsGrant(),
     services: ServicesGrant(),
   );
@@ -630,6 +676,7 @@ class ApiScope {
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
+    llm: LLMGrant(),
     admin: AdminGrant(),
     secrets: SecretsGrant(),
     tunnels: TunnelsGrant(),
@@ -647,6 +694,7 @@ class ApiScope {
     if (containers != null) 'containers': containers!.toJson(),
     if (developer != null) 'developer': developer!.toJson(),
     if (agents != null) 'agents': agents!.toJson(),
+    if (llm != null) 'llm': llm!.toJson(),
     if (admin != null) 'admin': admin!.toJson(),
     if (secrets != null) 'secrets': secrets!.toJson(),
     if (tunnels != null) 'tunnels': tunnels!.toJson(),
@@ -664,6 +712,7 @@ class ApiScope {
     containers: j['containers'] != null ? ContainersGrant.fromJson(j['containers'] as Map<String, dynamic>) : null,
     developer: j['developer'] != null ? DeveloperGrant.fromJson(j['developer'] as Map<String, dynamic>) : null,
     agents: j['agents'] != null ? AgentsGrant.fromJson(j['agents'] as Map<String, dynamic>) : null,
+    llm: j['llm'] != null ? LLMGrant.fromJson(j['llm'] as Map<String, dynamic>) : null,
     admin: j['admin'] != null ? AdminGrant.fromJson(j['admin'] as Map<String, dynamic>) : null,
     secrets: j['secrets'] != null ? SecretsGrant.fromJson(j['secrets'] as Map<String, dynamic>) : null,
     tunnels: j['tunnels'] != null ? TunnelsGrant.fromJson(j['tunnels'] as Map<String, dynamic>) : null,
