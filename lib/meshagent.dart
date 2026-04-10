@@ -10,3 +10,4 @@ export 'package:meshagent/data_types.dart';
 export 'package:meshagent/client.dart';
 export 'package:meshagent/api_keys.dart';
 export 'package:meshagent/toolkit_config.dart';
+export 'package:uuid/uuid.dart' show UuidValue;

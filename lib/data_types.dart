@@ -9,6 +9,8 @@ final Map<String, DataTypeConstructor> _dataTypes = {
   "int": (data) => IntDataType.fromJson(data),
   "date": (data) => DateDataType.fromJson(data),
   "text": (data) => TextDataType.fromJson(data),
+  "json": (data) => JsonDataType.fromJson(data),
+  "uuid": (data) => UuidDataType.fromJson(data),
   "vector": (data) => VectorDataType.fromJson(data),
   "float": (data) => FloatDataType.fromJson(data),
   "timestamp": (data) => TimestampDataType.fromJson(data),
@@ -105,6 +107,28 @@ class DateDataType extends DataType {
   @override
   String toString() {
     return "date";
+  }
+}
+
+/// JsonDataType
+class JsonDataType extends DataType {
+  JsonDataType({super.nullable, super.metadata}) : super();
+
+  static JsonDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'json') {
+      throw Exception("Expected type 'json', got '${data['type']}'");
+    }
+    return JsonDataType(nullable: data["nullable"], metadata: data["metadata"]);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': 'json', ...super.toJson()};
+  }
+
+  @override
+  String toString() {
+    return "json";
   }
 }
 
@@ -262,6 +286,28 @@ class TextDataType extends DataType {
   @override
   String toString() {
     return "text";
+  }
+}
+
+/// UuidDataType
+class UuidDataType extends DataType {
+  UuidDataType({super.nullable, super.metadata}) : super();
+
+  static UuidDataType fromJson(Map<String, dynamic> data) {
+    if (data['type'] != 'uuid') {
+      throw Exception("Expected type 'uuid', got '${data['type']}'");
+    }
+    return UuidDataType(nullable: data["nullable"], metadata: data["metadata"]);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': 'uuid', ...super.toJson()};
+  }
+
+  @override
+  String toString() {
+    return "uuid";
   }
 }
 

@@ -49,6 +49,43 @@ class _RecordedRequest {
   final Map<String, dynamic> input;
 }
 
+Object? _encodedDatabaseValue(Object? value) {
+  if (value == null || value is bool || value is num || value is String) {
+    return value;
+  }
+  if (value is Uint8List) {
+    return {'binary': base64Encode(value)};
+  }
+  if (value is UuidValue) {
+    return {'uuid': value.toFormattedString(validate: true)};
+  }
+  if (value is DatabaseExpression) {
+    return {'expression': value.expression};
+  }
+  if (value is DatabaseDate) {
+    return {'date': value.toString()};
+  }
+  if (value is DateTime) {
+    final normalized = value.isUtc ? value : value.toUtc();
+    return {'timestamp': normalized.toIso8601String().replaceFirst("+00:00", "Z")};
+  }
+  if (value is DatabaseStruct) {
+    return {'struct': value.toJson()};
+  }
+  if (value is DatabaseJson) {
+    return {'json': value.toJson()};
+  }
+  if (value is List) {
+    return {'list': value.map(_encodedDatabaseValue).toList(growable: false)};
+  }
+  if (value is Map<String, Object?>) {
+    return {
+      'struct': {for (final entry in value.entries) entry.key: _encodedDatabaseValue(entry.value)},
+    };
+  }
+  throw StateError('unsupported typed value ${value.runtimeType}');
+}
+
 Map<String, dynamic> _rowsChunk(List<Map<String, dynamic>> rows) {
   return {
     'kind': 'rows',
@@ -57,30 +94,7 @@ Map<String, dynamic> _rowsChunk(List<Map<String, dynamic>> rows) {
           (row) => {
             'columns': row.entries
                 .map((entry) {
-                  final value = entry.value;
-                  if (value is Uint8List) {
-                    return {
-                      'name': entry.key,
-                      'value': {'type': 'binary', 'data': base64Encode(value)},
-                    };
-                  }
-                  if (value is DateTime) {
-                    final normalized = value.isUtc ? value : value.toUtc();
-                    return {
-                      'name': entry.key,
-                      'value': {'type': 'timestamp', 'value': normalized.toIso8601String().replaceFirst("+00:00", "Z")},
-                    };
-                  }
-                  if (value is int) {
-                    return {
-                      'name': entry.key,
-                      'value': {'type': 'int', 'value': value},
-                    };
-                  }
-                  return {
-                    'name': entry.key,
-                    'value': {'type': 'text', 'value': value},
-                  };
+                  return {'name': entry.key, 'value': _encodedDatabaseValue(entry.value)};
                 })
                 .toList(growable: false),
           },
@@ -109,6 +123,37 @@ class _FakeDatabaseServer {
   final readStarts = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
   final readPulls = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
   final _toolCallTools = <String, String>{};
+  var inspectFields = <Map<String, dynamic>>[
+    {
+      'name': 'annotations',
+      'data_type': {
+        'type': 'list',
+        'nullable': null,
+        'metadata': null,
+        'element_type': {
+          'type': 'struct',
+          'nullable': null,
+          'metadata': null,
+          'fields': [
+            {
+              'name': 'key',
+              'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
+            },
+            {
+              'name': 'value',
+              'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
+            },
+          ],
+        },
+      },
+    },
+  ];
+  var searchRows = <Map<String, dynamic>>[
+    {'payload': Uint8List.fromList('hello'.codeUnits)},
+  ];
+  var sqlRows = <Map<String, dynamic>>[
+    {'id': 1, 'payload': Uint8List.fromList('sql-result'.codeUnits)},
+  ];
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     final message = unpackMessage(data);
@@ -145,40 +190,7 @@ class _FakeDatabaseServer {
           );
           return;
         case 'inspect':
-          await protocol.send(
-            '__response__',
-            JsonContent(
-              json: {
-                'fields': [
-                  {
-                    'name': 'annotations',
-                    'data_type': {
-                      'type': 'list',
-                      'nullable': null,
-                      'metadata': null,
-                      'element_type': {
-                        'type': 'struct',
-                        'nullable': null,
-                        'metadata': null,
-                        'fields': [
-                          {
-                            'name': 'key',
-                            'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
-                          },
-                          {
-                            'name': 'value',
-                            'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
-                          },
-                        ],
-                      },
-                    },
-                  },
-                ],
-                'metadata': null,
-              },
-            ).pack(),
-            id: messageId,
-          );
+          await protocol.send('__response__', JsonContent(json: {'fields': inspectFields, 'metadata': null}).pack(), id: messageId);
           return;
         case 'count':
           await protocol.send('__response__', JsonContent(json: {'count': 1}).pack(), id: messageId);
@@ -279,25 +291,9 @@ class _FakeDatabaseServer {
         readPulls[tool]!.add(Map<String, dynamic>.from(chunk.json));
         if (readPulls[tool]!.length == 1) {
           if (tool == 'search') {
-            await _sendResponseChunk(
-              protocol,
-              toolCallId,
-              JsonContent(
-                json: _rowsChunk([
-                  {'payload': Uint8List.fromList('hello'.codeUnits)},
-                ]),
-              ),
-            );
+            await _sendResponseChunk(protocol, toolCallId, JsonContent(json: _rowsChunk(searchRows)));
           } else {
-            await _sendResponseChunk(
-              protocol,
-              toolCallId,
-              JsonContent(
-                json: _rowsChunk([
-                  {'id': 1, 'payload': Uint8List.fromList('sql-result'.codeUnits)},
-                ]),
-              ),
-            );
+            await _sendResponseChunk(protocol, toolCallId, JsonContent(json: _rowsChunk(sqlRows)));
           }
           return;
         }
@@ -550,6 +546,202 @@ void main() {
     await harness.room.database.search(table: 'records', where: {'id': 1, 'active': true, 'name': "O'Reilly"});
 
     expect(harness.server.readStarts['search']!.single['where'], 'id = 1 AND active = true AND name = "O\'Reilly"');
+
+    await harness.dispose();
+  });
+
+  test('database client supports uuid schemas, values, and where filters', () async {
+    final harness = await _startDatabaseHarness();
+    final id = UuidValue.withValidation('123e4567-e89b-12d3-a456-426614174000');
+
+    harness.server.inspectFields = [
+      {
+        'name': 'id',
+        'data_type': {'type': 'uuid', 'nullable': null, 'metadata': null},
+      },
+    ];
+    harness.server.searchRows = [
+      {'id': id},
+    ];
+
+    await harness.room.database.createTableWithSchema(name: 'uuid_records', schema: {'id': UuidDataType()});
+    await harness.room.database.insert(
+      table: 'uuid_records',
+      records: [
+        {'id': id},
+      ],
+    );
+
+    final schema = await harness.room.database.inspect('uuid_records');
+    expect(schema['id'], isA<UuidDataType>());
+
+    final rows = await harness.room.database.search(table: 'uuid_records', where: {'id': id});
+    expect(rows, hasLength(1));
+    expect(rows.single['id'], equals(id));
+
+    await harness.room.database.count(table: 'uuid_records', where: {'id': id});
+
+    expect(harness.server.writeStarts['create_table']!.single, {
+      'kind': 'start',
+      'name': 'uuid_records',
+      'fields': [
+        {
+          'name': 'id',
+          'data_type': {'type': 'uuid', 'nullable': null, 'metadata': null},
+        },
+      ],
+      'mode': 'create',
+      'namespace': null,
+      'branch': null,
+      'metadata': null,
+    });
+    expect(harness.server.writeStarts['insert']!.single, {'kind': 'start', 'table': 'uuid_records', 'namespace': null, 'branch': null});
+    expect(harness.server.writeChunks['insert'], [
+      _rowsChunk([
+        {'id': id},
+      ]),
+    ]);
+    expect(harness.server.readStarts['search']!.single['where'], "id = X'123e4567e89b12d3a456426614174000'");
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'count').input, {
+      'table': 'uuid_records',
+      'text': null,
+      'vector': null,
+      'text_columns': null,
+      'where': "id = X'123e4567e89b12d3a456426614174000'",
+      'namespace': null,
+      'branch': null,
+      'version': null,
+    });
+
+    await harness.dispose();
+  });
+
+  test('database client supports json schemas and values', () async {
+    final harness = await _startDatabaseHarness();
+    final payload = DatabaseJson({
+      'kind': 'demo',
+      'count': 3,
+      'tags': ['a', 'b'],
+    });
+
+    harness.server.inspectFields = [
+      {
+        'name': 'payload',
+        'data_type': {'type': 'json', 'nullable': null, 'metadata': null},
+      },
+    ];
+    harness.server.searchRows = [
+      {'payload': payload},
+    ];
+
+    await harness.room.database.createTableWithSchema(name: 'json_records', schema: {'payload': JsonDataType()});
+    await harness.room.database.insert(
+      table: 'json_records',
+      records: [
+        {'payload': payload},
+      ],
+    );
+
+    final schema = await harness.room.database.inspect('json_records');
+    expect(schema['payload'], isA<JsonDataType>());
+
+    final rows = await harness.room.database.search(table: 'json_records');
+    expect(rows, hasLength(1));
+    expect(rows.single['payload'], isA<DatabaseJson>());
+    expect((rows.single['payload'] as DatabaseJson).toJson(), payload.toJson());
+
+    expect(harness.server.writeStarts['create_table']!.single, {
+      'kind': 'start',
+      'name': 'json_records',
+      'fields': [
+        {
+          'name': 'payload',
+          'data_type': {'type': 'json', 'nullable': null, 'metadata': null},
+        },
+      ],
+      'mode': 'create',
+      'namespace': null,
+      'branch': null,
+      'metadata': null,
+    });
+    expect(harness.server.writeChunks['insert'], [
+      _rowsChunk([
+        {'payload': payload},
+      ]),
+    ]);
+
+    await harness.dispose();
+  });
+
+  test('database client encodes expressions for streamed writes and updates', () async {
+    final harness = await _startDatabaseHarness();
+
+    await harness.room.database.insert(
+      table: 'records',
+      namespace: ['team'],
+      branch: 'exp',
+      records: [
+        {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+      ],
+    );
+
+    await harness.room.database.update(
+      table: 'records',
+      where: 'true',
+      namespace: ['team'],
+      branch: 'exp',
+      values: {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+    );
+
+    expect(harness.server.writeStarts['insert']!.single, {
+      'kind': 'start',
+      'table': 'records',
+      'namespace': ['team'],
+      'branch': 'exp',
+    });
+    expect(harness.server.writeChunks['insert'], [
+      _rowsChunk([
+        {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+      ]),
+    ]);
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'update').input, {
+      'table': 'records',
+      'where': 'true',
+      'values': [
+        {'column': 'id', 'value_json': '{"expression":"uuid()"}'},
+        {'column': 'upper_name', 'value_json': '{"expression":"upper(name)"}'},
+      ],
+      'namespace': ['team'],
+      'branch': 'exp',
+    });
+
+    await harness.dispose();
+  });
+
+  test('database client decodes typed date and timestamp row values', () async {
+    final harness = await _startDatabaseHarness();
+    harness.server.searchRows = [
+      {'event_date': DatabaseDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
+    ];
+    harness.server.sqlRows = [
+      {'event_date': DatabaseDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
+    ];
+
+    final searchRows = await harness.room.database.search(table: 'records');
+    final sqlRows = await harness.room.database.sql(
+      query: 'SELECT * FROM records',
+      tables: [TableRef(name: 'records')],
+    );
+
+    expect(searchRows.single['event_date'], isA<DatabaseDate>());
+    expect(searchRows.single['event_date'].toString(), '2026-04-09');
+    expect(searchRows.single['created_at'], isA<DateTime>());
+    expect((searchRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');
+
+    expect(sqlRows.single['event_date'], isA<DatabaseDate>());
+    expect(sqlRows.single['event_date'].toString(), '2026-04-09');
+    expect(sqlRows.single['created_at'], isA<DateTime>());
+    expect((sqlRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');
 
     await harness.dispose();
   });
