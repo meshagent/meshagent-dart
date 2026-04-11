@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
@@ -22,40 +19,14 @@ class _NoopContentTool extends ContentTool {
   }
 }
 
-class _NoopRemoteToolkit extends RemoteToolkit {
-  _NoopRemoteToolkit({required super.name, required super.tools, required super.room}) : super(rules: const []);
-}
-
-class _RoomHarness {
-  _RoomHarness() {
-    clientProtocol = Protocol(
-      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
-    );
-    room = RoomClient(protocol: clientProtocol);
-  }
-
-  final _clientToServer = StreamController<Uint8List>();
-  final _serverToClient = StreamController<Uint8List>();
-  late final Protocol clientProtocol;
-  late final RoomClient room;
-
-  void dispose() {
-    try {
-      clientProtocol.dispose();
-    } catch (_) {}
-    unawaited(_clientToServer.close());
-    unawaited(_serverToClient.close());
-  }
+class _NoopToolkit extends Toolkit {
+  _NoopToolkit({required super.name, required super.tools}) : super(rules: const []);
 }
 
 void main() {
-  test('RemoteToolkit.getTools emits json input_spec by default for FunctionTool', () async {
-    final harness = _RoomHarness();
-    addTearDown(harness.dispose);
-
-    final toolkit = _NoopRemoteToolkit(
+  test('Toolkit.getTools emits json input_spec by default for FunctionTool', () async {
+    final toolkit = _NoopToolkit(
       name: 'sample',
-      room: harness.room,
       tools: [
         _NoopTool(
           name: 'echo',
@@ -82,13 +53,9 @@ void main() {
     });
   });
 
-  test('RemoteToolkit.getTools preserves explicit input_spec', () async {
-    final harness = _RoomHarness();
-    addTearDown(harness.dispose);
-
-    final toolkit = _NoopRemoteToolkit(
+  test('Toolkit.getTools preserves explicit input_spec', () async {
+    final toolkit = _NoopToolkit(
       name: 'sample',
-      room: harness.room,
       tools: [
         _NoopContentTool(
           name: 'echo',

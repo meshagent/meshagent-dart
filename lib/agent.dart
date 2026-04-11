@@ -26,7 +26,6 @@ abstract class BaseTool {
     this.thumbnailUrl,
     this.defs,
     this.pricing,
-    this.supportsContext = false,
   });
 
   final String name;
@@ -39,7 +38,6 @@ abstract class BaseTool {
   final Map<String, dynamic>? outputSchema;
   final Map<String, dynamic>? defs;
   final String? pricing;
-  final bool supportsContext;
 }
 
 abstract class FunctionTool extends BaseTool {
@@ -53,7 +51,6 @@ abstract class FunctionTool extends BaseTool {
     super.thumbnailUrl,
     super.defs,
     super.pricing,
-    super.supportsContext,
   });
 
   Future<Content> execute(ToolContext context, Map<String, dynamic> arguments);
@@ -75,14 +72,21 @@ abstract class ContentTool extends BaseTool {
     super.thumbnailUrl,
     super.defs,
     super.pricing,
-    super.supportsContext,
   });
 
   Future<ToolCallOutput> execute(ToolContext context, ToolInput input);
 }
 
 abstract class Toolkit {
-  Toolkit({required this.name, this.title, this.description, this.thumbnailUrl, required this.tools, required this.rules});
+  Toolkit({
+    required this.name,
+    this.title,
+    this.description,
+    this.thumbnailUrl,
+    required this.tools,
+    this.rules = const [],
+    this.validationMode = ValidationMode.full,
+  });
 
   final String name;
   final String? title;
@@ -90,6 +94,7 @@ abstract class Toolkit {
   final String? thumbnailUrl;
   final List<BaseTool> tools;
   final List<String> rules;
+  final ValidationMode validationMode;
 
   BaseTool getTool(String name) {
     for (final tool in tools) {
@@ -106,12 +111,11 @@ abstract class Toolkit {
       json[tool.name] = {
         "description": tool.description,
         "title": tool.title,
-        "input_spec": tool.inputSpec?.toJson(),
-        "output_spec": tool.outputSpec?.toJson(),
+        "input_spec": _resolveInputSpec(tool)?.toJson(),
+        "output_spec": _resolveOutputSpec(tool)?.toJson(),
         "thumbnail_url": tool.thumbnailUrl,
         "defs": tool.defs,
         "pricing": tool.pricing,
-        "supports_context": tool.supportsContext,
       };
     }
     return json;
@@ -142,36 +146,6 @@ abstract class Toolkit {
     }
     throw Exception("tool '$toolName' requires JSON object input");
   }
-}
-
-class ToolContext {
-  const ToolContext({required this.room, this.caller, this.onBehalfOf, this.callerContext});
-
-  final Participant? caller;
-  final Participant? onBehalfOf;
-  final Map<String, dynamic>? callerContext;
-  final RoomClient room;
-}
-
-class RemoteToolkit extends Toolkit {
-  RemoteToolkit({
-    required super.name,
-    super.title,
-    super.description,
-    super.thumbnailUrl,
-    required this.room,
-    required super.tools,
-    super.rules = const [],
-    this.validationMode = ValidationMode.full,
-  });
-
-  final RoomClient room;
-  final ValidationMode validationMode;
-  String? _registrationId;
-  bool _started = false;
-  final Map<String, StreamController<Content>> _requestStreams = {};
-  final Map<String, BaseTool> _requestStreamTools = {};
-  final Map<String, List<Content>> _pendingRequestChunks = {};
 
   bool get _shouldValidateContentTypes {
     return validationMode == ValidationMode.full || validationMode == ValidationMode.contentTypes;
@@ -199,24 +173,6 @@ class RemoteToolkit extends Toolkit {
       return null;
     }
     return ToolContentSpec(types: [ToolContentType.json], stream: false, schema: tool.outputSchema);
-  }
-
-  @override
-  Map<String, dynamic> getTools() {
-    final json = <String, dynamic>{};
-    for (final tool in tools) {
-      json[tool.name] = {
-        "description": tool.description,
-        "title": tool.title,
-        "input_spec": _resolveInputSpec(tool)?.toJson(),
-        "output_spec": _resolveOutputSpec(tool)?.toJson(),
-        "thumbnail_url": tool.thumbnailUrl,
-        "defs": tool.defs,
-        "pricing": tool.pricing,
-        "supports_context": tool.supportsContext,
-      };
-    }
-    return json;
   }
 
   ToolContentType? _contentType(Content content) {
@@ -355,13 +311,51 @@ class RemoteToolkit extends Toolkit {
     _validateContentType(tool: tool, direction: "output", spec: spec, content: content);
     _validateSchema(tool: tool, direction: "output", content: content, schema: spec?.schema);
   }
+}
+
+class ToolContext {
+  const ToolContext({required this.room, this.caller, this.onBehalfOf, this.callerContext});
+
+  final Participant? caller;
+  final Participant? onBehalfOf;
+  final Map<String, dynamic>? callerContext;
+  final RoomClient room;
+}
+
+class HostedToolkit {
+  HostedToolkit._({required this.toolkit, required Future<void> Function() stopHostedToolkit}) : _stopHostedToolkit = stopHostedToolkit;
+
+  final Toolkit toolkit;
+  final Future<void> Function() _stopHostedToolkit;
+
+  Future<void> stop() async {
+    await _stopHostedToolkit();
+  }
+}
+
+Future<HostedToolkit> startHostedToolkit({required RoomClient room, required Toolkit toolkit, bool public = false}) async {
+  final wrapper = _RemoteToolkitWrapper(room: room, toolkit: toolkit);
+  await wrapper.start(public: public);
+  return HostedToolkit._(toolkit: toolkit, stopHostedToolkit: () => wrapper.stop());
+}
+
+class _RemoteToolkitWrapper {
+  _RemoteToolkitWrapper({required this.room, required this.toolkit});
+
+  final RoomClient room;
+  final Toolkit toolkit;
+  String? _registrationId;
+  bool _started = false;
+  final Map<String, StreamController<Content>> _requestStreams = {};
+  final Map<String, BaseTool> _requestStreamTools = {};
+  final Map<String, List<Content>> _pendingRequestChunks = {};
 
   Future<void> start({bool public = false}) async {
     if (_started) {
-      throw RoomServerException("toolkit '$name' is already started");
+      throw RoomServerException("toolkit '${toolkit.name}' is already started");
     }
-    room.protocol.addHandler("room.tool_call.$name", _toolCall);
-    room.protocol.addHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
+    room.protocol.addHandler("room.tool_call.${toolkit.name}", _toolCall);
+    room.protocol.addHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
     try {
       await _register(public: public);
       _started = true;
@@ -374,8 +368,8 @@ class RemoteToolkit extends Toolkit {
         }),
       );
     } catch (_) {
-      room.protocol.removeHandler("room.tool_call.$name", _toolCall);
-      room.protocol.removeHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCall);
+      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
       rethrow;
     }
   }
@@ -385,23 +379,23 @@ class RemoteToolkit extends Toolkit {
       return;
     }
     _started = false;
-    await _failActiveRequestStreams(error: RoomServerException("remote toolkit stopped"));
+    await _failActiveRequestStreams(error: RoomServerException("hosted toolkit stopped"));
     try {
       await _unregister();
     } finally {
-      room.protocol.removeHandler("room.tool_call.$name", _toolCall);
-      room.protocol.removeHandler("room.tool_call_request_chunk.$name", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCall);
+      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
     }
   }
 
   Future<void> _register({bool public = false}) async {
     final response = await room.sendRequest("room.register_toolkit", {
-      "name": name,
-      "title": title,
-      "description": description,
-      "tools": getTools(),
+      "name": toolkit.name,
+      "title": toolkit.title,
+      "description": toolkit.description,
+      "tools": toolkit.getTools(),
       "public": public,
-      "thumbnail_url": thumbnailUrl,
+      "thumbnail_url": toolkit.thumbnailUrl,
     });
     _registrationId = (response as JsonContent).json["id"];
   }
@@ -491,7 +485,7 @@ class RemoteToolkit extends Toolkit {
 
     BaseTool tool;
     try {
-      tool = getTool(toolName);
+      tool = toolkit.getTool(toolName);
     } catch (error) {
       await _sendToolCallResponse(
         messageId: messageId,
@@ -503,7 +497,7 @@ class RemoteToolkit extends Toolkit {
     var openedResponseStream = false;
     StreamController<Content>? requestStreamController;
     try {
-      _validateStreamMode(tool: tool, direction: "input", spec: _resolveInputSpec(tool), stream: requestStream);
+      toolkit._validateStreamMode(tool: tool, direction: "input", spec: toolkit._resolveInputSpec(tool), stream: requestStream);
 
       ToolInput resolvedInput;
       if (requestStream) {
@@ -521,19 +515,19 @@ class RemoteToolkit extends Toolkit {
         }
         resolvedInput = ToolStreamInput(requestStreamController.stream);
       } else {
-        _validateInputContent(tool: tool, content: inputChunk);
+        toolkit._validateInputContent(tool: tool, content: inputChunk);
         resolvedInput = ToolContentInput(inputChunk);
       }
 
-      final output = await execute(context, toolName, resolvedInput);
+      final output = await toolkit.execute(context, toolName, resolvedInput);
       switch (output) {
         case ToolContentOutput(:final content):
-          _validateStreamMode(tool: tool, direction: "output", spec: _resolveOutputSpec(tool), stream: false);
-          _validateOutputContent(tool: tool, content: content);
+          toolkit._validateStreamMode(tool: tool, direction: "output", spec: toolkit._resolveOutputSpec(tool), stream: false);
+          toolkit._validateOutputContent(tool: tool, content: content);
           await _sendToolCallResponse(messageId: messageId, chunk: content);
           return;
         case ToolStreamOutput(:final stream):
-          _validateStreamMode(tool: tool, direction: "output", spec: _resolveOutputSpec(tool), stream: true);
+          toolkit._validateStreamMode(tool: tool, direction: "output", spec: toolkit._resolveOutputSpec(tool), stream: true);
           openedResponseStream = true;
           if (!await _sendToolCallResponse(
             messageId: messageId,
@@ -542,7 +536,7 @@ class RemoteToolkit extends Toolkit {
             return;
           }
           await for (final chunk in stream) {
-            _validateOutputContent(tool: tool, content: chunk);
+            toolkit._validateOutputContent(tool: tool, content: chunk);
             if (!await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: chunk)) {
               return;
             }
@@ -629,7 +623,7 @@ class RemoteToolkit extends Toolkit {
 
     if (tool != null) {
       try {
-        _validateInputContent(tool: tool, content: chunk);
+        toolkit._validateInputContent(tool: tool, content: chunk);
       } catch (error, stackTrace) {
         if (!stream.isClosed) {
           stream.addError(error, stackTrace);

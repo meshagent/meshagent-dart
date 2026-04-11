@@ -31,7 +31,6 @@ void main() {
           'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
           'pricing': 'free',
-          'supports_context': true,
         },
         {
           'name': 'tool_b',
@@ -52,7 +51,6 @@ void main() {
           'thumbnail_url': null,
           'defs': null,
           'pricing': null,
-          'supports_context': false,
         },
       ],
     };
@@ -87,7 +85,6 @@ void main() {
           'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
           'pricing': 'free',
-          'supports_context': true,
         },
         {
           'name': 'tool_b',
@@ -108,7 +105,6 @@ void main() {
           'thumbnail_url': null,
           'defs': null,
           'pricing': null,
-          'supports_context': false,
         },
       ],
     });

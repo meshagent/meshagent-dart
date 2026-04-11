@@ -3492,7 +3492,6 @@ class ToolkitDescription {
               "thumbnail_url": tool.thumbnailUrl,
               "defs": tool.defs,
               "pricing": tool.pricing,
-              "supports_context": tool.supportsContext,
             },
           )
           .toList(),
@@ -3518,7 +3517,6 @@ class ToolkitDescription {
               thumbnailUrl: tool["thumbnail_url"],
               pricing: tool["pricing"],
               defs: tool["defs"],
-              supportsContext: tool["supports_context"] ?? false,
             );
           }),
         if (json["tools"] is Map)
@@ -3533,7 +3531,6 @@ class ToolkitDescription {
               outputSpec: ToolContentSpec.fromJson(tool["output_spec"]),
               thumbnailUrl: tool["thumbnail_url"],
               defs: tool["defs"],
-              supportsContext: tool["supports_context"] ?? false,
             );
           }),
       ],
@@ -3550,7 +3547,6 @@ class ToolDescription {
     this.outputSpec,
     required this.defs,
     required this.pricing,
-    this.supportsContext = false,
     this.thumbnailUrl,
   });
 
@@ -3562,7 +3558,6 @@ class ToolDescription {
   final ToolContentSpec? inputSpec;
   final ToolContentSpec? outputSpec;
   final Map<String, dynamic>? defs;
-  final bool supportsContext;
 }
 
 class StorageClient extends ChangeEmitter {

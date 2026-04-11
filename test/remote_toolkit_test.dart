@@ -210,8 +210,12 @@ class _WaitForDisconnectTool extends ContentTool {
   }
 }
 
+class _TestToolkit extends Toolkit {
+  _TestToolkit({required super.name, required super.tools}) : super(rules: const []);
+}
+
 void main() {
-  test('RemoteToolkit forwards streamed request input to ContentTool', () async {
+  test('hosted toolkit forwards streamed request input to ContentTool', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
     final responseChunks = <Content>[];
@@ -241,8 +245,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [_CollectStreamTool()]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [_CollectStreamTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
@@ -281,11 +285,11 @@ void main() {
     expect((responses.first as JsonContent).json["joined"], "hello,world");
     expect(responseChunks, isEmpty);
 
-    await toolkit.stop();
+    await hostedToolkit.stop();
     await pair.dispose();
   });
 
-  test('RemoteToolkit rejects streamed input for non-stream Tool', () async {
+  test('hosted toolkit rejects streamed input for non-stream Tool', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
 
@@ -310,8 +314,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [_EchoTool()]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [_EchoTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
@@ -328,11 +332,11 @@ void main() {
     expect(responses.first, isA<ErrorContent>());
     expect((responses.first as ErrorContent).text, contains("input_spec requires"));
 
-    await toolkit.stop();
+    await hostedToolkit.stop();
     await pair.dispose();
   });
 
-  test('RemoteToolkit accepts non-stream input for ContentTool', () async {
+  test('hosted toolkit accepts non-stream input for ContentTool', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
 
@@ -357,8 +361,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [_EchoContentInputTool()]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [_EchoContentInputTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
@@ -380,11 +384,11 @@ void main() {
     expect(response.json["count"], 1);
     expect(response.json["first"], {"value": 1});
 
-    await toolkit.stop();
+    await hostedToolkit.stop();
     await pair.dispose();
   });
 
-  test('RemoteToolkit validates unary input against JSON schema', () async {
+  test('hosted toolkit validates unary input against JSON schema', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
 
@@ -409,8 +413,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [_RequiredValueTool()]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [_RequiredValueTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
@@ -427,11 +431,11 @@ void main() {
     expect(responses.first, isA<ErrorContent>());
     expect((responses.first as ErrorContent).text, contains("input does not match input_schema"));
 
-    await toolkit.stop();
+    await hostedToolkit.stop();
     await pair.dispose();
   });
 
-  test('RemoteToolkit validates unary output against JSON schema', () async {
+  test('hosted toolkit validates unary output against JSON schema', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
 
@@ -456,8 +460,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [_InvalidOutputTool()]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [_InvalidOutputTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
@@ -474,11 +478,11 @@ void main() {
     expect(responses.first, isA<ErrorContent>());
     expect((responses.first as ErrorContent).text, contains("output does not match output_schema"));
 
-    await toolkit.stop();
+    await hostedToolkit.stop();
     await pair.dispose();
   });
 
-  test('RemoteToolkit closes request stream when room disconnects mid-call', () async {
+  test('hosted toolkit closes request stream when room disconnects mid-call', () async {
     final pair = _ProtocolPair();
     final tool = _WaitForDisconnectTool();
 
@@ -499,8 +503,8 @@ void main() {
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
 
-    final toolkit = RemoteToolkit(name: "test", room: room, tools: [tool]);
-    await toolkit.start(public: true);
+    final toolkit = _TestToolkit(name: "test", tools: [tool]);
+    await startHostedToolkit(room: room, toolkit: toolkit, public: true);
 
     await pair.serverProtocol.send(
       "room.tool_call.test",
