@@ -177,6 +177,91 @@ class Connector {
   }
 }
 
+List<MCPHeader>? _headersFromEndpointSpec(Map<String, String>? headers) {
+  if (headers == null || headers.isEmpty) {
+    return null;
+  }
+
+  return [for (final entry in headers.entries) MCPHeader(name: entry.key, value: entry.value)];
+}
+
+String? _roomServiceMcpServerUrl({required ServiceSpec service, required PortSpec port, required EndpointSpec endpoint}) {
+  final endpointPath = endpoint.path.startsWith('/') ? endpoint.path : '/${endpoint.path}';
+  final portValue = port.num.value;
+
+  if (service.external == null) {
+    if (portValue == null) {
+      return Uri(scheme: 'http', host: 'localhost', path: endpointPath).toString();
+    }
+    return Uri(scheme: 'http', host: 'localhost', port: portValue, path: endpointPath).toString();
+  }
+
+  final externalUrl = service.external?.url;
+  if (externalUrl == null || externalUrl.isEmpty) {
+    return null;
+  }
+
+  var baseUri = Uri.tryParse(externalUrl);
+  if (baseUri == null) {
+    return null;
+  }
+  if (!baseUri.hasScheme) {
+    final withDefaultScheme = Uri.tryParse('https://$externalUrl');
+    if (withDefaultScheme == null) {
+      return null;
+    }
+    baseUri = withDefaultScheme;
+  }
+  if (!baseUri.hasAuthority) {
+    return null;
+  }
+
+  final normalizedBasePath = baseUri.path.endsWith('/') ? baseUri.path.substring(0, baseUri.path.length - 1) : baseUri.path;
+  final joinedPath = normalizedBasePath.isEmpty || normalizedBasePath == '/' ? endpointPath : '$normalizedBasePath$endpointPath';
+  final baseWithPath = baseUri.replace(path: joinedPath);
+  if (portValue == null) {
+    return baseWithPath.toString();
+  }
+
+  return baseWithPath.replace(port: portValue).toString();
+}
+
+List<Connector> mcpConnectorsFromRoomServices({required Iterable<ServiceSpec> services, String? agentName}) {
+  final connectors = <Connector>[];
+
+  for (final service in services) {
+    final filter = service.metadata.annotations["meshagent.agent.filter"];
+    if (filter != null && filter != agentName) {
+      continue;
+    }
+
+    for (final port in service.ports) {
+      for (final endpoint in port.endpoints) {
+        final mcp = endpoint.mcp;
+        if (mcp == null) {
+          continue;
+        }
+
+        connectors.add(
+          Connector(
+            name: mcp.label,
+            server: MCPServer(
+              serverLabel: mcp.label,
+              serverUrl: _roomServiceMcpServerUrl(service: service, port: port, endpoint: endpoint),
+              headers: _headersFromEndpointSpec(mcp.headers),
+              requireApproval: mcp.requireApproval,
+              openaiConnectorId: mcp.openaiConnectorId,
+            ),
+            oauth: mcp.oauth,
+          ),
+        );
+      }
+    }
+  }
+
+  return connectors;
+}
+
 class OpenAIConnectors {
   static final dropbox = Connector(
     name: "Dropbox",

@@ -64,4 +64,71 @@ void main() {
       expect(connectorRef?.serverUrl, 'https://mcp.example.com');
     });
   });
+
+  group('mcpConnectorsFromRoomServices', () {
+    test('builds MCP connectors from matching room services', () {
+      final connectors = mcpConnectorsFromRoomServices(
+        agentName: 'chatbot',
+        services: [
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'local-mcp'),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(8080),
+                endpoints: [
+                  EndpointSpec(
+                    path: '/mcp',
+                    mcp: MCPEndpointSpec(
+                      label: 'Local MCP',
+                      requireApproval: 'always',
+                      headers: const {'Authorization': 'Bearer token'},
+                      openaiConnectorId: 'connector_local',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'external-mcp', annotations: const {'meshagent.agent.filter': 'chatbot'}),
+            external: ExternalServiceSpec(url: 'mcp.example.com/root'),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(443),
+                endpoints: [
+                  EndpointSpec(
+                    path: 'remote',
+                    mcp: MCPEndpointSpec(label: 'External MCP', openaiConnectorId: 'connector_external'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'filtered-out', annotations: const {'meshagent.agent.filter': 'other-agent'}),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(9090),
+                endpoints: [
+                  EndpointSpec(
+                    path: '/ignored',
+                    mcp: MCPEndpointSpec(label: 'Ignored MCP'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(connectors.map((connector) => connector.name).toList(), ['Local MCP', 'External MCP']);
+      expect(connectors.first.server.serverUrl, 'http://localhost:8080/mcp');
+      expect(connectors.first.server.requireApproval, 'always');
+      expect(connectors.first.server.openaiConnectorId, 'connector_local');
+      expect(connectors.first.server.headers?.map((header) => header.toJson()).toList(), [
+        {'name': 'Authorization', 'value': 'Bearer token'},
+      ]);
+      expect(connectors.last.server.serverUrl, 'https://mcp.example.com:443/root/remote');
+    });
+  });
 }
