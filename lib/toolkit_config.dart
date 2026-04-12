@@ -218,12 +218,42 @@ String? _roomServiceMcpServerUrl({required ServiceSpec service, required PortSpe
 
   final normalizedBasePath = baseUri.path.endsWith('/') ? baseUri.path.substring(0, baseUri.path.length - 1) : baseUri.path;
   final joinedPath = normalizedBasePath.isEmpty || normalizedBasePath == '/' ? endpointPath : '$normalizedBasePath$endpointPath';
-  final baseWithPath = baseUri.replace(path: joinedPath);
   if (portValue == null) {
-    return baseWithPath.toString();
+    return baseUri.replace(path: joinedPath).toString();
   }
 
-  return baseWithPath.replace(port: portValue).toString();
+  final authorityBuffer = StringBuffer();
+  if (baseUri.userInfo.isNotEmpty) {
+    authorityBuffer
+      ..write(baseUri.userInfo)
+      ..write('@');
+  }
+
+  final host = baseUri.host.contains(':') ? '[${baseUri.host}]' : baseUri.host;
+  authorityBuffer
+    ..write(host)
+    ..write(':')
+    ..write(portValue);
+
+  final uriBuffer = StringBuffer()
+    ..write(baseUri.scheme)
+    ..write('://')
+    ..write(authorityBuffer)
+    ..write(joinedPath);
+
+  if (baseUri.hasQuery) {
+    uriBuffer
+      ..write('?')
+      ..write(baseUri.query);
+  }
+
+  if (baseUri.hasFragment) {
+    uriBuffer
+      ..write('#')
+      ..write(baseUri.fragment);
+  }
+
+  return uriBuffer.toString();
 }
 
 List<Connector> mcpConnectorsFromRoomServices({required Iterable<ServiceSpec> services, String? agentName}) {
