@@ -666,7 +666,8 @@ void main() {
     expect(loadImageInput['archive_path'], '/workspace/example.tar');
     expect(loadImageInput['private'], true);
 
-    final buildInput = harness.server.requests[5].input;
+    final buildRequest = harness.server.requests.firstWhere((entry) => entry.tool == 'build');
+    final buildInput = buildRequest.input;
     expect(buildInput['mount_path'], '/context');
     expect(buildInput['context_path'], '/workspace');
     expect(buildInput['dockerfile_path'], '/workspace/Dockerfile');
@@ -678,12 +679,14 @@ void main() {
     expect(buildInput['builder_name'], 'builder-1');
     expect(buildInput['size'], 11);
 
-    final buildLogsInput = harness.server.requests[9].input;
+    final buildLogsRequest = harness.server.requests.firstWhere((entry) => entry.tool == 'get_build_logs');
+    final buildLogsInput = buildLogsRequest.input;
     expect(buildLogsInput['kind'], 'start');
     expect(buildLogsInput['build_id'], 'build-1');
     expect(buildLogsInput['follow'], true);
 
-    final stopInput = harness.server.requests[11].input;
+    final stopRequest = harness.server.requests.firstWhere((entry) => entry.tool == 'stop_container');
+    final stopInput = stopRequest.input;
     expect(stopInput['force'], false);
 
     await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
