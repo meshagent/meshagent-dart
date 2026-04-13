@@ -1091,30 +1091,52 @@ List<Map<String, dynamic>> _containerCredentials(List<DockerSecret> values) {
       .toList(growable: false);
 }
 
-Map<String, dynamic> _buildRequestPayload({
-  required String tag,
-  required List<ContainerMountSpec> mounts,
-  required String contextPath,
-  String? dockerfilePath,
-  bool private = false,
-  List<DockerSecret> credentials = const [],
-  String? contextArchivePath,
-  String? contextArchiveRef,
-  String? contextArchiveMountPath,
-  String? contextArchiveArch,
-}) {
-  return {
-    'tag': tag,
-    'mounts': mounts.map((entry) => entry.toJson()).toList(growable: false),
-    'context_path': contextPath,
-    'dockerfile_path': dockerfilePath,
-    'private': private,
-    'credentials': _containerCredentials(credentials),
-    'context_archive_path': contextArchivePath,
-    'context_archive_ref': contextArchiveRef,
-    'context_archive_mount_path': contextArchiveMountPath,
-    'context_archive_arch': contextArchiveArch,
-  };
+class _BuildInputStream {
+  _BuildInputStream({
+    required this.tag,
+    required this.mountPath,
+    required this.contextPath,
+    required this.chunks,
+    this.dockerfilePath,
+    this.optimizeImage = true,
+    this.private = false,
+    this.credentials = const [],
+    this.builderName,
+    this.size,
+  });
+
+  final String tag;
+  final String mountPath;
+  final String contextPath;
+  final Stream<Uint8List> chunks;
+  final String? dockerfilePath;
+  final bool optimizeImage;
+  final bool private;
+  final List<DockerSecret> credentials;
+  final String? builderName;
+  final int? size;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(
+      data: Uint8List(0),
+      headers: {
+        'kind': 'start',
+        'tag': tag,
+        'mount_path': mountPath,
+        'context_path': contextPath,
+        'dockerfile_path': dockerfilePath,
+        'optimize_image': optimizeImage,
+        'private': private,
+        'credentials': _containerCredentials(credentials),
+        'builder_name': builderName,
+        'size': size,
+      },
+    );
+
+    await for (final chunk in chunks) {
+      yield BinaryContent(data: chunk, headers: const {'kind': 'data'});
+    }
+  }
 }
 
 String _decodeContainerUtf8(Uint8List data, {required String operation}) {
@@ -1452,44 +1474,6 @@ class ContainersClient extends ChangeEmitter {
     return (output.content as JsonContent).json['container_id'] as String;
   }
 
-  Future<String> startBuild({
-    required String tag,
-    required List<ContainerMountSpec> mounts,
-    required String contextPath,
-    String? dockerfilePath,
-    bool private = false,
-    List<DockerSecret> credentials = const [],
-    String? contextArchivePath,
-    String? contextArchiveRef,
-    String? contextArchiveMountPath,
-    String? contextArchiveArch,
-  }) async {
-    final output = await room.invoke(
-      toolkit: 'containers',
-      tool: 'start_build',
-      input: ToolContentInput(
-        JsonContent(
-          json: _buildRequestPayload(
-            tag: tag,
-            mounts: mounts,
-            contextPath: contextPath,
-            dockerfilePath: dockerfilePath,
-            private: private,
-            credentials: credentials,
-            contextArchivePath: contextArchivePath,
-            contextArchiveRef: contextArchiveRef,
-            contextArchiveMountPath: contextArchiveMountPath,
-            contextArchiveArch: contextArchiveArch,
-          ),
-        ),
-      ),
-    );
-    if (output is! ToolContentOutput || output.content is! JsonContent) {
-      throw _unexpectedResponseError(operation: 'start_build');
-    }
-    return (output.content as JsonContent).json['build_id'] as String;
-  }
-
   Future<String> runService({required String serviceId, Map<String, String> env = const {}}) async {
     final output = await room.invoke(
       toolkit: 'containers',
@@ -1557,36 +1541,29 @@ class ContainersClient extends ChangeEmitter {
 
   Future<String> build({
     required String tag,
-    required List<ContainerMountSpec> mounts,
+    required String mountPath,
     required String contextPath,
+    required Stream<Uint8List> chunks,
     String? dockerfilePath,
+    bool optimizeImage = true,
     bool private = false,
     List<DockerSecret> credentials = const [],
-    String? contextArchivePath,
-    String? contextArchiveRef,
-    String? contextArchiveMountPath,
-    String? contextArchiveArch,
+    String? builderName,
+    int? size,
   }) async {
-    final output = await room.invoke(
-      toolkit: 'containers',
-      tool: 'build',
-      input: ToolContentInput(
-        JsonContent(
-          json: _buildRequestPayload(
-            tag: tag,
-            mounts: mounts,
-            contextPath: contextPath,
-            dockerfilePath: dockerfilePath,
-            private: private,
-            credentials: credentials,
-            contextArchivePath: contextArchivePath,
-            contextArchiveRef: contextArchiveRef,
-            contextArchiveMountPath: contextArchiveMountPath,
-            contextArchiveArch: contextArchiveArch,
-          ),
-        ),
-      ),
+    final input = _BuildInputStream(
+      tag: tag,
+      mountPath: mountPath,
+      contextPath: contextPath,
+      chunks: chunks,
+      dockerfilePath: dockerfilePath,
+      optimizeImage: optimizeImage,
+      private: private,
+      credentials: credentials,
+      builderName: builderName,
+      size: size,
     );
+    final output = await room.invoke(toolkit: 'containers', tool: 'build', input: ToolStreamInput(input.inputStream()));
     if (output is! ToolContentOutput || output.content is! JsonContent) {
       throw _unexpectedResponseError(operation: 'build');
     }

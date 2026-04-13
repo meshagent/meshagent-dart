@@ -48,6 +48,13 @@ class _RecordedRequest {
   final Map<String, dynamic> input;
 }
 
+class _PendingBuildRequest {
+  _PendingBuildRequest({required this.protocol, required this.messageId});
+
+  final Protocol protocol;
+  final int messageId;
+}
+
 class _ContainersHarness {
   _ContainersHarness({required this.pair, required this.room, required this.server});
 
@@ -67,10 +74,12 @@ class _FakeContainersServer {
   final execChunks = <BinaryContent>[];
   final logChunks = <BinaryContent>[];
   final buildLogChunks = <BinaryContent>[];
+  final buildChunks = <BinaryContent>[];
   final _streamTools = <String, String>{};
   final _logCloseCompleters = <String, Completer<void>>{};
   final _execCloseCompleters = <String, Completer<void>>{};
   final _logFollowByToolCall = <String, bool>{};
+  final _pendingBuildRequests = <String, _PendingBuildRequest>{};
 
   Future<void> waitForLogsClose(String toolCallId) async {
     final completer = _logCloseCompleters[toolCallId];
@@ -97,9 +106,13 @@ class _FakeContainersServer {
       }
 
       final tool = request['tool'] as String;
-      if (tool == 'exec' || tool == 'logs' || tool == 'get_build_logs') {
+      if (tool == 'exec' || tool == 'logs' || tool == 'get_build_logs' || tool == 'build') {
         final toolCallId = request['tool_call_id'] as String;
         _streamTools[toolCallId] = tool;
+        if (tool == 'build') {
+          _pendingBuildRequests[toolCallId] = _PendingBuildRequest(protocol: protocol, messageId: messageId);
+          return;
+        }
         if (tool == 'exec') {
           _execCloseCompleters[toolCallId] = Completer<void>();
         } else {
@@ -188,10 +201,6 @@ class _FakeContainersServer {
         case 'load_image':
         case 'save_image':
           await protocol.send('__response__', JsonContent(json: {'container_id': '$tool-ctr'}).pack(), id: messageId);
-          return;
-        case 'build':
-        case 'start_build':
-          await protocol.send('__response__', JsonContent(json: {'build_id': '$tool-job'}).pack(), id: messageId);
           return;
         case 'load':
           await protocol.send(
@@ -293,6 +302,13 @@ class _FakeContainersServer {
       final chunk = unpackContent(packMessage(chunkHeader, message.payload.isEmpty ? null : message.payload));
       if (chunk is ControlContent) {
         final tool = _streamTools[toolCallId];
+        if (tool == 'build') {
+          final pending = _pendingBuildRequests.remove(toolCallId);
+          if (pending == null) {
+            throw StateError('no build request recorded for $toolCallId');
+          }
+          await pending.protocol.send('__response__', JsonContent(json: {'build_id': 'build-job'}).pack(), id: pending.messageId);
+        }
         final execCloseCompleter = _execCloseCompleters[toolCallId];
         if (execCloseCompleter != null && !execCloseCompleter.isCompleted) {
           execCloseCompleter.complete();
@@ -360,6 +376,11 @@ class _FakeContainersServer {
             toolCallId: toolCallId,
             chunk: ControlContent(method: 'close'),
           );
+        }
+      } else if (tool == 'build') {
+        buildChunks.add(chunk);
+        if (chunk.headers['kind'] == 'start') {
+          requests.add(_RecordedRequest(tool: 'build', input: Map<String, dynamic>.from(chunk.headers)));
         }
       } else if (tool == 'get_build_logs') {
         buildLogChunks.add(chunk);
@@ -577,26 +598,26 @@ void main() {
       await harness.room.containers.saveImage(tag: 'demo:latest', mounts: mounts, archivePath: '/workspace/example.tar', private: true),
       'save_image-ctr',
     );
+
+    Stream<Uint8List> buildChunks() async* {
+      yield Uint8List.fromList('hello '.codeUnits);
+      yield Uint8List.fromList('world'.codeUnits);
+    }
+
     expect(
       await harness.room.containers.build(
         tag: 'example:latest',
-        mounts: mounts,
+        mountPath: '/context',
         contextPath: '/workspace',
+        chunks: buildChunks(),
         dockerfilePath: '/workspace/Dockerfile',
+        optimizeImage: false,
+        private: true,
+        credentials: const [DockerSecret(username: 'u', password: 'p', registry: '', email: '')],
+        builderName: 'builder-1',
+        size: 11,
       ),
       'build-job',
-    );
-    expect(
-      await harness.room.containers.startBuild(
-        tag: 'example:latest',
-        mounts: mounts,
-        contextPath: '/workspace',
-        contextArchivePath: '/website',
-        contextArchiveRef: 'room.meshagent.com/website:latest',
-        contextArchiveMountPath: '/context',
-        contextArchiveArch: 'amd64',
-      ),
-      'start_build-job',
     );
 
     final builds = await harness.room.containers.listBuilds();
@@ -624,7 +645,6 @@ void main() {
       'load_image',
       'save_image',
       'build',
-      'start_build',
       'list_builds',
       'cancel_build',
       'delete_build',
@@ -647,16 +667,18 @@ void main() {
     expect(loadImageInput['private'], true);
 
     final buildInput = harness.server.requests[5].input;
-    expect(buildInput['context_archive_path'], isNull);
+    expect(buildInput['mount_path'], '/context');
+    expect(buildInput['context_path'], '/workspace');
     expect(buildInput['dockerfile_path'], '/workspace/Dockerfile');
+    expect(buildInput['optimize_image'], false);
+    expect(buildInput['private'], true);
+    expect(buildInput['credentials'], [
+      {'registry': '', 'username': 'u', 'password': 'p'},
+    ]);
+    expect(buildInput['builder_name'], 'builder-1');
+    expect(buildInput['size'], 11);
 
-    final startBuildInput = harness.server.requests[6].input;
-    expect(startBuildInput['context_archive_path'], '/website');
-    expect(startBuildInput['context_archive_ref'], 'room.meshagent.com/website:latest');
-    expect(startBuildInput['context_archive_mount_path'], '/context');
-    expect(startBuildInput['context_archive_arch'], 'amd64');
-
-    final buildLogsInput = harness.server.requests[10].input;
+    final buildLogsInput = harness.server.requests[9].input;
     expect(buildLogsInput['kind'], 'start');
     expect(buildLogsInput['build_id'], 'build-1');
     expect(buildLogsInput['follow'], true);
