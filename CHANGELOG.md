@@ -1,3 +1,10 @@
+## [0.37.0]
+- Breaking: Database client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatabaseJson/DatabaseStruct/DatabaseExpression/DatabaseDate/UuidValue); list/struct values must be wrapped and SQL params use the new encoding.
+- Breaking: Containers build now streams build contexts (start/data chunks) with `mountPath`/`chunks` and removes `startBuild`.
+- Breaking: Toolkit/hosting refactor replaces RemoteToolkit with HostedToolkit/startHostedToolkit, removes ToolkitConfig and `supports_context`, and introduces room-bound toolkits with validationMode.
+- Added MCP connector discovery helpers and chat UI capability negotiation (tool-choice and MCP selection) in Flutter Shadcn components.
+- Participant tokens now support LLM grants, preserve extra payload fields, and ApiScope defaults include LLM.
+
 ## [0.36.3]
 - Storage client now supports move operations and emits file moved events.
 - Secrets client now supports existence checks.
