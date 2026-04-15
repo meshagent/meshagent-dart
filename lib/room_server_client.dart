@@ -4891,9 +4891,7 @@ class DeveloperClient extends ChangeEmitter {
           throw RoomServerException("developer.logs returned invalid JSON data");
         }
 
-        final event = RoomLogEvent(type: logType, data: Map<String, dynamic>.from(decoded));
-        room._eventsController.add(event);
-        yield event;
+        yield RoomLogEvent(type: logType, data: Map<String, dynamic>.from(decoded));
       }
     } finally {
       if (!inputClosed.isCompleted) {
