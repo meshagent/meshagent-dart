@@ -9,11 +9,9 @@ void main() {
     token.addApiGrant(ApiScope(developer: DeveloperGrant(logs: true), storage: StorageGrant(), llm: LLMGrant(), admin: AdminGrant()));
 
     final room = RoomClient(
-      protocol: Protocol(
-        channel: WebSocketProtocolChannel(
-          url: Uri.parse('ws://localhost:8080/rooms/room'),
-          jwt: token.toJwt(token: 'secret'),
-        ),
+      protocolFactory: WebSocketClientProtocol.createFactory(
+        url: Uri.parse('ws://localhost:8080/rooms/room'),
+        token: token.toJwt(token: 'secret'),
       ),
     );
 

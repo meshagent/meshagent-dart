@@ -8,6 +8,8 @@ abstract class DocumentRuntime {
 
   void sendChanges(Map<String, dynamic> message);
   void applyBackendChanges({required String documentId, required String base64});
+  String getState({required String documentId, String? vectorBase64});
+  String getStateVector({required String documentId});
 
   static DocumentRuntime? _instance;
 

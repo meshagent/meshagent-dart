@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -15,6 +16,8 @@ import 'package:uuid/uuid.dart';
 
 import 'database_client.dart';
 import 'runtime.dart';
+
+final Logger _roomClientLogger = Logger('room_server_client');
 
 class RoomServerException implements Exception {
   RoomServerException(this.message, {this.statusCode, this.code, this.retryable = false});
@@ -66,7 +69,7 @@ abstract class Participant {
   Participant({required this.client, required this.id});
 
   final RoomClient client;
-  final String id;
+  String id;
   final Map<String, dynamic> _attributes = {};
 
   final List<String> _connections = [];
@@ -77,6 +80,13 @@ abstract class Participant {
 
   dynamic getAttribute(String name) {
     return _attributes[name];
+  }
+
+  void _replaceIdentity({required String participantId, required Map<String, dynamic> attributes}) {
+    id = participantId;
+    _attributes
+      ..clear()
+      ..addAll(attributes);
   }
 }
 
@@ -94,11 +104,9 @@ class RemoteParticipant extends Participant {
 class LocalParticipant extends Participant {
   LocalParticipant({required super.client, required super.id});
 
-  void setAttribute(String name, dynamic value) async {
+  void setAttribute(String name, dynamic value) {
     _attributes[name] = value;
-    client.protocol.send("set_attributes", packMessage({name: value})).catchError((err) {
-      Logger.root.log(Level.WARNING, "Unable to send attribute changes", err);
-    });
+    client._sendLocalAttributesNowait({name: value});
   }
 }
 
@@ -294,6 +302,21 @@ class RoomMessage {
   final Uint8List? attachment;
 }
 
+class _QueuedRoomMessage extends RoomMessage {
+  _QueuedRoomMessage({
+    required super.fromParticipantId,
+    required super.type,
+    required super.message,
+    super.attachment,
+    required this.to,
+    required this.dropIfOffline,
+  }) : completer = dropIfOffline ? null : Completer<void>();
+
+  final Participant? to;
+  final bool dropIfOffline;
+  final Completer<void>? completer;
+}
+
 class RoomMessageEvent extends RoomEvent {
   RoomMessageEvent({required this.message});
 
@@ -376,27 +399,158 @@ class _RefCount<T> {
   int count = 1;
 }
 
+class _RoomClientTerminalState {
+  const _RoomClientTerminalState({required this.requestMessage, required this.toolCallMessage, required this.messageSendMessage});
+
+  final String requestMessage;
+  final String toolCallMessage;
+  final String messageSendMessage;
+
+  RoomServerException requestError() {
+    return RoomServerException(requestMessage);
+  }
+
+  RoomServerException toolCallError() {
+    return RoomServerException(toolCallMessage);
+  }
+
+  RoomServerException messageSendError() {
+    return RoomServerException(messageSendMessage);
+  }
+}
+
+class _ProtocolStartupFailure implements Exception {
+  _ProtocolStartupFailure({required this.kind, required this.reason});
+
+  final ProtocolCloseKind kind;
+  final String? reason;
+
+  @override
+  String toString() {
+    return reason ?? kind.name;
+  }
+}
+
+class RoomProtocolProxy {
+  RoomProtocolProxy({required RoomClient room}) : _room = room;
+
+  final RoomClient _room;
+  final Map<String, ProtocolMessageHandler> _handlers = <String, ProtocolMessageHandler>{};
+
+  void _bind(Protocol protocol) {
+    for (final entry in _handlers.entries) {
+      if (identical(protocol.getHandler(entry.key), entry.value)) {
+        continue;
+      }
+      protocol.addHandler(entry.key, entry.value);
+    }
+  }
+
+  void _unbind(Protocol protocol) {
+    for (final entry in _handlers.entries) {
+      final current = protocol.getHandler(entry.key);
+      if (identical(current, entry.value)) {
+        protocol.removeHandler(entry.key, current!);
+      }
+    }
+  }
+
+  void addHandler(String type, ProtocolMessageHandler handler) {
+    if (_handlers.containsKey(type)) {
+      throw StateError('already registered handler for $type');
+    }
+    _handlers[type] = handler;
+    _bind(_room._protocolInstance);
+  }
+
+  void removeHandler(String type, ProtocolMessageHandler handler) {
+    final registeredHandler = _handlers[type];
+    if (!identical(registeredHandler, handler)) {
+      throw StateError('handler mismatch for $type');
+    }
+    _handlers.remove(type);
+    final current = _room._protocolInstance.getHandler(type);
+    if (identical(current, registeredHandler)) {
+      _room._protocolInstance.removeHandler(type, current!);
+    }
+  }
+
+  ProtocolMessageHandler? getHandler(String type) {
+    return _handlers[type];
+  }
+
+  Future<void> send(String type, Uint8List data, {int? id}) async {
+    if (_room._entered && !_room.isConnected && !_room._allowDisconnectedRequests) {
+      throw _room._disconnectedError(baseMessage: 'room connection is disconnected');
+    }
+    await _room._protocolInstance.send(type, data, id: id);
+  }
+
+  int sendNowait(String type, Uint8List data, {int? id}) {
+    if (_room._entered && !_room.isConnected && !_room._allowDisconnectedRequests) {
+      throw _room._disconnectedError(baseMessage: 'room connection is disconnected');
+    }
+    return _room._protocolInstance.sendNowait(type, data, id: id);
+  }
+
+  int getNextMessageId() {
+    if (_room._entered && !_room.isConnected && !_room._allowDisconnectedRequests) {
+      throw _room._disconnectedError(baseMessage: 'room connection is disconnected');
+    }
+    return _room._protocolInstance.getNextMessageId();
+  }
+
+  Future<Object?> get done {
+    return _room.waitForClose().then<Object?>((_) => null);
+  }
+
+  Future<void> waitForClose() {
+    return _room.waitForClose();
+  }
+
+  ProtocolCloseKind? get closeKind {
+    return _room.closeKind;
+  }
+
+  String? get closeReason {
+    return _room.closeReason;
+  }
+
+  bool get isOpen {
+    return _room._protocolInstance.isOpen;
+  }
+
+  bool get isClosed {
+    return _room.isClosed;
+  }
+
+  String? get token {
+    return _room._protocolInstance.token;
+  }
+
+  Uri? get url {
+    return _room._protocolInstance.url;
+  }
+}
+
 class RoomClient extends ChangeEmitter {
-  RoomClient({required this.protocol, OAuthTokenRequestHandler? oauthTokenRequestHandler, SecretRequestHandler? secretRequestHandler}) {
-    protocol.addHandler("__response__", _handleResponse);
-
-    protocol.addHandler("connected", _handleParticipant);
-
-    protocol.addHandler("room_ready", _handleRoomReady);
-
-    protocol.addHandler("room.status", _handleRoomStatus);
-
-    protocol.addHandler("room.tool_call_response_chunk", _handleToolCallResponseChunk);
-
-    unawaited(
-      protocol.done.then((error) {
-        final wrapped = error == null
-            ? RoomServerException("room client was closed before tool call completed")
-            : _wrapRoomConnectionError(error);
-        return _failToolCallStreams(error: wrapped);
-      }),
-    );
-
+  RoomClient({
+    required ProtocolFactory protocolFactory,
+    Duration? reconnectTimeout,
+    OAuthTokenRequestHandler? oauthTokenRequestHandler,
+    SecretRequestHandler? secretRequestHandler,
+  }) : _protocolFactory = protocolFactory,
+       _reconnectTimeout = reconnectTimeout {
+    if (reconnectTimeout != null && reconnectTimeout.isNegative) {
+      throw ArgumentError.value(reconnectTimeout, 'reconnectTimeout', 'must be null or non-negative');
+    }
+    _protocolInstance = _protocolFactory();
+    protocol = RoomProtocolProxy(room: this);
+    protocol.addHandler('__response__', _handleResponse);
+    protocol.addHandler('connected', _handleParticipant);
+    protocol.addHandler('room_ready', _handleRoomReady);
+    protocol.addHandler('room.status', _handleRoomStatus);
+    protocol.addHandler('room.tool_call_response_chunk', _handleToolCallResponseChunk);
     sync = SyncClient(room: this);
     storage = StorageClient(room: this);
     developer = DeveloperClient(room: this);
@@ -410,6 +564,11 @@ class RoomClient extends ChangeEmitter {
     secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
   }
 
+  final ProtocolFactory _protocolFactory;
+  final Duration? _reconnectTimeout;
+  final Duration _reconnectRetryInterval = const Duration(milliseconds: 250);
+  late Protocol _protocolInstance;
+  late final RoomProtocolProxy protocol;
   late final QueuesClient queues;
   late final SyncClient sync;
   late final StorageClient storage;
@@ -422,27 +581,42 @@ class RoomClient extends ChangeEmitter {
   late final ServicesClient services;
   late final SecretsClient secrets;
 
-  final _ready = Completer();
+  final _ready = Completer<void>();
+  final _roomClosed = Completer<void>();
+  Completer<void> _connectionReady = Completer<void>();
+  Completer<void> _localParticipantReady = Completer<void>();
 
-  Future get ready {
+  Future<void> get ready {
     return _ready.future;
   }
 
   final _pendingRequests = <int, _PendingRequest>{};
+  final _ignoredResponseLabels = <int, String>{};
   final _toolCallStreams = <String, StreamController<Content>>{};
   final _pendingInvokeResponses = <String, Completer<Content>>{};
   final _uuid = const Uuid();
+  final _eventsController = StreamController<RoomEvent>.broadcast();
 
-  final Protocol protocol;
+  Future<void>? _lifecycleTask;
+  _RoomClientTerminalState? _terminalState;
+  bool _entered = false;
+  bool _closing = false;
+  bool _connected = false;
+  bool _allowDisconnectedRequests = false;
+  bool _terminalCallbacksInvoked = false;
+  ProtocolCloseKind? _closeKind;
+  String? _closeReason;
+  void Function()? _doneHandler;
+  void Function(Object? error)? _errorHandler;
 
   ParticipantToken? get participantToken {
-    final channel = protocol.channel;
-    if (channel is! WebSocketProtocolChannel) {
+    final token = _protocolInstance.token;
+    if (token == null || token.isEmpty) {
       return null;
     }
 
     try {
-      return ParticipantToken.fromJwt(channel.jwt, verify: false);
+      return ParticipantToken.fromJwt(token, verify: false);
     } catch (_) {
       return null;
     }
@@ -450,6 +624,65 @@ class RoomClient extends ChangeEmitter {
 
   ApiScope? get apiGrant {
     return participantToken?.getApiGrant();
+  }
+
+  bool get isConnected {
+    return _connected;
+  }
+
+  bool get isClosed {
+    return _closing || _terminalState != null || _roomClosed.isCompleted;
+  }
+
+  ProtocolCloseKind? get closeKind {
+    return _closeKind ?? _protocolInstance.closeKind;
+  }
+
+  String? get closeReason {
+    return _closeReason ?? _normalizeCloseReason(_protocolInstance.closeReason);
+  }
+
+  Future<void> waitForClose() async {
+    if (_lifecycleTask == null) {
+      await _protocolInstance.waitForClose();
+      return;
+    }
+    await _roomClosed.future;
+  }
+
+  Future<void> waitUntilConnected() async {
+    while (!_connected) {
+      _raiseIfTerminal();
+      if (_roomClosed.isCompleted) {
+        _raiseIfTerminal();
+        throw _disconnectedError(baseMessage: 'room connection closed before reconnect completed');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
+  Future<void> _waitUntilConnectedForMessages() async {
+    while (!_connected) {
+      _raiseIfTerminalForMessages();
+      if (_roomClosed.isCompleted) {
+        _raiseIfTerminalForMessages();
+        throw _messageDisconnectedError(baseMessage: 'room connection closed before message send completed');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
+  void _markConnected() {
+    _connected = true;
+    _closeKind = null;
+    _closeReason = null;
+  }
+
+  void _markDisconnected({required String? reason, required ProtocolCloseKind? kind}) {
+    _connected = false;
+    _closeKind = kind;
+    _closeReason = _normalizeCloseReason(reason);
+    _ignoredResponseLabels.clear();
   }
 
   void _failPendingRequests(RoomServerException error) {
@@ -466,49 +699,512 @@ class RoomClient extends ChangeEmitter {
     }
   }
 
-  Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
+  Future<void> _failPendingWork({required _RoomClientTerminalState state}) async {
+    _failPendingRequests(state.requestError());
+    await _failToolCallStreams(error: state.toolCallError());
+  }
+
+  Future<void> _openProtocol({required bool initial}) async {
+    final protocol = _protocolInstance;
+    _connectionReady = Completer<void>();
+    _localParticipantReady = Completer<void>();
     protocol.start(
       onDone: () {
         final error = _roomClosedBeforeReadyError(protocol);
-        _failPendingRequests(error);
-        unawaited(_failToolCallStreams(error: error));
+        if (!_connectionReady.isCompleted) {
+          _connectionReady.completeError(error);
+        }
+        if (!_localParticipantReady.isCompleted) {
+          _localParticipantReady.completeError(error);
+        }
         if (!_ready.isCompleted) {
           _ready.completeError(error);
         }
-        if (onDone != null) {
-          onDone();
-        }
       },
-      onError: (error) {
+      onError: (Object? error) {
         final wrapped = _wrapRoomConnectionError(error);
-        _failPendingRequests(wrapped);
-        unawaited(_failToolCallStreams(error: wrapped));
+        if (!_connectionReady.isCompleted) {
+          _connectionReady.completeError(wrapped);
+        }
+        if (!_localParticipantReady.isCompleted) {
+          _localParticipantReady.completeError(wrapped);
+        }
         if (!_ready.isCompleted) {
           _ready.completeError(wrapped);
         }
-        if (onError != null) {
-          onError(wrapped);
-        }
       },
     );
+    try {
+      await Future.wait<void>([_connectionReady.future, _localParticipantReady.future]);
+    } catch (error) {
+      final kind = protocol.closeKind ?? ProtocolCloseKind.error;
+      if (!initial && kind != ProtocolCloseKind.error) {
+        throw _ProtocolStartupFailure(kind: kind, reason: protocol.closeReason);
+      }
+      rethrow;
+    }
+  }
 
-    sync.start();
+  Future<void> start({void Function()? onDone, void Function(Object? error)? onError}) async {
+    if (_entered) {
+      throw RoomServerException('room client already started');
+    }
+    _doneHandler = onDone;
+    _errorHandler = onError;
+    try {
+      await _openProtocol(initial: true);
+      sync.start();
+      messaging.start();
+      _entered = true;
+      _markConnected();
+      messaging._onRoomReconnect();
+      _lifecycleTask = _connectionLifecycle();
+    } catch (error) {
+      sync.dispose();
+      unawaited(messaging.stop());
+      _protocolInstance.dispose();
+      rethrow;
+    }
 
     await ready;
   }
 
-  void dispose() {
-    final error = RoomServerException("room client disposed");
-    _failPendingRequests(error);
-    unawaited(_failToolCallStreams(error: error));
-    sync.dispose();
+  void _invokeTerminalCallbacks({required bool useErrorCallback, Object? error}) {
+    if (_terminalCallbacksInvoked) {
+      return;
+    }
+    _terminalCallbacksInvoked = true;
+    if (useErrorCallback) {
+      _errorHandler?.call(error);
+      return;
+    }
+    _doneHandler?.call();
+  }
+
+  Future<void> _completeReconnect() async {
+    await _openProtocol(initial: false);
+    _allowDisconnectedRequests = true;
+    try {
+      _resendLocalAttributesNowait();
+      await sync._onRoomReconnect();
+      messaging._onRoomReconnect();
+      _markConnected();
+    } finally {
+      _allowDisconnectedRequests = false;
+    }
+  }
+
+  Duration? _remainingReconnectTimeout(DateTime? deadline) {
+    if (deadline == null) {
+      return null;
+    }
+    final remaining = deadline.difference(DateTime.now());
+    if (remaining.isNegative) {
+      return Duration.zero;
+    }
+    return remaining;
+  }
+
+  String _formatDuration(Duration duration) {
+    if (duration.inMilliseconds % 1000 == 0) {
+      return '${duration.inSeconds}s';
+    }
+    return '${duration.inMilliseconds / 1000}s';
+  }
+
+  String _reconnectTimeoutReason({required String? disconnectReason}) {
+    final configuredTimeout = _reconnectTimeout;
+    if (configuredTimeout == null) {
+      throw StateError('reconnect timeout reason requires a timeout');
+    }
+    final normalizedDisconnectReason = _normalizeCloseReason(disconnectReason);
+    final timeoutDisplay = _formatDuration(configuredTimeout);
+    if (normalizedDisconnectReason == null) {
+      return 'room reconnect timed out after $timeoutDisplay';
+    }
+    return 'room reconnect timed out after $timeoutDisplay ($normalizedDisconnectReason)';
+  }
+
+  void _completeRoomClosed() {
+    if (_roomClosed.isCompleted) {
+      return;
+    }
+    _roomClosed.complete();
+  }
+
+  Future<void> _closeAfterUnexpectedDisconnect({required String? closeReason}) async {
+    final normalized = _normalizeCloseReason(closeReason);
+    final state = _unexpectedCloseTerminalState(closeReason: normalized);
+    _closeKind = ProtocolCloseKind.error;
+    _closeReason = normalized;
+    _setTerminalState(state: state);
+    _completeRoomClosed();
+    _invokeTerminalCallbacks(useErrorCallback: true, error: state.requestError());
+  }
+
+  Future<void> _closeProtocol(Protocol protocol) async {
     protocol.dispose();
+    await protocol.waitForClose();
+  }
+
+  Future<bool> _reconnect({required String? disconnectReason}) async {
+    DateTime? deadline;
+    if (_reconnectTimeout != null) {
+      deadline = DateTime.now().add(_reconnectTimeout);
+    }
+    var firstAttempt = true;
+    while (!_closing) {
+      if (firstAttempt) {
+        firstAttempt = false;
+        if (_reconnectTimeout == null) {
+          await Future<void>.delayed(_reconnectRetryInterval);
+        }
+      } else {
+        final remaining = _remainingReconnectTimeout(deadline);
+        if (remaining != null && remaining == Duration.zero) {
+          final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
+          _roomClientLogger.warning('$timeoutReason; closing room client');
+          await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
+          return false;
+        }
+        if (remaining == null) {
+          await Future<void>.delayed(_reconnectRetryInterval);
+        } else {
+          final delay = remaining.compareTo(_reconnectRetryInterval) < 0 ? remaining : _reconnectRetryInterval;
+          if (delay > Duration.zero) {
+            await Future<void>.delayed(delay);
+          }
+        }
+      }
+
+      final remaining = _remainingReconnectTimeout(deadline);
+      if (remaining != null && remaining == Duration.zero) {
+        final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
+        _roomClientLogger.warning('$timeoutReason; closing room client');
+        await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
+        return false;
+      }
+
+      Protocol? nextProtocol;
+      try {
+        nextProtocol = _protocolFactory();
+      } on ProtocolReconnectUnsupportedException {
+        await _closeAfterUnexpectedDisconnect(closeReason: disconnectReason);
+        return false;
+      } catch (error, stackTrace) {
+        _roomClientLogger.log(Level.FINE, 'unable to create replacement room protocol', error, stackTrace);
+        nextProtocol = null;
+      }
+      if (nextProtocol == null) {
+        continue;
+      }
+
+      final currentProtocol = _protocolInstance;
+      protocol._unbind(currentProtocol);
+      _protocolInstance = nextProtocol;
+      protocol._bind(nextProtocol);
+      try {
+        if (remaining == null) {
+          await _completeReconnect();
+        } else {
+          await _completeReconnect().timeout(remaining);
+        }
+      } on TimeoutException {
+        _allowDisconnectedRequests = false;
+        await _closeProtocol(nextProtocol);
+        await sync._onRoomDisconnect();
+        messaging._onRoomDisconnect(reason: nextProtocol.closeReason);
+        final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
+        _roomClientLogger.warning('$timeoutReason; closing room client');
+        await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
+        return false;
+      } on _ProtocolStartupFailure catch (error) {
+        await _closeProtocol(nextProtocol);
+        if (error.kind == ProtocolCloseKind.error) {
+          continue;
+        }
+        final state = _protocolTerminalState(protocol: nextProtocol);
+        _closeKind = error.kind;
+        _closeReason = _normalizeCloseReason(error.reason);
+        _setTerminalState(state: state);
+        _completeRoomClosed();
+        _invokeTerminalCallbacks(useErrorCallback: false);
+        return false;
+      } catch (error, stackTrace) {
+        _roomClientLogger.log(Level.FINE, 'room reconnect attempt failed', error, stackTrace);
+        _allowDisconnectedRequests = false;
+        await _closeProtocol(nextProtocol);
+        await sync._onRoomDisconnect();
+        messaging._onRoomDisconnect(reason: nextProtocol.closeReason);
+        continue;
+      }
+
+      _emitStatus(status: 'reconnected', message: 'room connection restored');
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _connectionLifecycle() async {
+    while (true) {
+      final protocol = _protocolInstance;
+      await protocol.done;
+      final closeKind = protocol.closeKind ?? ProtocolCloseKind.error;
+      final closeReason = protocol.closeReason;
+      final state = _protocolTerminalState(protocol: protocol);
+
+      if (_closing) {
+        _completeRoomClosed();
+        return;
+      }
+
+      if (closeKind != ProtocolCloseKind.error) {
+        _setTerminalState(state: state);
+      }
+
+      _markDisconnected(reason: closeReason, kind: closeKind);
+      _emitStatus(status: 'disconnected', message: closeReason ?? 'room connection lost');
+      await sync._onRoomDisconnect();
+      messaging._onRoomDisconnect(reason: closeReason);
+      await _failPendingWork(state: state);
+      await _closeProtocol(protocol);
+
+      if (closeKind == ProtocolCloseKind.error) {
+        final normalizedReason = _normalizeCloseReason(closeReason);
+        if (_reconnectTimeout == Duration.zero) {
+          if (normalizedReason == null) {
+            _roomClientLogger.warning('room connection lost; automatic reconnect disabled');
+          } else {
+            _roomClientLogger.warning('room connection lost ($normalizedReason); automatic reconnect disabled');
+          }
+          await _closeAfterUnexpectedDisconnect(closeReason: normalizedReason);
+          return;
+        }
+
+        if (normalizedReason == null) {
+          _roomClientLogger.warning('room connection lost; automatically attempting to reconnect');
+        } else {
+          _roomClientLogger.warning('room connection lost ($normalizedReason); automatically attempting to reconnect');
+        }
+        if (await _reconnect(disconnectReason: normalizedReason)) {
+          continue;
+        }
+        return;
+      }
+
+      _closeKind = closeKind;
+      _closeReason = _normalizeCloseReason(closeReason);
+      _completeRoomClosed();
+      _invokeTerminalCallbacks(useErrorCallback: false);
+      return;
+    }
+  }
+
+  static String? _normalizeCloseReason(String? reason) {
+    if (reason == null) {
+      return null;
+    }
+    final normalized = reason.trim();
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  String _formatClosedMessage({required String baseMessage, Protocol? protocol, String? closeReason}) {
+    final normalizedCloseReason = _normalizeCloseReason(closeReason) ?? _normalizeCloseReason((protocol ?? _protocolInstance).closeReason);
+    if (normalizedCloseReason == null) {
+      return baseMessage;
+    }
+    return '$baseMessage: $normalizedCloseReason';
+  }
+
+  _RoomClientTerminalState _protocolTerminalState({Protocol? protocol}) {
+    return _RoomClientTerminalState(
+      requestMessage: _formatClosedMessage(baseMessage: 'room connection closed before request completed', protocol: protocol),
+      toolCallMessage: _formatClosedMessage(baseMessage: 'room connection closed before tool call completed', protocol: protocol),
+      messageSendMessage: _formatClosedMessage(baseMessage: 'room connection closed before message send completed', protocol: protocol),
+    );
+  }
+
+  _RoomClientTerminalState _clientClosedTerminalState() {
+    return const _RoomClientTerminalState(
+      requestMessage: 'room client was closed before request completed',
+      toolCallMessage: 'room client was closed before tool call completed',
+      messageSendMessage: 'room client was closed before message send completed',
+    );
+  }
+
+  _RoomClientTerminalState _unexpectedCloseTerminalState({required String? closeReason}) {
+    return _RoomClientTerminalState(
+      requestMessage: _formatClosedMessage(
+        baseMessage: 'room connection unexpectedly closed before request completed',
+        closeReason: closeReason,
+      ),
+      toolCallMessage: _formatClosedMessage(
+        baseMessage: 'room connection unexpectedly closed before tool call completed',
+        closeReason: closeReason,
+      ),
+      messageSendMessage: _formatClosedMessage(
+        baseMessage: 'room connection unexpectedly closed before message send completed',
+        closeReason: closeReason,
+      ),
+    );
+  }
+
+  _RoomClientTerminalState _setTerminalState({required _RoomClientTerminalState state}) {
+    return _terminalState ??= state;
+  }
+
+  void _raiseIfTerminal() {
+    final state = _terminalState;
+    if (state != null) {
+      throw state.requestError();
+    }
+  }
+
+  void _raiseIfTerminalForMessages() {
+    final state = _terminalState;
+    if (state != null) {
+      throw state.messageSendError();
+    }
+  }
+
+  RoomServerException _disconnectedError({required String baseMessage}) {
+    return RoomServerException(_formatClosedMessage(baseMessage: baseMessage));
+  }
+
+  RoomServerException _messageDisconnectedError({required String baseMessage}) {
+    return RoomServerException(_formatClosedMessage(baseMessage: baseMessage));
+  }
+
+  RoomServerException _coerceMessageSendError(RoomServerException error) {
+    final state = _terminalState;
+    if (state == null) {
+      return error;
+    }
+    if (error.message == state.requestMessage || error.message == state.toolCallMessage) {
+      return state.messageSendError();
+    }
+    return error;
+  }
+
+  void _emitStatus({required String status, required String message}) {
+    _eventsController.add(RoomStatusEvent(status: status, message: message));
+  }
+
+  void dispose() {
+    _closing = true;
+    _markDisconnected(reason: closeReason, kind: closeKind ?? ProtocolCloseKind.client);
+    final closingState = _clientClosedTerminalState();
+    _setTerminalState(state: closingState);
+    _failPendingRequests(closingState.requestError());
+    unawaited(_failToolCallStreams(error: closingState.toolCallError()));
+    sync.dispose();
+    unawaited(messaging.stop());
+    _protocolInstance.dispose();
+    _entered = false;
+    _closeKind = ProtocolCloseKind.client;
+    _completeRoomClosed();
+    _invokeTerminalCallbacks(useErrorCallback: false);
     _localParticipant = null;
+  }
+
+  int? _sendProtocolNowait({
+    required String type,
+    required Uint8List data,
+    required String label,
+    int? messageId,
+    bool expectResponse = false,
+  }) {
+    try {
+      _raiseIfTerminal();
+    } catch (error, stackTrace) {
+      _roomClientLogger.log(Level.FINE, 'skipping $label because the room is closed', error, stackTrace);
+      return null;
+    }
+
+    if (_entered && !_connected && !_allowDisconnectedRequests) {
+      _roomClientLogger.fine('skipping $label while room is disconnected');
+      return null;
+    }
+
+    final protocol = _protocolInstance;
+    final resolvedMessageId = messageId ?? protocol.getNextMessageId();
+    if (expectResponse) {
+      _ignoredResponseLabels[resolvedMessageId] = label;
+    }
+
+    try {
+      protocol.sendNowait(type, data, id: resolvedMessageId);
+    } catch (error, stackTrace) {
+      _ignoredResponseLabels.remove(resolvedMessageId);
+      if (isClosed) {
+        _roomClientLogger.log(Level.FINE, 'skipping $label because the room is closed', error, stackTrace);
+      } else {
+        _roomClientLogger.log(Level.WARNING, 'unable to queue $label', error, stackTrace);
+      }
+      return null;
+    }
+
+    return resolvedMessageId;
+  }
+
+  int? _sendRoomRequestNowait(
+    String type,
+    Map<String, dynamic> request, {
+    Uint8List? data,
+    required String label,
+    bool expectResponse = false,
+  }) {
+    return _sendProtocolNowait(type: type, data: packMessage(request, data), label: label, expectResponse: expectResponse);
+  }
+
+  void invokeNowait({
+    required String toolkit,
+    required String tool,
+    Content? input,
+    String? participantId,
+    String? onBehalfOfId,
+    Map<String, dynamic>? callerContext,
+  }) {
+    final resolvedInput = input ?? EmptyContent();
+    final packedInput = unpackMessage(resolvedInput.pack());
+    final request = <String, dynamic>{
+      'toolkit': toolkit,
+      'tool': tool,
+      'participant_id': participantId,
+      'on_behalf_of_id': onBehalfOfId,
+      'caller_context': callerContext,
+      'tool_call_id': _uuid.v4(),
+      'arguments': packedInput.header,
+    };
+    _sendRoomRequestNowait(
+      'room.invoke_tool',
+      request,
+      data: packedInput.payload.isEmpty ? null : packedInput.payload,
+      label: '$toolkit.$tool',
+      expectResponse: true,
+    );
+  }
+
+  void _sendLocalAttributesNowait(Map<String, dynamic> attributes) {
+    _sendProtocolNowait(type: 'set_attributes', data: packMessage(attributes), label: 'local participant attribute update');
+  }
+
+  void _resendLocalAttributesNowait() {
+    final localParticipant = _localParticipant;
+    if (localParticipant == null || localParticipant._attributes.isEmpty) {
+      return;
+    }
+    _sendLocalAttributesNowait(Map<String, dynamic>.from(localParticipant._attributes));
   }
 
   // send a request, optionally with a binary trailer
   Future<Content> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
-    final requestId = protocol.getNextMessageId();
+    _raiseIfTerminal();
+    if (_entered && !_connected && !_allowDisconnectedRequests) {
+      throw _disconnectedError(baseMessage: 'room connection is disconnected');
+    }
+    final requestId = _protocolInstance.getNextMessageId();
 
     final pr = _PendingRequest();
 
@@ -516,14 +1212,17 @@ class RoomClient extends ChangeEmitter {
 
     final message = packMessage(request, data);
 
-    await protocol.send(type, message, id: requestId);
-
-    final response = await pr.fut;
-    if (response is ErrorContent) {
-      throw RoomServerException(response.text, code: response.code);
+    try {
+      await _protocolInstance.send(type, message, id: requestId);
+      final response = await pr.fut;
+      if (response is ErrorContent) {
+        throw RoomServerException(response.text, code: response.code);
+      }
+      return response;
+    } catch (error) {
+      _pendingRequests.remove(requestId);
+      rethrow;
     }
-
-    return response;
   }
 
   Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
@@ -703,6 +1402,9 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleToolCallResponseChunk(Protocol protocol, int messageId, String type, Uint8List data) async {
+    if (!identical(protocol, _protocolInstance)) {
+      return;
+    }
     final message = unpackMessage(data);
     final header = message.header;
     final payload = message.payload;
@@ -767,6 +1469,9 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleResponse(Protocol protocol, int messageId, String type, Uint8List data) async {
+    if (!identical(protocol, _protocolInstance)) {
+      return;
+    }
     final response = unpackContent(data);
     final requestId = messageId;
 
@@ -777,26 +1482,40 @@ class RoomClient extends ChangeEmitter {
       } else {
         pr._completer.complete(response);
       }
+    } else if (_ignoredResponseLabels.containsKey(requestId)) {
+      final label = _ignoredResponseLabels.remove(requestId)!;
+      if (response is ErrorContent) {
+        _roomClientLogger.warning('one-way room request failed for $label: ${response.text}');
+      }
     } else {
-      Logger.root.log(Level.WARNING, "received a response for a request that is not pending $requestId");
+      _roomClientLogger.fine('received a response for a request that is not pending $requestId');
     }
     return;
   }
 
   Future<void> _handleRoomStatus(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, _protocolInstance)) {
+      return;
+    }
     final payload = unpackMessage(bytes).header;
 
     _eventsController.add(RoomStatusEvent.fromJson(payload));
   }
 
   Future<void> _handleRoomReady(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, _protocolInstance)) {
+      return;
+    }
     final init = unpackMessage(bytes).header;
 
     _roomName = init["room_name"];
     _roomUrl = init["room_url"];
     _sessionId = init["session_id"];
     if (!_ready.isCompleted) {
-      _ready.complete(init["room_name"]);
+      _ready.complete();
+    }
+    if (!_connectionReady.isCompleted) {
+      _connectionReady.complete();
     }
   }
 
@@ -822,14 +1541,18 @@ class RoomClient extends ChangeEmitter {
   }
 
   void _onParticipantInit(String participantId, Map<String, dynamic> attributes) {
-    _localParticipant = LocalParticipant(client: this, id: participantId);
-    for (final k in attributes.keys) {
-      _localParticipant!._attributes[k] = attributes[k];
+    if (_localParticipant == null) {
+      _localParticipant = LocalParticipant(client: this, id: participantId);
+      _localParticipant!._attributes.addAll(attributes);
+    } else {
+      final mergedAttributes = Map<String, dynamic>.from(attributes)..addAll(_localParticipant!._attributes);
+      _localParticipant!._replaceIdentity(participantId: participantId, attributes: mergedAttributes);
+    }
+    if (!_localParticipantReady.isCompleted) {
+      _localParticipantReady.complete();
     }
     notifyListeners();
   }
-
-  final _eventsController = StreamController<RoomEvent>.broadcast();
 
   Stream<RoomEvent> get events {
     return _eventsController.stream;
@@ -840,6 +1563,9 @@ class RoomClient extends ChangeEmitter {
   }
 
   Future<void> _handleParticipant(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, _protocolInstance)) {
+      return;
+    }
     final message = unpackMessage(bytes).header;
     final type = message["type"];
 
@@ -3098,6 +3824,14 @@ class _SyncOpenStreamState {
   }
 }
 
+class _SyncOpenDocumentConfig {
+  const _SyncOpenDocumentConfig({required this.create, required this.schemaJson, required this.schemaPath});
+
+  final bool create;
+  final Map<String, dynamic>? schemaJson;
+  final String? schemaPath;
+}
+
 class SyncClient extends ChangeEmitter {
   SyncClient({required this.room});
 
@@ -3113,6 +3847,8 @@ class SyncClient extends ChangeEmitter {
       streamState.closeInputStream();
     }
     _documentStreams.clear();
+    _documentConfigs.clear();
+    _reconnectBaseVectors.clear();
     for (final doc in _connectedDocuments.values) {
       DocumentRuntime.instance!.unregisterDocument(doc.ref);
     }
@@ -3126,6 +3862,8 @@ class SyncClient extends ChangeEmitter {
   final _closingDocuments = <String, Future<void>>{};
   final _connectedDocuments = <String, _RefCount<MeshDocument>>{};
   final _documentStreams = <String, _SyncOpenStreamState>{};
+  final _documentConfigs = <String, _SyncOpenDocumentConfig>{};
+  final _reconnectBaseVectors = <String, Uint8List>{};
   bool _started = false;
 
   void _applySyncPayload(_RefCount<MeshDocument> doc, Uint8List payload) {
@@ -3177,68 +3915,41 @@ class SyncClient extends ChangeEmitter {
       return connectedDoc.ref;
     }
 
-    // todo: add support for state vector / partial updates
-    // todo: initial bytes loading
-
     final c = Completer<_RefCount<MeshDocument>>();
     _connectingDocuments[normalizedPath] = c.future;
-    _SyncOpenStreamState? streamState;
-    StreamIterator<Content>? iterator;
     try {
-      streamState = _SyncOpenStreamState(
-        path: normalizedPath,
-        create: create,
-        vector: null,
-        schemaJson: schema?.toJson(),
-        schemaPath: null,
-        initialJson: initialJson,
-      );
-      final output = await _invoke("open", ToolStreamInput(streamState.inputStream()));
-      if (output is! ToolStreamOutput) {
-        throw _unexpectedResponseError(operation: "open");
-      }
-
-      iterator = StreamIterator(output.stream);
-      if (!await iterator.moveNext()) {
-        throw RoomServerException("sync.open stream closed before the initial document state was returned");
-      }
-      final firstChunk = iterator.current;
-      if (firstChunk is ErrorContent) {
-        throw RoomServerException(firstChunk.text, code: firstChunk.code);
-      }
-      if (firstChunk is! BinaryContent) {
-        throw _unexpectedResponseError(operation: "open");
-      }
-
-      final stateHeaders = _SyncOpenStateChunkHeaders.fromHeaders(firstChunk.headers);
-      if (_normalizeSyncPath(stateHeaders.path) != normalizedPath) {
-        throw RoomServerException("sync.open stream returned a mismatched path");
-      }
-      schema = MeshSchema.fromJson(stateHeaders.schemaJson);
+      final config = _SyncOpenDocumentConfig(create: create, schemaJson: schema?.toJson(), schemaPath: null);
+      final openResult = await _openStream(path: normalizedPath, config: config, vector: null, initialJson: initialJson);
+      schema = MeshSchema.fromJson(openResult.stateHeaders.schemaJson);
 
       final doc = MeshDocument(
         schema: schema,
         sendChangesToBackend: (base64) {
+          final currentStream = _documentStreams[normalizedPath];
+          if (currentStream == null) {
+            _roomClientLogger.fine('dropping sync for disconnected document stream $normalizedPath');
+            return;
+          }
           try {
-            streamState!.queueSync(Uint8List.fromList(utf8.encode(base64)));
-          } catch (_) {}
+            currentStream.queueSync(Uint8List.fromList(utf8.encode(base64)));
+          } catch (error, stackTrace) {
+            _roomClientLogger.log(Level.FINE, 'dropping sync for closed document stream $normalizedPath', error, stackTrace);
+          }
         },
       );
       final rc = _RefCount(doc);
       _connectedDocuments[normalizedPath] = rc;
-      _documentStreams[normalizedPath] = streamState;
-      _applySyncPayload(rc, firstChunk.data);
-      streamState.attachTask(_consumeOpenStream(path: normalizedPath, doc: rc, iterator: iterator, streamState: streamState));
+      _documentConfigs[normalizedPath] = config;
+      _documentStreams[normalizedPath] = openResult.streamState;
+      _reconnectBaseVectors.remove(normalizedPath);
+      _applySyncPayload(rc, openResult.firstChunk.data);
+      _attachStreamConsumer(path: normalizedPath, doc: rc, streamState: openResult.streamState, iterator: openResult.iterator);
       notifyListeners();
 
       c.complete(rc);
       await doc.synchronized;
       return doc;
     } catch (err) {
-      streamState?.closeInputStream();
-      if (iterator != null) {
-        await iterator.cancel();
-      }
       c.completeError(err);
       rethrow;
     } finally {
@@ -3256,6 +3967,8 @@ class SyncClient extends ChangeEmitter {
     doc!.count--;
     if (doc.count == 0) {
       _connectedDocuments.remove(normalizedPath);
+      _documentConfigs.remove(normalizedPath);
+      _reconnectBaseVectors.remove(normalizedPath);
       final streamState = _documentStreams.remove(normalizedPath);
       late final Future<void> closeFuture;
       closeFuture = () async {
@@ -3327,7 +4040,113 @@ class SyncClient extends ChangeEmitter {
     }
   }
 
+  Future<_SyncOpenResult> _openStream({
+    required String path,
+    required _SyncOpenDocumentConfig config,
+    required String? vector,
+    required Map<String, dynamic>? initialJson,
+  }) async {
+    final streamState = _SyncOpenStreamState(
+      path: path,
+      create: config.create,
+      vector: vector,
+      schemaJson: config.schemaJson,
+      schemaPath: config.schemaPath,
+      initialJson: initialJson,
+    );
+    StreamIterator<Content>? iterator;
+    try {
+      final output = await _invoke("open", ToolStreamInput(streamState.inputStream()));
+      if (output is! ToolStreamOutput) {
+        throw _unexpectedResponseError(operation: "open");
+      }
+
+      iterator = StreamIterator(output.stream);
+      if (!await iterator.moveNext()) {
+        throw RoomServerException("sync.open stream closed before the initial document state was returned");
+      }
+      final firstChunk = iterator.current;
+      if (firstChunk is ErrorContent) {
+        throw RoomServerException(firstChunk.text, code: firstChunk.code);
+      }
+      if (firstChunk is! BinaryContent) {
+        throw _unexpectedResponseError(operation: "open");
+      }
+
+      final stateHeaders = _SyncOpenStateChunkHeaders.fromHeaders(firstChunk.headers);
+      if (_normalizeSyncPath(stateHeaders.path) != path) {
+        throw RoomServerException("sync.open stream returned a mismatched path");
+      }
+
+      return _SyncOpenResult(streamState: streamState, iterator: iterator, stateHeaders: stateHeaders, firstChunk: firstChunk);
+    } catch (error) {
+      streamState.closeInputStream();
+      if (iterator != null) {
+        await iterator.cancel();
+      }
+      rethrow;
+    }
+  }
+
+  void _attachStreamConsumer({
+    required String path,
+    required _RefCount<MeshDocument> doc,
+    required _SyncOpenStreamState streamState,
+    required StreamIterator<Content> iterator,
+  }) {
+    streamState.attachTask(_consumeOpenStream(path: path, doc: doc, iterator: iterator, streamState: streamState));
+  }
+
+  Future<void> _onRoomDisconnect() async {
+    for (final entry in _connectedDocuments.entries) {
+      _reconnectBaseVectors.putIfAbsent(entry.key, () => entry.value.ref.getStateVector());
+    }
+    final openStreams = List<_SyncOpenStreamState>.from(_documentStreams.values);
+    _documentStreams.clear();
+    for (final streamState in openStreams) {
+      streamState.closeInputStream();
+    }
+  }
+
+  Future<void> _onRoomReconnect() async {
+    for (final entry in List<MapEntry<String, _RefCount<MeshDocument>>>.from(_connectedDocuments.entries)) {
+      final path = entry.key;
+      final ref = entry.value;
+      final config = _documentConfigs[path];
+      if (config == null) {
+        continue;
+      }
+
+      final reconnectBaseVector = _reconnectBaseVectors.remove(path);
+      Uint8List? reconnectSyncPayload;
+      if (reconnectBaseVector != null) {
+        final reconnectState = ref.ref.getState(vector: reconnectBaseVector);
+        if (reconnectState.isNotEmpty) {
+          reconnectSyncPayload = Uint8List.fromList(utf8.encode(base64Encode(reconnectState)));
+        }
+      }
+
+      final vector = base64Encode(ref.ref.getStateVector());
+      final openResult = await _openStream(path: path, config: config, vector: vector, initialJson: null);
+      _documentStreams[path] = openResult.streamState;
+      _applySyncPayload(ref, openResult.firstChunk.data);
+      if (reconnectSyncPayload != null) {
+        openResult.streamState.queueSync(reconnectSyncPayload);
+      }
+      _attachStreamConsumer(path: path, doc: ref, streamState: openResult.streamState, iterator: openResult.iterator);
+    }
+  }
+
   final RoomClient room;
+}
+
+class _SyncOpenResult {
+  _SyncOpenResult({required this.streamState, required this.iterator, required this.stateHeaders, required this.firstChunk});
+
+  final _SyncOpenStreamState streamState;
+  final StreamIterator<Content> iterator;
+  final _SyncOpenStateChunkHeaders stateHeaders;
+  final BinaryContent firstChunk;
 }
 
 class MeshDocument extends RuntimeDocument {
@@ -3579,16 +4398,25 @@ class StorageClient extends ChangeEmitter {
   RoomClient room;
 
   Future<void> _handleFileUpdated(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final data = unpackMessage(bytes).header;
     room._eventsController.add(FileUpdatedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<void> _handleFileDeleted(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final data = unpackMessage(bytes).header;
     room._eventsController.add(FileDeletedEvent(path: data["path"], participantId: data["participant_id"]));
   }
 
   Future<void> _handleFileMoved(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final data = unpackMessage(bytes).header;
     room._eventsController.add(
       FileMovedEvent(sourcePath: data["source_path"], destinationPath: data["destination_path"], participantId: data["participant_id"]),
@@ -3986,6 +4814,9 @@ class DeveloperClient extends ChangeEmitter {
   RoomClient room;
 
   Future<void> _handleDeveloperLog(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final rawJson = unpackMessage(bytes).header;
 
     room._eventsController.add(RoomLogEvent.fromJson(rawJson));
@@ -4084,6 +4915,26 @@ class MessagingClient extends ChangeEmitter {
   }
 
   final RoomClient room;
+  final _participants = <String, RemoteParticipant>{};
+  final ListQueue<_QueuedRoomMessage> _messageQueue = ListQueue<_QueuedRoomMessage>();
+  Completer<void>? _messageQueueSignal;
+  Future<void>? _sendTask;
+  bool _messageQueueClosed = false;
+  bool _desiredEnabled = false;
+  bool _online = false;
+  bool _enableInFlight = false;
+
+  bool get isEnabled {
+    return _desiredEnabled;
+  }
+
+  bool get online {
+    return _online;
+  }
+
+  Iterable<RemoteParticipant> get remoteParticipants {
+    return _participants.values;
+  }
 
   Map<String, dynamic> _messageInput({
     required String type,
@@ -4104,6 +4955,126 @@ class MessagingClient extends ChangeEmitter {
     return input;
   }
 
+  Future<void> _invoke({required String operation, required Map<String, dynamic> input}) async {
+    await room.invoke(
+      toolkit: "messaging",
+      tool: operation,
+      input: ToolContentInput(JsonContent(json: input)),
+    );
+  }
+
+  void _invokeNowait({required String operation, required Map<String, dynamic> input}) {
+    room.invokeNowait(
+      toolkit: "messaging",
+      tool: operation,
+      input: JsonContent(json: input),
+    );
+  }
+
+  void start() {
+    if (_sendTask != null) {
+      return;
+    }
+    _sendTask = _sendMessages();
+    if (_desiredEnabled && room.isConnected) {
+      _enableCurrentConnectionNowait();
+    }
+  }
+
+  Future<void> stop() async {
+    final stoppedError = room._closing && room._terminalState != null
+        ? room._terminalState!.messageSendError()
+        : RoomServerException("Cannot send messages because messaging has been stopped");
+    _messageQueueClosed = true;
+    _wakeMessageQueue();
+    _drainQueuedMessages(error: stoppedError);
+    final sendTask = _sendTask;
+    if (sendTask != null) {
+      await sendTask;
+    }
+    _sendTask = null;
+    _desiredEnabled = false;
+    _clearCurrentConnectionState();
+  }
+
+  Future<_QueuedRoomMessage?> _nextQueuedMessage() async {
+    while (true) {
+      if (_messageQueue.isNotEmpty) {
+        return _messageQueue.removeFirst();
+      }
+      if (_messageQueueClosed) {
+        return null;
+      }
+      final signal = _messageQueueSignal ??= Completer<void>();
+      await signal.future;
+    }
+  }
+
+  void _wakeMessageQueue() {
+    final signal = _messageQueueSignal;
+    _messageQueueSignal = null;
+    if (signal != null && !signal.isCompleted) {
+      signal.complete();
+    }
+  }
+
+  void _queueMessage(_QueuedRoomMessage message) {
+    if (_messageQueueClosed) {
+      throw RoomServerException("Cannot send messages because messaging has been stopped");
+    }
+    _messageQueue.add(message);
+    _wakeMessageQueue();
+  }
+
+  void _setOnline(bool online) {
+    if (_online == online) {
+      return;
+    }
+    _online = online;
+    notifyListeners();
+  }
+
+  Future<void> _waitUntilOnline() async {
+    while (!_online) {
+      if (!room.isConnected && !room._allowDisconnectedRequests) {
+        await room._waitUntilConnectedForMessages();
+        continue;
+      }
+      room._raiseIfTerminalForMessages();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
+  void _enableCurrentConnectionNowait() {
+    if (_online || _enableInFlight) {
+      return;
+    }
+    _enableInFlight = true;
+    _invokeNowait(operation: "enable", input: {});
+  }
+
+  void _clearCurrentConnectionState() {
+    _enableInFlight = false;
+    _setOnline(false);
+    if (_participants.isEmpty) {
+      return;
+    }
+    for (final participantId in List<String>.from(_participants.keys)) {
+      _removeParticipant(participantId);
+    }
+    notifyListeners();
+  }
+
+  void _onRoomDisconnect({String? reason}) {
+    _clearCurrentConnectionState();
+  }
+
+  void _onRoomReconnect() {
+    if (_desiredEnabled) {
+      _enableCurrentConnectionNowait();
+    }
+  }
+
   RemoteParticipant? _removeParticipant(String participantId) {
     final participant = _participants.remove(participantId);
     if (participant == null) {
@@ -4111,11 +5082,25 @@ class MessagingClient extends ChangeEmitter {
     }
 
     participant._setOnline(false);
+    notifyListeners();
 
     return participant;
   }
 
-  Participant? _resolveMessageRecipient(Participant to) {
+  void _markParticipantOffline(Participant? participant) {
+    if (participant is! RemoteParticipant) {
+      return;
+    }
+    participant._setOnline(false);
+    if (_participants.containsKey(participant.id)) {
+      _removeParticipant(participant.id);
+    }
+  }
+
+  Participant? _resolveMessageRecipient(Participant? to) {
+    if (to == null) {
+      return null;
+    }
     if (to is! RemoteParticipant) {
       return to;
     }
@@ -4127,6 +5112,79 @@ class MessagingClient extends ChangeEmitter {
     return _participants[to.id];
   }
 
+  void _dropQueuedMessage({required _QueuedRoomMessage message, required RoomServerException error}) {
+    final completer = message.completer;
+    if (completer != null && !completer.isCompleted) {
+      completer.completeError(error);
+    }
+  }
+
+  void _drainQueuedMessages({required RoomServerException error}) {
+    while (_messageQueue.isNotEmpty) {
+      final message = _messageQueue.removeFirst();
+      _dropQueuedMessage(message: message, error: error);
+    }
+  }
+
+  Future<void> _sendMessages() async {
+    while (true) {
+      final message = await _nextQueuedMessage();
+      if (message == null) {
+        return;
+      }
+
+      try {
+        await room._waitUntilConnectedForMessages();
+        if (_desiredEnabled) {
+          await _waitUntilOnline();
+        }
+      } on RoomServerException catch (error) {
+        _dropQueuedMessage(message: message, error: error);
+        _drainQueuedMessages(error: error);
+        return;
+      }
+
+      final resolvedTo = _resolveMessageRecipient(message.to);
+      if (resolvedTo == null) {
+        _dropQueuedMessage(message: message, error: RoomServerException("the participant was not found"));
+        continue;
+      }
+
+      try {
+        await _invoke(
+          operation: "send",
+          input: _messageInput(
+            toParticipantId: resolvedTo.id,
+            type: message.type,
+            message: message.message,
+            attachment: message.attachment,
+          ),
+        );
+        final completer = message.completer;
+        if (completer != null && !completer.isCompleted) {
+          completer.complete();
+        }
+      } on RoomServerException catch (error) {
+        final wrapped = room._coerceMessageSendError(error);
+        if (wrapped.message == "the participant was not found") {
+          _markParticipantOffline(message.to);
+          if (message.dropIfOffline) {
+            _dropQueuedMessage(message: message, error: wrapped);
+            continue;
+          }
+        }
+        _roomClientLogger.log(Level.INFO, 'unable to send message to participant', wrapped, StackTrace.current);
+        _dropQueuedMessage(message: message, error: wrapped);
+      } catch (error, stackTrace) {
+        _roomClientLogger.log(Level.INFO, 'unable to send message to participant', error, stackTrace);
+        final completer = message.completer;
+        if (completer != null && !completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      }
+    }
+  }
+
   Future<void> sendMessage({
     required Participant to,
     required String type,
@@ -4134,59 +5192,64 @@ class MessagingClient extends ChangeEmitter {
     Uint8List? attachment,
     bool ignoreOffline = false,
   }) async {
-    final resolvedTo = _resolveMessageRecipient(to);
-    if (resolvedTo == null) {
-      if (ignoreOffline) {
-        return;
-      }
-      throw RoomServerException("the participant was not found");
+    if (_sendTask == null) {
+      throw RoomServerException("Cannot send messages because messaging has not been started");
     }
-
-    await room.invoke(
-      toolkit: "messaging",
-      tool: "send",
-      input: ToolContentInput(
-        JsonContent(
-          json: _messageInput(toParticipantId: resolvedTo.id, type: type, message: message, attachment: attachment),
-        ),
-      ),
+    final queued = _QueuedRoomMessage(
+      fromParticipantId: room.localParticipant?.id ?? "",
+      to: to,
+      type: type,
+      message: message,
+      attachment: attachment,
+      dropIfOffline: ignoreOffline,
     );
+    _queueMessage(queued);
+    final completer = queued.completer;
+    if (completer != null) {
+      await completer.future;
+    }
   }
 
-  Future<void> enable() async {
-    await room.invoke(
-      toolkit: "messaging",
-      tool: "enable",
-      input: ToolContentInput(JsonContent(json: {})),
-    );
+  Future<void> enable() {
+    _desiredEnabled = true;
+    if (room.isConnected) {
+      _enableCurrentConnectionNowait();
+    }
+    return Future<void>.value();
   }
 
-  Future<void> disable() async {
-    await room.invoke(
-      toolkit: "messaging",
-      tool: "disable",
-      input: ToolContentInput(JsonContent(json: {})),
-    );
+  Future<void> disable() {
+    final wasOnline = _online;
+    _desiredEnabled = false;
+    _clearCurrentConnectionState();
+    if (room.isConnected && wasOnline) {
+      _invokeNowait(operation: "disable", input: {});
+    }
+    return Future<void>.value();
   }
 
   Future<void> broadcastMessage({required String type, required Map<String, dynamic> message, Uint8List? attachment}) async {
-    await room.invoke(
-      toolkit: "messaging",
-      tool: "broadcast",
-      input: ToolContentInput(
-        JsonContent(
-          json: _messageInput(type: type, message: message, attachment: attachment),
-        ),
-      ),
-    );
-  }
-
-  final _participants = <String, RemoteParticipant>{};
-  Iterable<RemoteParticipant> get remoteParticipants {
-    return _participants.values;
+    if (_sendTask == null) {
+      throw RoomServerException("Cannot send messages because messaging has not been started");
+    }
+    await room._waitUntilConnectedForMessages();
+    if (_desiredEnabled) {
+      await _waitUntilOnline();
+    }
+    try {
+      await _invoke(
+        operation: "broadcast",
+        input: _messageInput(type: type, message: message, attachment: attachment),
+      );
+    } on RoomServerException catch (error) {
+      throw room._coerceMessageSendError(error);
+    }
   }
 
   Future<void> _handleMessageSend(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final headerStr = splitMessageHeader(bytes);
     final payload = splitMessagePayload(bytes);
 
@@ -4220,7 +5283,6 @@ class MessagingClient extends ChangeEmitter {
       participant._attributes[k] = data["attributes"][k];
     }
     _participants[data["id"]] = participant;
-
     notifyListeners();
   }
 
@@ -4237,11 +5299,11 @@ class MessagingClient extends ChangeEmitter {
 
   void _onParticipantDisabled(RoomMessage message) {
     _removeParticipant(message.message["id"]);
-
-    notifyListeners();
   }
 
   void _onMessagingEnabled(RoomMessage message) {
+    _enableInFlight = false;
+    _participants.clear();
     for (var data in message.message["participants"]) {
       final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"], online: true);
 
@@ -4249,6 +5311,12 @@ class MessagingClient extends ChangeEmitter {
         participant._attributes[k] = data["attributes"][k];
       }
       _participants[data["id"]] = participant;
+    }
+    _setOnline(true);
+    if (!_desiredEnabled) {
+      _invokeNowait(operation: "disable", input: {});
+      _clearCurrentConnectionState();
+      return;
     }
     notifyListeners();
   }
@@ -6124,6 +7192,9 @@ class SecretsClient extends ChangeEmitter {
 
   // Server sent us a request asking the local user/client to authorize and supply a token.
   Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final header = unpackMessage(bytes).header;
 
     // Expected shape (matches Python):
@@ -6165,6 +7236,9 @@ class SecretsClient extends ChangeEmitter {
   }
 
   Future<void> _handleClientSecretRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
+    if (!identical(protocol, room._protocolInstance)) {
+      return;
+    }
     final header = unpackMessage(bytes).header;
 
     final String requestId = header["request_id"] as String;

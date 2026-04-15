@@ -38,9 +38,6 @@ class _CloseWithStatusProtocolChannel extends ProtocolChannel {
 
 class _ProtocolPair {
   _ProtocolPair() {
-    clientProtocol = Protocol(
-      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
-    );
     serverProtocol = Protocol(
       channel: StreamProtocolChannel(input: _clientToServer.stream, output: _serverToClient.sink),
     );
@@ -48,17 +45,44 @@ class _ProtocolPair {
 
   final _clientToServer = StreamController<Uint8List>();
   final _serverToClient = StreamController<Uint8List>();
-  late final Protocol clientProtocol;
+  Protocol? _clientProtocol;
   late final Protocol serverProtocol;
+
+  Protocol get clientProtocol {
+    final protocol = _clientProtocol;
+    if (protocol == null) {
+      throw StateError('client protocol has not been created');
+    }
+    return protocol;
+  }
+
+  Protocol clientProtocolFactory() {
+    if (_clientProtocol != null) {
+      throw ProtocolReconnectUnsupportedException('protocolFactory was not configured for reconnecting this protocol');
+    }
+    final protocol = Protocol(
+      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
+    );
+    _clientProtocol = protocol;
+    return protocol;
+  }
 
   Future<void> closeServerToClient() async {
     await _serverToClient.close();
   }
 
+  Future<void> disconnectClientWithError([Object? error]) async {
+    _serverToClient.addError(error ?? StateError('socket disconnected'));
+    await _serverToClient.close();
+  }
+
   Future<void> dispose() async {
-    try {
-      clientProtocol.dispose();
-    } catch (_) {}
+    final clientProtocol = _clientProtocol;
+    if (clientProtocol != null) {
+      try {
+        clientProtocol.dispose();
+      } catch (_) {}
+    }
     try {
       serverProtocol.dispose();
     } catch (_) {}
@@ -74,6 +98,25 @@ Future<void> _sendRoomReady(Protocol protocol) async {
     "room_ready",
     packMessage({"room_name": "test-room", "room_url": "ws://example/rooms/test-room", "session_id": "session-1"}),
   );
+  await protocol.send(
+    "connected",
+    packMessage({
+      "type": "init",
+      "participantId": "self",
+      "attributes": {"name": "self"},
+    }),
+  );
+}
+
+class _IdleProtocolChannel extends ProtocolChannel {
+  @override
+  void dispose() {}
+
+  @override
+  Future<void> sendData(Uint8List data) async {}
+
+  @override
+  void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {}
 }
 
 Future<void> _sendWebSocketProtocolMessage(
@@ -111,7 +154,7 @@ Future<void> _sendWebSocketProtocolMessage(
 void main() {
   test('start surfaces retryable websocket close status', () async {
     final room = RoomClient(
-      protocol: Protocol(
+      protocolFactory: Protocol.createFactory(
         // dart:io server-side WebSocket.close() rejects 1013 as reserved,
         // so simulate the websocket close surfaced by the protocol layer.
         channel: _CloseWithStatusProtocolChannel(closeCode: _retryableCloseStatusCode, reason: 'try_again_later'),
@@ -140,7 +183,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -165,7 +208,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -176,6 +219,53 @@ void main() {
     await pair.closeServerToClient();
 
     await expectLater(requestFuture, throwsA(isA<RoomServerException>()));
+    await pair.dispose();
+  });
+
+  test('waitForClose stays pending during reconnect attempts and closes after reconnect timeout', () async {
+    final pair = _ProtocolPair();
+    var reconnectAttempts = 0;
+
+    final room = RoomClient(
+      protocolFactory: () {
+        if (reconnectAttempts == 0) {
+          reconnectAttempts++;
+          return pair.clientProtocolFactory();
+        }
+        reconnectAttempts++;
+        return Protocol(channel: _IdleProtocolChannel());
+      },
+      reconnectTimeout: const Duration(milliseconds: 50),
+    );
+
+    final events = <RoomStatusEvent>[];
+    room.listen((event) {
+      if (event is RoomStatusEvent) {
+        events.add(event);
+      }
+    });
+
+    pair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    final waitForClose = room.waitForClose().then((_) => 'closed');
+
+    await pair.disconnectClientWithError();
+
+    final earlyState = await Future.any<String>([waitForClose, Future<String>.delayed(const Duration(milliseconds: 10), () => 'waiting')]);
+    expect(earlyState, 'waiting');
+
+    expect(await waitForClose.timeout(const Duration(seconds: 1)), 'closed');
+    expect(room.isClosed, isTrue);
+    expect(room.closeKind, ProtocolCloseKind.error);
+    expect(room.closeReason, contains('room reconnect timed out'));
+    expect(events.map((event) => event.status), contains('disconnected'));
+    expect(events.map((event) => event.status), isNot(contains('reconnected')));
+    expect(reconnectAttempts, greaterThan(1));
+
     await pair.dispose();
   });
 
@@ -190,7 +280,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -217,7 +307,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -248,8 +338,9 @@ void main() {
     }();
 
     final room = RoomClient(
-      protocol: Protocol(
-        channel: WebSocketProtocolChannel(url: Uri.parse('ws://127.0.0.1:${server.port}/rooms/test-room'), jwt: 'token'),
+      protocolFactory: WebSocketClientProtocol.createFactory(
+        url: Uri.parse('ws://127.0.0.1:${server.port}/rooms/test-room'),
+        token: 'token',
       ),
     );
 

@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:meshagent/schema.dart';
 import "package:uuid/uuid.dart";
+
+import 'runtime.dart';
 
 class ChangeEmitter {
   final List<void Function()> _listeners = [];
@@ -342,6 +346,23 @@ class RuntimeDocument extends ChangeEmitter {
   final void Function(Map<String, dynamic>) sendChanges;
 
   late final root = MeshElement(parent: null, tagName: schema.root.tagName, attributes: {}, doc: this, elementType: schema.root);
+
+  Uint8List getState({Uint8List? vector}) {
+    final runtime = DocumentRuntime.instance;
+    if (runtime == null) {
+      throw StateError('DocumentRuntime is not initialized');
+    }
+    final stateBase64 = runtime.getState(documentId: id, vectorBase64: vector == null ? null : base64Encode(vector));
+    return Uint8List.fromList(base64Decode(stateBase64));
+  }
+
+  Uint8List getStateVector() {
+    final runtime = DocumentRuntime.instance;
+    if (runtime == null) {
+      throw StateError('DocumentRuntime is not initialized');
+    }
+    return Uint8List.fromList(base64Decode(runtime.getStateVector(documentId: id)));
+  }
 
   MeshNode _createNode(MeshElement? parent, Map<String, dynamic> data) {
     if (data["element"] != null) {

@@ -346,6 +346,9 @@ class _RemoteToolkitWrapper {
   final Toolkit toolkit;
   String? _registrationId;
   bool _started = false;
+  bool _public = false;
+  Future<void>? _registerTask;
+  StreamSubscription<RoomEvent>? _roomSubscription;
   final Map<String, StreamController<Content>> _requestStreams = {};
   final Map<String, BaseTool> _requestStreamTools = {};
   final Map<String, List<Content>> _pendingRequestChunks = {};
@@ -354,20 +357,21 @@ class _RemoteToolkitWrapper {
     if (_started) {
       throw RoomServerException("toolkit '${toolkit.name}' is already started");
     }
+    _public = public;
     room.protocol.addHandler("room.tool_call.${toolkit.name}", _toolCall);
     room.protocol.addHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
+    _roomSubscription = room.listen(_onRoomEvent);
     try {
       await _register(public: public);
       _started = true;
       unawaited(
-        room.protocol.done.then((error) async {
-          final wrapped = error == null
-              ? RoomServerException("room client was closed before streamed tool call request completed")
-              : RoomServerException("room client closed with error: $error");
-          await _failActiveRequestStreams(error: wrapped);
+        room.waitForClose().then((_) async {
+          await _failActiveRequestStreams(error: _roomClosedStreamError());
         }),
       );
     } catch (_) {
+      await _roomSubscription?.cancel();
+      _roomSubscription = null;
       room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCall);
       room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
       rethrow;
@@ -379,6 +383,8 @@ class _RemoteToolkitWrapper {
       return;
     }
     _started = false;
+    await _roomSubscription?.cancel();
+    _roomSubscription = null;
     await _failActiveRequestStreams(error: RoomServerException("hosted toolkit stopped"));
     try {
       await _unregister();
@@ -401,10 +407,12 @@ class _RemoteToolkitWrapper {
   }
 
   Future<void> _unregister() async {
-    if (_registrationId != null) {
-      await room.sendRequest("room.unregister_toolkit", {"id": _registrationId!});
-      _registrationId = null;
+    final registrationId = _registrationId;
+    _registrationId = null;
+    if (registrationId == null || room.isClosed) {
+      return;
     }
+    await room.sendRequest("room.unregister_toolkit", {"id": registrationId});
   }
 
   Future<void> _failActiveRequestStreams({required RoomServerException error}) async {
@@ -426,6 +434,49 @@ class _RemoteToolkitWrapper {
     final requestStreamController = _requestStreams.remove(toolCallId);
     if (requestStreamController != null && !requestStreamController.isClosed) {
       await requestStreamController.close();
+    }
+  }
+
+  RoomServerException _roomClosedStreamError() {
+    final closeReason = room.closeReason;
+    if (closeReason == null || closeReason.isEmpty) {
+      return RoomServerException("room client was closed before streamed tool call request completed");
+    }
+    return RoomServerException("room client was closed before streamed tool call request completed: $closeReason");
+  }
+
+  RoomServerException _roomDisconnectedStreamError(String message) {
+    final normalized = message.trim();
+    if (normalized.isEmpty) {
+      return RoomServerException("room connection lost before streamed tool call request completed");
+    }
+    return RoomServerException("room connection lost before streamed tool call request completed: $normalized");
+  }
+
+  void _scheduleRegisterIfNeeded() {
+    if (!_started || _registrationId != null || _registerTask != null || room.isClosed) {
+      return;
+    }
+    _registerTask = _register(public: _public)
+        .catchError((Object error, StackTrace stackTrace) {
+          Logger.root.log(Level.WARNING, "unable to reregister hosted toolkit ${toolkit.name}", error, stackTrace);
+        })
+        .whenComplete(() {
+          _registerTask = null;
+        });
+  }
+
+  void _onRoomEvent(RoomEvent event) {
+    if (!_started || event is! RoomStatusEvent) {
+      return;
+    }
+    if (event.status == "disconnected") {
+      _registrationId = null;
+      unawaited(_failActiveRequestStreams(error: _roomDisconnectedStreamError(event.message)));
+      return;
+    }
+    if (event.status == "reconnected") {
+      _scheduleRegisterIfNeeded();
     }
   }
 

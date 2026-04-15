@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:meshagent/meshagent.dart';
@@ -6,9 +7,6 @@ import 'package:test/test.dart';
 
 class _ProtocolPair {
   _ProtocolPair() {
-    clientProtocol = Protocol(
-      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
-    );
     serverProtocol = Protocol(
       channel: StreamProtocolChannel(input: _clientToServer.stream, output: _serverToClient.sink),
     );
@@ -16,8 +14,27 @@ class _ProtocolPair {
 
   final _clientToServer = StreamController<Uint8List>();
   final _serverToClient = StreamController<Uint8List>();
-  late final Protocol clientProtocol;
+  Protocol? _clientProtocol;
   late final Protocol serverProtocol;
+
+  Protocol get clientProtocol {
+    final protocol = _clientProtocol;
+    if (protocol == null) {
+      throw StateError('client protocol has not been created');
+    }
+    return protocol;
+  }
+
+  Protocol clientProtocolFactory() {
+    if (_clientProtocol != null) {
+      throw ProtocolReconnectUnsupportedException('protocolFactory was not configured for reconnecting this protocol');
+    }
+    final protocol = Protocol(
+      channel: StreamProtocolChannel(input: _serverToClient.stream, output: _clientToServer.sink),
+    );
+    _clientProtocol = protocol;
+    return protocol;
+  }
 
   Future<void> disconnectClient() async {
     try {
@@ -28,10 +45,18 @@ class _ProtocolPair {
     }
   }
 
+  Future<void> disconnectClientWithError([Object? error]) async {
+    _serverToClient.addError(error ?? StateError('socket disconnected'));
+    await _serverToClient.close();
+  }
+
   Future<void> dispose() async {
-    try {
-      clientProtocol.dispose();
-    } catch (_) {}
+    final clientProtocol = _clientProtocol;
+    if (clientProtocol != null) {
+      try {
+        clientProtocol.dispose();
+      } catch (_) {}
+    }
     try {
       serverProtocol.dispose();
     } catch (_) {}
@@ -47,6 +72,41 @@ Future<void> _sendRoomReady(Protocol protocol) async {
     "room_ready",
     packMessage({"room_name": "test-room", "room_url": "ws://example/rooms/test-room", "session_id": "session-1"}),
   );
+  await protocol.send(
+    "connected",
+    packMessage({
+      "type": "init",
+      "participantId": "self",
+      "attributes": {"name": "self"},
+    }),
+  );
+}
+
+Future<void> _waitUntil(bool Function() condition, {Duration timeout = const Duration(seconds: 1)}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail('condition was not met before timeout');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+class _QueuedProtocolFactory {
+  final ListQueue<_ProtocolPair> _pairs = ListQueue<_ProtocolPair>();
+
+  void enqueue(_ProtocolPair pair) {
+    _pairs.add(pair);
+  }
+
+  ProtocolFactory createFactory() {
+    return () {
+      if (_pairs.isEmpty) {
+        throw StateError('no queued protocols available');
+      }
+      return _pairs.removeFirst().clientProtocol;
+    };
+  }
 }
 
 Content _decodeResponseChunk(Uint8List data) {
@@ -240,7 +300,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -309,7 +369,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -356,7 +416,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -408,7 +468,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -455,7 +515,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -498,7 +558,7 @@ void main() {
       },
     );
 
-    final room = RoomClient(protocol: pair.clientProtocol);
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
     final startFuture = room.start();
     await _sendRoomReady(pair.serverProtocol);
     await startFuture;
@@ -521,5 +581,58 @@ void main() {
     await expectLater(tool.ended.future.timeout(const Duration(seconds: 1)), completes);
 
     await pair.dispose();
+  });
+
+  test('hosted toolkit reregisters after room reconnects', () async {
+    final factory = _QueuedProtocolFactory();
+    final firstPair = _ProtocolPair();
+    final secondPair = _ProtocolPair();
+    factory.enqueue(firstPair);
+    factory.enqueue(secondPair);
+
+    final registerRequests = <String>[];
+    final unregisterRequests = <String>[];
+
+    void attachServer(_ProtocolPair pair, String label) {
+      pair.serverProtocol.start(
+        onMessage: (protocol, messageId, type, data) async {
+          if (type == "room.register_toolkit") {
+            registerRequests.add(label);
+            await protocol.send("__response__", JsonContent(json: {"id": "$label-registration"}).pack(), id: messageId);
+            return;
+          }
+          if (type == "room.unregister_toolkit") {
+            unregisterRequests.add(label);
+            await protocol.send("__response__", EmptyContent().pack(), id: messageId);
+          }
+        },
+      );
+      unawaited(_sendRoomReady(pair.serverProtocol));
+    }
+
+    attachServer(firstPair, 'first');
+    attachServer(secondPair, 'second');
+
+    final room = RoomClient(protocolFactory: factory.createFactory(), reconnectTimeout: const Duration(milliseconds: 250));
+
+    final startFuture = room.start();
+    await startFuture;
+
+    final toolkit = _TestToolkit(name: "test", tools: [_EchoTool()]);
+    final hostedToolkit = await startHostedToolkit(room: room, toolkit: toolkit, public: true);
+
+    expect(registerRequests, ['first']);
+
+    await firstPair.disconnectClientWithError();
+
+    await _waitUntil(() => registerRequests.length == 2, timeout: const Duration(seconds: 1));
+    expect(registerRequests, ['first', 'second']);
+
+    await hostedToolkit.stop();
+    expect(unregisterRequests, ['second']);
+
+    room.dispose();
+    await firstPair.dispose();
+    await secondPair.dispose();
   });
 }

@@ -83,8 +83,8 @@ ParticipantToken participantToken({required String participantName, required Str
   return token;
 }
 
-/// Create a WebSocket protocol instance for the given participant and room.
-WebSocketClientProtocol websocketProtocol({required String participantName, required String roomName, String? role}) {
+/// Create a WebSocket protocol factory for the given participant and room.
+ProtocolFactory websocketProtocol({required String participantName, required String roomName, String? role}) {
   final url = websocketRoomUrl(roomName: roomName);
   final token = participantToken(participantName: participantName, roomName: roomName, role: role);
 
@@ -93,7 +93,7 @@ WebSocketClientProtocol websocketProtocol({required String participantName, requ
   if (apiKey.isEmpty && secret.isEmpty) {
     throw Exception('Either MESHAGENT_API_KEY or MESHAGENT_SECRET must be set in the environment.');
   }
-  return WebSocketClientProtocol(
+  return WebSocketClientProtocol.createFactory(
     url: url,
     token: token.toJwt(apiKey: apiKey.isEmpty ? null : apiKey, token: secret.isEmpty ? null : secret),
   );
