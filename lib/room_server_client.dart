@@ -545,6 +545,7 @@ class RoomClient extends ChangeEmitter {
       throw ArgumentError.value(reconnectTimeout, 'reconnectTimeout', 'must be null or non-negative');
     }
     _protocolInstance = _protocolFactory();
+    unawaited(_ready.future.catchError((Object _) {}));
     protocol = RoomProtocolProxy(room: this);
     protocol.addHandler('__response__', _handleResponse);
     protocol.addHandler('connected', _handleParticipant);

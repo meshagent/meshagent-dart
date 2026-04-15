@@ -335,6 +335,16 @@ void main() {
         type: 'room_ready',
         data: packMessage({'room_name': 'test-room', 'room_url': 'ws://example/rooms/test-room', 'session_id': 'session-1'}),
       );
+      await _sendWebSocketProtocolMessage(
+        websocket,
+        messageId: 1,
+        type: 'connected',
+        data: packMessage({
+          'type': 'init',
+          'participantId': 'self',
+          'attributes': {'name': 'self'},
+        }),
+      );
     }();
 
     final room = RoomClient(

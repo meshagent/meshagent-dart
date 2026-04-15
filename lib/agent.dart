@@ -352,14 +352,16 @@ class _RemoteToolkitWrapper {
   final Map<String, StreamController<Content>> _requestStreams = {};
   final Map<String, BaseTool> _requestStreamTools = {};
   final Map<String, List<Content>> _pendingRequestChunks = {};
+  late final ProtocolMessageHandler _toolCallHandler = _toolCall;
+  late final ProtocolMessageHandler _toolCallRequestChunkHandler = _toolCallRequestChunk;
 
   Future<void> start({bool public = false}) async {
     if (_started) {
       throw RoomServerException("toolkit '${toolkit.name}' is already started");
     }
     _public = public;
-    room.protocol.addHandler("room.tool_call.${toolkit.name}", _toolCall);
-    room.protocol.addHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
+    room.protocol.addHandler("room.tool_call.${toolkit.name}", _toolCallHandler);
+    room.protocol.addHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunkHandler);
     _roomSubscription = room.listen(_onRoomEvent);
     try {
       await _register(public: public);
@@ -372,8 +374,8 @@ class _RemoteToolkitWrapper {
     } catch (_) {
       await _roomSubscription?.cancel();
       _roomSubscription = null;
-      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCall);
-      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCallHandler);
+      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunkHandler);
       rethrow;
     }
   }
@@ -389,8 +391,8 @@ class _RemoteToolkitWrapper {
     try {
       await _unregister();
     } finally {
-      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCall);
-      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunk);
+      room.protocol.removeHandler("room.tool_call.${toolkit.name}", _toolCallHandler);
+      room.protocol.removeHandler("room.tool_call_request_chunk.${toolkit.name}", _toolCallRequestChunkHandler);
     }
   }
 

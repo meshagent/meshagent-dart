@@ -104,7 +104,7 @@ class _QueuedProtocolFactory {
       if (_pairs.isEmpty) {
         throw StateError('no queued protocols available');
       }
-      return _pairs.removeFirst().clientProtocol;
+      return _pairs.removeFirst().clientProtocolFactory();
     };
   }
 }

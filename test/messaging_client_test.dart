@@ -168,6 +168,16 @@ Future<_MessagingHarness> _startMessagingHarness() async {
   return _MessagingHarness(pair: pair, room: room, server: server);
 }
 
+Future<void> _waitUntil(bool Function() condition, {Duration timeout = const Duration(seconds: 1)}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail('condition was not met before timeout');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 void main() {
   test('messaging client uses room.invoke and encodes strict payloads', () async {
     final harness = await _startMessagingHarness();
@@ -185,6 +195,7 @@ void main() {
       attachment: Uint8List.fromList('bytes'.codeUnits),
     );
     await harness.room.messaging.disable();
+    await _waitUntil(() => harness.server.requests.length == 4);
 
     expect(harness.server.requests.map((entry) => entry.tool).toList(), ['enable', 'send', 'broadcast', 'disable']);
 
