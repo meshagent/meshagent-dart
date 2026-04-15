@@ -1,3 +1,13 @@
+## [0.37.2]
+- Stability
+
+## [0.37.1]
+- Meeting controls now detect camera and microphone availability, track unavailable state, and reflect it in toggle styling and device settings.
+- Added shared theme colors (custom green and foreground) and exported them from the Flutter package.
+- Voice transcript paths now use human-friendly local timestamp filenames with helpers to format legacy transcript names.
+- Transcript viewer now shows a header with date/time/duration, participant avatars, and per-segment timecodes using participant roles.
+- Breaking: `TranscriptSegment` now requires a transcript start time parameter to render timecodes.
+
 ## [0.37.0]
 - Breaking: Database client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatabaseJson/DatabaseStruct/DatabaseExpression/DatabaseDate/UuidValue); list/struct values must be wrapped and SQL params use the new encoding.
 - Breaking: Containers build now streams build contexts (start/data chunks) with `mountPath`/`chunks` and removes `startBuild`.
