@@ -1,3 +1,6 @@
+## [0.37.2]
+- Stability
+
 ## [0.37.1]
 - Meeting controls now detect camera and microphone availability, track unavailable state, and reflect it in toggle styling and device settings.
 - Added shared theme colors (custom green and foreground) and exported them from the Flutter package.
