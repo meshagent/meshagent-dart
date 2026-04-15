@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 
 import 'database_client.dart';
 import 'runtime.dart';
+import 'src/websocket_connect_status_stub.dart' if (dart.library.io) 'src/websocket_connect_status_io.dart' as websocket_connect_status;
 
 final Logger _roomClientLogger = Logger('room_server_client');
 
@@ -33,9 +34,25 @@ class RoomServerException implements Exception {
   }
 }
 
+String _websocketConnectFailureMessage(int statusCode) {
+  final statusText = switch (statusCode) {
+    403 => 'Forbidden',
+    404 => 'Not Found',
+    _ => null,
+  };
+  if (statusText == null) {
+    return 'websocket connect failed with status $statusCode';
+  }
+  return 'websocket connect failed with status $statusCode: $statusText';
+}
+
 RoomServerException _wrapRoomConnectionError(Object? error) {
   if (error is RoomServerException) {
     return error;
+  }
+  final connectStatusCode = websocket_connect_status.websocketConnectStatusCode(error);
+  if (connectStatusCode == 403 || connectStatusCode == 404) {
+    return RoomServerException(_websocketConnectFailureMessage(connectStatusCode!), statusCode: connectStatusCode);
   }
   if (error is ProtocolCloseException) {
     final reason = error.reason;
@@ -46,6 +63,17 @@ RoomServerException _wrapRoomConnectionError(Object? error) {
     );
   }
   return RoomServerException("room connection error: $error");
+}
+
+String? _nonRetryableConnectFailureReason(Object error) {
+  if (error is RoomServerException && (error.statusCode == 403 || error.statusCode == 404)) {
+    final normalizedMessage = error.message.trim();
+    if (normalizedMessage.isNotEmpty) {
+      return normalizedMessage;
+    }
+    return _websocketConnectFailureMessage(error.statusCode!);
+  }
+  return null;
 }
 
 RoomServerException _roomClosedBeforeReadyError(Protocol protocol) {
@@ -932,11 +960,16 @@ class RoomClient extends ChangeEmitter {
         _invokeTerminalCallbacks(useErrorCallback: false);
         return false;
       } catch (error, stackTrace) {
+        final nonRetryableCloseReason = _nonRetryableConnectFailureReason(error);
         _roomClientLogger.log(Level.FINE, 'room reconnect attempt failed', error, stackTrace);
         _allowDisconnectedRequests = false;
         await _closeProtocol(nextProtocol);
         await sync._onRoomDisconnect();
         messaging._onRoomDisconnect(reason: nextProtocol.closeReason);
+        if (nonRetryableCloseReason != null) {
+          await _closeAfterUnexpectedDisconnect(closeReason: nonRetryableCloseReason);
+          return false;
+        }
         continue;
       }
 

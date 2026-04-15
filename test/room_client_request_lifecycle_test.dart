@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 const _retryableCloseStatusCode = 1013;
 
@@ -24,6 +25,42 @@ class _CloseWithStatusProtocolChannel extends ProtocolChannel {
     _started = true;
     scheduleMicrotask(() {
       onError?.call(ProtocolCloseException(closeCode: closeCode, reason: reason));
+    });
+  }
+
+  @override
+  void dispose() {
+    _started = false;
+  }
+
+  @override
+  Future<void> sendData(Uint8List data) async {}
+}
+
+class _HandshakeStatus {
+  const _HandshakeStatus({required this.statusCode, required this.statusText});
+
+  final int statusCode;
+  final String statusText;
+}
+
+class _HandshakeStatusProtocolChannel extends ProtocolChannel {
+  _HandshakeStatusProtocolChannel({required this.statusCode, required this.statusText});
+
+  final int statusCode;
+  final String statusText;
+  bool _started = false;
+
+  @override
+  void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
+    if (_started) {
+      throw Exception('Already started');
+    }
+    _started = true;
+    scheduleMicrotask(() {
+      onError?.call(
+        WebSocketChannelException.from(WebSocketException('websocket connect failed with status $statusCode: $statusText', statusCode)),
+      );
     });
   }
 
@@ -171,6 +208,91 @@ void main() {
       ),
     );
   });
+
+  for (final handshakeStatus in const [
+    _HandshakeStatus(statusCode: 403, statusText: 'Forbidden'),
+    _HandshakeStatus(statusCode: 404, statusText: 'Not Found'),
+  ]) {
+    test('start does not retry websocket handshake status ${handshakeStatus.statusCode}', () async {
+      var protocolFactoryCalls = 0;
+      final room = RoomClient(
+        protocolFactory: () {
+          protocolFactoryCalls++;
+          return Protocol(
+            channel: _HandshakeStatusProtocolChannel(statusCode: handshakeStatus.statusCode, statusText: handshakeStatus.statusText),
+          );
+        },
+      );
+
+      try {
+        await expectLater(
+          room.start(),
+          throwsA(
+            isA<RoomServerException>()
+                .having((error) => error.statusCode, 'statusCode', handshakeStatus.statusCode)
+                .having((error) => error.retryable, 'retryable', false)
+                .having(
+                  (error) => error.message,
+                  'message',
+                  'websocket connect failed with status ${handshakeStatus.statusCode}: ${handshakeStatus.statusText}',
+                ),
+          ),
+        );
+      } finally {
+        room.dispose();
+      }
+
+      expect(protocolFactoryCalls, 1);
+    });
+
+    test('reconnect does not retry websocket handshake status ${handshakeStatus.statusCode}', () async {
+      final pair = _ProtocolPair();
+      var protocolFactoryCalls = 0;
+      final room = RoomClient(
+        protocolFactory: () {
+          protocolFactoryCalls++;
+          if (protocolFactoryCalls == 1) {
+            return pair.clientProtocolFactory();
+          }
+          return Protocol(
+            channel: _HandshakeStatusProtocolChannel(statusCode: handshakeStatus.statusCode, statusText: handshakeStatus.statusText),
+          );
+        },
+        reconnectTimeout: const Duration(milliseconds: 500),
+      );
+
+      try {
+        pair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+
+        final startFuture = room.start();
+        await _sendRoomReady(pair.serverProtocol);
+        await startFuture;
+
+        await pair.disconnectClientWithError(StateError('socket disconnected'));
+        await room.waitForClose().timeout(const Duration(seconds: 1));
+
+        expect(protocolFactoryCalls, 2);
+        expect(room.isClosed, isTrue);
+        expect(room.closeKind, ProtocolCloseKind.error);
+        expect(room.closeReason, 'websocket connect failed with status ${handshakeStatus.statusCode}: ${handshakeStatus.statusText}');
+
+        await expectLater(
+          room.sendRequest('noop', {'a': 1}),
+          throwsA(
+            isA<RoomServerException>().having(
+              (error) => error.message,
+              'message',
+              'room connection unexpectedly closed before request completed: '
+                  'websocket connect failed with status ${handshakeStatus.statusCode}: ${handshakeStatus.statusText}',
+            ),
+          ),
+        );
+      } finally {
+        room.dispose();
+        await pair.dispose();
+      }
+    });
+  }
 
   test('sendRequest fails when room client is disposed before response', () async {
     final pair = _ProtocolPair();
