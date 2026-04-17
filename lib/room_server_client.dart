@@ -459,6 +459,16 @@ class _ProtocolStartupFailure implements Exception {
   }
 }
 
+typedef _ProtocolConnectAttempt = Future<void> Function({required Protocol protocol, required Duration? remaining});
+
+class _ProtocolRetryResult {
+  const _ProtocolRetryResult({required this.connected, this.closeKind, this.closeReason});
+
+  final bool connected;
+  final ProtocolCloseKind? closeKind;
+  final String? closeReason;
+}
+
 class RoomProtocolProxy {
   RoomProtocolProxy({required RoomClient room}) : _room = room;
 
@@ -746,7 +756,7 @@ class RoomClient extends ChangeEmitter {
         if (!_localParticipantReady.isCompleted) {
           _localParticipantReady.completeError(error);
         }
-        if (!_ready.isCompleted) {
+        if (!initial && !_ready.isCompleted) {
           _ready.completeError(error);
         }
       },
@@ -758,7 +768,7 @@ class RoomClient extends ChangeEmitter {
         if (!_localParticipantReady.isCompleted) {
           _localParticipantReady.completeError(wrapped);
         }
-        if (!_ready.isCompleted) {
+        if (!initial && !_ready.isCompleted) {
           _ready.completeError(wrapped);
         }
       },
@@ -781,7 +791,56 @@ class RoomClient extends ChangeEmitter {
     _doneHandler = onDone;
     _errorHandler = onError;
     try {
-      await _openProtocol(initial: true);
+      try {
+        await _openProtocol(initial: true);
+      } on _ProtocolStartupFailure catch (error) {
+        if (error.kind != ProtocolCloseKind.error || _reconnectTimeout == Duration.zero) {
+          _setStartupTerminalState(closeKind: error.kind, closeReason: error.reason, protocol: _protocolInstance);
+          throw _startupException(closeKind: error.kind, closeReason: error.reason, protocol: _protocolInstance);
+        }
+
+        await _closeProtocol(_protocolInstance);
+        final retryResult = await _retryProtocolConnection(
+          disconnectReason: error.reason,
+          protocolFactoryFailureLogMessage: 'unable to create replacement room protocol during initial startup',
+          attemptFailureLogMessage: 'room startup attempt failed',
+          attempt: _attemptInitialProtocolStartup,
+        );
+        if (!retryResult.connected) {
+          _finalizeInitialStartupRetryFailure(retryResult: retryResult);
+        }
+      } catch (error, stackTrace) {
+        final nonRetryableCloseReason = _nonRetryableConnectFailureReason(error);
+        if (nonRetryableCloseReason != null) {
+          _finalizeInitialStartupRetryFailure(
+            retryResult: _ProtocolRetryResult(connected: false, closeKind: ProtocolCloseKind.error, closeReason: nonRetryableCloseReason),
+          );
+        }
+
+        final closeKind = _protocolInstance.closeKind;
+        if (closeKind != null && closeKind != ProtocolCloseKind.error) {
+          _setStartupTerminalState(closeKind: closeKind, closeReason: _protocolInstance.closeReason, protocol: _protocolInstance);
+          throw _startupException(closeKind: closeKind, closeReason: _protocolInstance.closeReason, protocol: _protocolInstance);
+        }
+
+        final closeReason = _connectionFailureReason(error);
+        if (_reconnectTimeout == Duration.zero) {
+          _setStartupTerminalState(closeKind: ProtocolCloseKind.error, closeReason: closeReason, protocol: _protocolInstance);
+          throw _startupException(closeKind: ProtocolCloseKind.error, closeReason: closeReason, protocol: _protocolInstance);
+        }
+
+        _roomClientLogger.log(Level.FINE, 'room startup attempt failed', error, stackTrace);
+        await _closeProtocol(_protocolInstance);
+        final retryResult = await _retryProtocolConnection(
+          disconnectReason: closeReason,
+          protocolFactoryFailureLogMessage: 'unable to create replacement room protocol during initial startup',
+          attemptFailureLogMessage: 'room startup attempt failed',
+          attempt: _attemptInitialProtocolStartup,
+        );
+        if (!retryResult.connected) {
+          _finalizeInitialStartupRetryFailure(retryResult: retryResult);
+        }
+      }
       sync.start();
       messaging.start();
       _entered = true;
@@ -823,6 +882,13 @@ class RoomClient extends ChangeEmitter {
     }
   }
 
+  void _replaceProtocol(Protocol nextProtocol) {
+    final currentProtocol = _protocolInstance;
+    protocol._unbind(currentProtocol);
+    _protocolInstance = nextProtocol;
+    protocol._bind(nextProtocol);
+  }
+
   Duration? _remainingReconnectTimeout(DateTime? deadline) {
     if (deadline == null) {
       return null;
@@ -832,6 +898,38 @@ class RoomClient extends ChangeEmitter {
       return Duration.zero;
     }
     return remaining;
+  }
+
+  Future<void> _attemptInitialProtocolStartup({required Protocol protocol, required Duration? remaining}) async {
+    assert(identical(protocol, _protocolInstance));
+    if (remaining == null) {
+      await _openProtocol(initial: false);
+      return;
+    }
+
+    await _openProtocol(initial: false).timeout(remaining);
+  }
+
+  Future<void> _attemptReconnect({required Protocol protocol, required Duration? remaining}) async {
+    try {
+      if (remaining == null) {
+        await _completeReconnect();
+      } else {
+        await _completeReconnect().timeout(remaining);
+      }
+    } on TimeoutException {
+      _allowDisconnectedRequests = false;
+      await sync._onRoomDisconnect();
+      messaging._onRoomDisconnect(reason: protocol.closeReason);
+      rethrow;
+    } on _ProtocolStartupFailure {
+      rethrow;
+    } catch (error) {
+      _allowDisconnectedRequests = false;
+      await sync._onRoomDisconnect();
+      messaging._onRoomDisconnect(reason: protocol.closeReason);
+      rethrow;
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -852,6 +950,18 @@ class RoomClient extends ChangeEmitter {
       return 'room reconnect timed out after $timeoutDisplay';
     }
     return 'room reconnect timed out after $timeoutDisplay ($normalizedDisconnectReason)';
+  }
+
+  _ProtocolRetryResult _timedOutRetryResult({required String? disconnectReason}) {
+    if (_reconnectTimeout == null) {
+      throw StateError('timed out retry result requires a timeout');
+    }
+
+    return _ProtocolRetryResult(
+      connected: false,
+      closeKind: ProtocolCloseKind.error,
+      closeReason: _reconnectTimeoutReason(disconnectReason: disconnectReason),
+    );
   }
 
   void _completeRoomClosed() {
@@ -876,11 +986,26 @@ class RoomClient extends ChangeEmitter {
     await protocol.waitForClose();
   }
 
-  Future<bool> _reconnect({required String? disconnectReason}) async {
+  Future<_ProtocolRetryResult> _retryProtocolConnection({
+    required String? disconnectReason,
+    required String protocolFactoryFailureLogMessage,
+    required String attemptFailureLogMessage,
+    required _ProtocolConnectAttempt attempt,
+  }) async {
+    var failureReason = _normalizeCloseReason(disconnectReason);
+
+    void recordFailureReason(String? reason) {
+      final normalizedReason = _normalizeCloseReason(reason);
+      if (failureReason == null && normalizedReason != null) {
+        failureReason = normalizedReason;
+      }
+    }
+
     DateTime? deadline;
     if (_reconnectTimeout != null) {
       deadline = DateTime.now().add(_reconnectTimeout);
     }
+
     var firstAttempt = true;
     while (!_closing) {
       if (firstAttempt) {
@@ -891,11 +1016,9 @@ class RoomClient extends ChangeEmitter {
       } else {
         final remaining = _remainingReconnectTimeout(deadline);
         if (remaining != null && remaining == Duration.zero) {
-          final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
-          _roomClientLogger.warning('$timeoutReason; closing room client');
-          await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
-          return false;
+          return _timedOutRetryResult(disconnectReason: failureReason);
         }
+
         if (remaining == null) {
           await Future<void>.delayed(_reconnectRetryInterval);
         } else {
@@ -908,75 +1031,83 @@ class RoomClient extends ChangeEmitter {
 
       final remaining = _remainingReconnectTimeout(deadline);
       if (remaining != null && remaining == Duration.zero) {
-        final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
-        _roomClientLogger.warning('$timeoutReason; closing room client');
-        await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
-        return false;
+        return _timedOutRetryResult(disconnectReason: failureReason);
       }
 
-      Protocol? nextProtocol;
+      late final Protocol nextProtocol;
       try {
         nextProtocol = _protocolFactory();
       } on ProtocolReconnectUnsupportedException {
-        await _closeAfterUnexpectedDisconnect(closeReason: disconnectReason);
-        return false;
+        return _ProtocolRetryResult(connected: false, closeKind: ProtocolCloseKind.error, closeReason: failureReason);
       } catch (error, stackTrace) {
-        _roomClientLogger.log(Level.FINE, 'unable to create replacement room protocol', error, stackTrace);
-        nextProtocol = null;
-      }
-      if (nextProtocol == null) {
+        recordFailureReason('$error');
+        _roomClientLogger.log(Level.FINE, protocolFactoryFailureLogMessage, error, stackTrace);
         continue;
       }
 
-      final currentProtocol = _protocolInstance;
-      protocol._unbind(currentProtocol);
-      _protocolInstance = nextProtocol;
-      protocol._bind(nextProtocol);
+      _replaceProtocol(nextProtocol);
       try {
-        if (remaining == null) {
-          await _completeReconnect();
-        } else {
-          await _completeReconnect().timeout(remaining);
-        }
+        await attempt(protocol: nextProtocol, remaining: remaining);
       } on TimeoutException {
-        _allowDisconnectedRequests = false;
+        recordFailureReason(nextProtocol.closeReason);
         await _closeProtocol(nextProtocol);
-        await sync._onRoomDisconnect();
-        messaging._onRoomDisconnect(reason: nextProtocol.closeReason);
-        final timeoutReason = _reconnectTimeoutReason(disconnectReason: disconnectReason);
-        _roomClientLogger.warning('$timeoutReason; closing room client');
-        await _closeAfterUnexpectedDisconnect(closeReason: timeoutReason);
-        return false;
+        return _timedOutRetryResult(disconnectReason: failureReason);
       } on _ProtocolStartupFailure catch (error) {
+        recordFailureReason(error.reason);
         await _closeProtocol(nextProtocol);
-        if (error.kind == ProtocolCloseKind.error) {
-          continue;
+        if (error.kind != ProtocolCloseKind.error) {
+          return _ProtocolRetryResult(connected: false, closeKind: error.kind, closeReason: error.reason);
         }
-        final state = _protocolTerminalState(protocol: nextProtocol);
-        _closeKind = error.kind;
-        _closeReason = _normalizeCloseReason(error.reason);
-        _setTerminalState(state: state);
-        _completeRoomClosed();
-        _invokeTerminalCallbacks(useErrorCallback: false);
-        return false;
       } catch (error, stackTrace) {
         final nonRetryableCloseReason = _nonRetryableConnectFailureReason(error);
-        _roomClientLogger.log(Level.FINE, 'room reconnect attempt failed', error, stackTrace);
-        _allowDisconnectedRequests = false;
-        await _closeProtocol(nextProtocol);
-        await sync._onRoomDisconnect();
-        messaging._onRoomDisconnect(reason: nextProtocol.closeReason);
         if (nonRetryableCloseReason != null) {
-          await _closeAfterUnexpectedDisconnect(closeReason: nonRetryableCloseReason);
-          return false;
+          await _closeProtocol(nextProtocol);
+          return _ProtocolRetryResult(connected: false, closeKind: ProtocolCloseKind.error, closeReason: nonRetryableCloseReason);
         }
+
+        recordFailureReason(_connectionFailureReason(error));
+        _roomClientLogger.log(Level.FINE, attemptFailureLogMessage, error, stackTrace);
+        await _closeProtocol(nextProtocol);
         continue;
       }
 
+      return const _ProtocolRetryResult(connected: true);
+    }
+
+    return _ProtocolRetryResult(connected: false, closeKind: ProtocolCloseKind.client, closeReason: closeReason);
+  }
+
+  Future<bool> _reconnect({required String? disconnectReason}) async {
+    final retryResult = await _retryProtocolConnection(
+      disconnectReason: disconnectReason,
+      protocolFactoryFailureLogMessage: 'unable to create replacement room protocol',
+      attemptFailureLogMessage: 'room reconnect attempt failed',
+      attempt: _attemptReconnect,
+    );
+    if (retryResult.connected) {
       _emitStatus(status: 'reconnected', message: 'room connection restored');
       return true;
     }
 
+    final closeKind = retryResult.closeKind;
+    if (closeKind == ProtocolCloseKind.error) {
+      final closeReason = retryResult.closeReason;
+      if (closeReason != null && closeReason.startsWith('room reconnect timed out after')) {
+        _roomClientLogger.warning('$closeReason; closing room client');
+      }
+      await _closeAfterUnexpectedDisconnect(closeReason: closeReason);
+      return false;
+    }
+
+    if (closeKind == null) {
+      throw StateError('reconnect failure requires a close kind');
+    }
+
+    _setTerminalState(state: _protocolTerminalState(protocol: _protocolInstance));
+    _closeKind = closeKind;
+    _closeReason = _normalizeCloseReason(retryResult.closeReason);
+    _completeRoomClosed();
+    _invokeTerminalCallbacks(useErrorCallback: false);
     return false;
   }
 
@@ -1043,6 +1174,14 @@ class RoomClient extends ChangeEmitter {
     return normalized.isEmpty ? null : normalized;
   }
 
+  String? _connectionFailureReason(Object error) {
+    if (error is RoomServerException) {
+      return _normalizeCloseReason(error.message);
+    }
+
+    return _normalizeCloseReason('$error');
+  }
+
   String _formatClosedMessage({required String baseMessage, Protocol? protocol, String? closeReason}) {
     final normalizedCloseReason = _normalizeCloseReason(closeReason) ?? _normalizeCloseReason((protocol ?? _protocolInstance).closeReason);
     if (normalizedCloseReason == null) {
@@ -1084,6 +1223,23 @@ class RoomClient extends ChangeEmitter {
     );
   }
 
+  void _setStartupTerminalState({required ProtocolCloseKind closeKind, required String? closeReason, Protocol? protocol}) {
+    final normalizedCloseReason = _normalizeCloseReason(closeReason);
+    _closeKind = closeKind;
+    _closeReason = normalizedCloseReason;
+    if (closeKind == ProtocolCloseKind.error) {
+      _setTerminalState(state: _unexpectedCloseTerminalState(closeReason: normalizedCloseReason));
+    } else if (closeKind == ProtocolCloseKind.client) {
+      _setTerminalState(state: _clientClosedTerminalState());
+    } else {
+      _setTerminalState(state: _protocolTerminalState(protocol: protocol));
+    }
+    if (!_ready.isCompleted) {
+      _ready.completeError(_startupException(closeKind: closeKind, closeReason: normalizedCloseReason, protocol: protocol));
+    }
+    _completeRoomClosed();
+  }
+
   _RoomClientTerminalState _setTerminalState({required _RoomClientTerminalState state}) {
     return _terminalState ??= state;
   }
@@ -1108,6 +1264,26 @@ class RoomClient extends ChangeEmitter {
 
   RoomServerException _messageDisconnectedError({required String baseMessage}) {
     return RoomServerException(_formatClosedMessage(baseMessage: baseMessage));
+  }
+
+  RoomServerException _startupException({required ProtocolCloseKind closeKind, required String? closeReason, Protocol? protocol}) {
+    final baseMessage = switch (closeKind) {
+      ProtocolCloseKind.error => 'room connection unexpectedly closed before the room became ready',
+      ProtocolCloseKind.client => 'room client was closed before the room became ready',
+      _ => 'room connection closed before the room became ready',
+    };
+
+    return RoomServerException(_formatClosedMessage(baseMessage: baseMessage, protocol: protocol, closeReason: closeReason));
+  }
+
+  Never _finalizeInitialStartupRetryFailure({required _ProtocolRetryResult retryResult}) {
+    final closeKind = retryResult.closeKind;
+    if (closeKind == null) {
+      throw StateError('initial startup retry failure requires a close kind');
+    }
+
+    _setStartupTerminalState(closeKind: closeKind, closeReason: retryResult.closeReason, protocol: _protocolInstance);
+    throw _startupException(closeKind: closeKind, closeReason: retryResult.closeReason, protocol: _protocolInstance);
   }
 
   RoomServerException _coerceMessageSendError(RoomServerException error) {

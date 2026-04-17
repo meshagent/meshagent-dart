@@ -73,6 +73,32 @@ class _HandshakeStatusProtocolChannel extends ProtocolChannel {
   Future<void> sendData(Uint8List data) async {}
 }
 
+class _StartupExceptionProtocolChannel extends ProtocolChannel {
+  _StartupExceptionProtocolChannel({required this.message});
+
+  final String message;
+  bool _started = false;
+
+  @override
+  void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
+    if (_started) {
+      throw Exception('Already started');
+    }
+    _started = true;
+    scheduleMicrotask(() {
+      onError?.call(RoomServerException(message));
+    });
+  }
+
+  @override
+  void dispose() {
+    _started = false;
+  }
+
+  @override
+  Future<void> sendData(Uint8List data) async {}
+}
+
 class _ProtocolPair {
   _ProtocolPair() {
     serverProtocol = Protocol(
@@ -189,24 +215,98 @@ Future<void> _sendWebSocketProtocolMessage(
 }
 
 void main() {
-  test('start surfaces retryable websocket close status', () async {
+  test('start surfaces retryable websocket close status when automatic reconnect is disabled', () async {
     final room = RoomClient(
       protocolFactory: Protocol.createFactory(
         // dart:io server-side WebSocket.close() rejects 1013 as reserved,
         // so simulate the websocket close surfaced by the protocol layer.
         channel: _CloseWithStatusProtocolChannel(closeCode: _retryableCloseStatusCode, reason: 'try_again_later'),
       ),
+      reconnectTimeout: Duration.zero,
     );
 
     await expectLater(
       room.start(),
       throwsA(
-        isA<RoomServerException>()
-            .having((error) => error.statusCode, 'statusCode', 1013)
-            .having((error) => error.retryable, 'retryable', true)
-            .having((error) => error.message, 'message', 'try_again_later'),
+        isA<RoomServerException>().having(
+          (error) => error.message,
+          'message',
+          'room connection unexpectedly closed before the room became ready: try_again_later',
+        ),
       ),
     );
+  });
+
+  test('start retries transient startup exceptions', () async {
+    final pair = _ProtocolPair();
+    var protocolFactoryCalls = 0;
+    final room = RoomClient(
+      protocolFactory: () {
+        protocolFactoryCalls++;
+        if (protocolFactoryCalls == 1) {
+          return Protocol(channel: _StartupExceptionProtocolChannel(message: 'transient startup error'));
+        }
+        return pair.clientProtocolFactory();
+      },
+      reconnectTimeout: const Duration(milliseconds: 500),
+    );
+
+    try {
+      pair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+
+      final startFuture = room.start();
+      await _sendRoomReady(pair.serverProtocol);
+      await startFuture;
+
+      expect(protocolFactoryCalls, 2);
+      expect(room.isConnected, isTrue);
+    } finally {
+      room.dispose();
+      await pair.dispose();
+    }
+  });
+
+  test('start reconnect timeout closes room after startup failures', () async {
+    var protocolFactoryCalls = 0;
+    final room = RoomClient(
+      protocolFactory: () {
+        protocolFactoryCalls++;
+        return Protocol(channel: _StartupExceptionProtocolChannel(message: 'transient startup error'));
+      },
+      reconnectTimeout: const Duration(milliseconds: 50),
+    );
+
+    await expectLater(
+      room.start(),
+      throwsA(
+        isA<RoomServerException>().having(
+          (error) => error.message,
+          'message',
+          'room connection unexpectedly closed before the room became ready: '
+              'room reconnect timed out after 0.05s (transient startup error)',
+        ),
+      ),
+    );
+
+    expect(protocolFactoryCalls, greaterThan(1));
+    expect(room.isConnected, isFalse);
+    expect(room.isClosed, isTrue);
+    expect(room.closeKind, ProtocolCloseKind.error);
+    expect(room.closeReason, 'room reconnect timed out after 0.05s (transient startup error)');
+
+    await expectLater(
+      room.sendRequest('noop', {'a': 1}),
+      throwsA(
+        isA<RoomServerException>().having(
+          (error) => error.message,
+          'message',
+          'room connection unexpectedly closed before request completed: '
+              'room reconnect timed out after 0.05s (transient startup error)',
+        ),
+      ),
+    );
+
+    room.dispose();
   });
 
   for (final handshakeStatus in const [
@@ -228,21 +328,22 @@ void main() {
         await expectLater(
           room.start(),
           throwsA(
-            isA<RoomServerException>()
-                .having((error) => error.statusCode, 'statusCode', handshakeStatus.statusCode)
-                .having((error) => error.retryable, 'retryable', false)
-                .having(
-                  (error) => error.message,
-                  'message',
+            isA<RoomServerException>().having(
+              (error) => error.message,
+              'message',
+              'room connection unexpectedly closed before the room became ready: '
                   'websocket connect failed with status ${handshakeStatus.statusCode}: ${handshakeStatus.statusText}',
-                ),
+            ),
           ),
         );
+        expect(protocolFactoryCalls, 1);
+        expect(room.isClosed, isTrue);
+        expect(room.closeKind, ProtocolCloseKind.error);
+        expect(room.closeReason, 'websocket connect failed with status ${handshakeStatus.statusCode}: ${handshakeStatus.statusText}');
+        await room.waitForClose().timeout(const Duration(seconds: 1));
       } finally {
         room.dispose();
       }
-
-      expect(protocolFactoryCalls, 1);
     });
 
     test('reconnect does not retry websocket handshake status ${handshakeStatus.statusCode}', () async {
