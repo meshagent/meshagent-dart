@@ -230,6 +230,35 @@ class ProjectRepositoryTag {
   };
 }
 
+class ProjectRepositoryImage {
+  final String digest;
+  final List<String> tags;
+  final String? mediaType;
+  final int? manifestSize;
+  final int? imageSize;
+  final DateTime? updatedAt;
+
+  ProjectRepositoryImage({required this.digest, required this.tags, this.mediaType, this.manifestSize, this.imageSize, this.updatedAt});
+
+  factory ProjectRepositoryImage.fromJson(Map<String, dynamic> json) => ProjectRepositoryImage(
+    digest: json['digest'] as String,
+    tags: (json['tags'] as List<dynamic>? ?? const []).whereType<String>().toList(),
+    mediaType: json['media_type'] as String?,
+    manifestSize: json['manifest_size'] as int?,
+    imageSize: json['image_size'] as int?,
+    updatedAt: json['updated_at'] is String ? DateTime.tryParse(json['updated_at'] as String) : null,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'digest': digest,
+    'tags': tags,
+    if (mediaType != null) 'media_type': mediaType,
+    if (manifestSize != null) 'manifest_size': manifestSize,
+    if (imageSize != null) 'image_size': imageSize,
+    if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
+  };
+}
+
 class ManagedSecretInfo {
   final String id;
   final String type;
@@ -855,6 +884,28 @@ class Meshagent {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data['tags'] as List<dynamic>? ?? [];
     return list.whereType<Map<String, dynamic>>().map(ProjectRepositoryTag.fromJson).toList();
+  }
+
+  Future<List<ProjectRepositoryImage>> listRepositoryImages({required String projectId, required String repositoryId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId/images');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository not found: $repositoryId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list repository images. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['images'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectRepositoryImage.fromJson).toList();
   }
 
   Future<void> deleteRepositoryTag({required String projectId, required String repositoryId, required String tag}) async {
