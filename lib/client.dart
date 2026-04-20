@@ -171,6 +171,65 @@ class Route {
   Map<String, dynamic> toJson() => {'domain': domain, 'room_name': roomName, 'port': port, 'annotations': annotations};
 }
 
+class ProjectRepository {
+  final String id;
+  final String projectId;
+  final String name;
+  final String description;
+  final Map<String, String> annotations;
+  final DateTime createdAt;
+
+  ProjectRepository({
+    required this.id,
+    required this.projectId,
+    required this.name,
+    required this.description,
+    required this.annotations,
+    required this.createdAt,
+  });
+
+  factory ProjectRepository.fromJson(Map<String, dynamic> json) => ProjectRepository(
+    id: json['id'] as String,
+    projectId: json['project_id'] as String,
+    name: json['name'] as String,
+    description: json['description'] as String? ?? '',
+    annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>(),
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'project_id': projectId,
+    'name': name,
+    'description': description,
+    'annotations': annotations,
+    'created_at': createdAt.toIso8601String(),
+  };
+}
+
+class ProjectRepositoryTag {
+  final String tag;
+  final String? digest;
+  final String? mediaType;
+  final int? manifestSize;
+
+  ProjectRepositoryTag({required this.tag, this.digest, this.mediaType, this.manifestSize});
+
+  factory ProjectRepositoryTag.fromJson(Map<String, dynamic> json) => ProjectRepositoryTag(
+    tag: json['tag'] as String,
+    digest: json['digest'] as String?,
+    mediaType: json['media_type'] as String?,
+    manifestSize: json['manifest_size'] as int?,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'tag': tag,
+    if (digest != null) 'digest': digest,
+    if (mediaType != null) 'media_type': mediaType,
+    if (manifestSize != null) 'manifest_size': manifestSize,
+  };
+}
+
 class ManagedSecretInfo {
   final String id;
   final String type;
@@ -688,6 +747,191 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete domain. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<ProjectRepository> createRepository({
+    required String projectId,
+    required String name,
+    String description = '',
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories');
+    final body = {'name': name, 'description': description, 'annotations': annotations};
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create repository. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ProjectRepository.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<ProjectRepository> updateRepository({
+    required String projectId,
+    required String repositoryId,
+    required String name,
+    String description = '',
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId');
+    final body = {'name': name, 'description': description, 'annotations': annotations};
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update repository. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ProjectRepository.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<ProjectRepository> getRepository({required String projectId, required String repositoryId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository not found: $repositoryId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get repository. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ProjectRepository.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<ProjectRepository>> listRepositories({required String projectId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list repositories. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['repositories'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectRepository.fromJson).toList();
+  }
+
+  Future<List<ProjectRepositoryTag>> listRepositoryTags({required String projectId, required String repositoryId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId/tags');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository not found: $repositoryId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list repository tags. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['tags'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectRepositoryTag.fromJson).toList();
+  }
+
+  Future<void> deleteRepositoryTag({required String projectId, required String repositoryId, required String tag}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final encodedTag = Uri.encodeComponent(tag);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId/tags/$encodedTag');
+
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository tag not found: $tag');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete repository tag. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> updateRepositoryImageTags({
+    required String projectId,
+    required String repositoryId,
+    required String digest,
+    required List<String> tags,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final encodedDigest = Uri.encodeComponent(digest);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId/manifests/$encodedDigest/tags');
+
+    final response = await httpClient.put(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'tags': tags}));
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository manifest not found: $digest');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update repository image tags. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> deleteRepositoryManifest({required String projectId, required String repositoryId, required String digest}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final encodedDigest = Uri.encodeComponent(digest);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId/manifests/$encodedDigest');
+
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Repository manifest not found: $digest');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete repository manifest. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> deleteRepository({required String projectId, required String repositoryId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRepositoryId = Uri.encodeComponent(repositoryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories/$encodedRepositoryId');
+
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete repository. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
