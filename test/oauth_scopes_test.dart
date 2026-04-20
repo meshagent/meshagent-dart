@@ -13,6 +13,7 @@ void main() {
       'room/*',
       'create_users',
       'create_rooms',
+      'llm_proxy',
       'admin',
       'developer',
       'connect_room',

@@ -4,6 +4,7 @@ const List<String> fullOAuthScopes = <String>[
   'room/*',
   'create_users',
   'create_rooms',
+  'llm_proxy',
   'admin',
   'developer',
   'connect_room',
@@ -11,4 +12,6 @@ const List<String> fullOAuthScopes = <String>[
   'update_room',
 ];
 
-final String fullOAuthScope = fullOAuthScopes.join(' ');
+const String fullOAuthScope =
+    'profile project/* room/* create_users create_rooms llm_proxy '
+    'admin developer connect_room delete_room update_room';
