@@ -1788,6 +1788,7 @@ class Meshagent {
     bool? isAdmin,
     bool? isDeveloper,
     bool? canCreateRooms,
+    bool? canUseLlmProxy,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -1798,6 +1799,7 @@ class Meshagent {
       if (isAdmin != null) "is_admin": isAdmin,
       if (isDeveloper != null) "is_developer": isDeveloper,
       if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
+      if (canUseLlmProxy != null) "can_use_llm_proxy": canUseLlmProxy,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -1901,11 +1903,17 @@ class Meshagent {
     required bool isAdmin,
     required bool isDeveloper,
     required bool canCreateRooms,
+    required bool canUseLlmProxy,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedUserId = Uri.encodeComponent(userId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users/$encodedUserId');
-    final body = {'is_admin': isAdmin, "is_developer": isDeveloper, "can_create_rooms": canCreateRooms};
+    final body = {
+      'is_admin': isAdmin,
+      "is_developer": isDeveloper,
+      "can_create_rooms": canCreateRooms,
+      "can_use_llm_proxy": canUseLlmProxy,
+    };
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -1923,6 +1931,7 @@ class Meshagent {
     bool? isAdmin,
     bool? isDeveloper,
     bool? canCreateRooms,
+    bool? canUseLlmProxy,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -1932,6 +1941,7 @@ class Meshagent {
       if (isAdmin != null) "is_admin": isAdmin,
       if (isDeveloper != null) "is_developer": isDeveloper,
       if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
+      if (canUseLlmProxy != null) "can_use_llm_proxy": canUseLlmProxy,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
