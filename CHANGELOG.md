@@ -1,3 +1,7 @@
+## [0.38.0]
+- Added `llm_proxy` to the full OAuth scope set.
+- Breaking: `LoginScope` now defaults to the full OAuth scope rather than `profile` only.
+
 ## [0.37.2]
 - Stability
 
