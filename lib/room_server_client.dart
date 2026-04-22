@@ -2622,6 +2622,7 @@ class RoomContainer {
     required this.id,
     required this.image,
     this.name,
+    this.ports = const [],
     required this.startedBy,
     required this.state,
     required this.private,
@@ -2630,6 +2631,7 @@ class RoomContainer {
   final String id;
   final String image;
   final String? name;
+  final List<int> ports;
   final ParticipantInfo startedBy;
   final String state;
   final bool private;
@@ -2640,6 +2642,7 @@ class RoomContainer {
       id: json["id"],
       image: json["image"],
       name: json["name"],
+      ports: ((json["ports"] as List?) ?? const []).map((item) => item as int).toList(),
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],

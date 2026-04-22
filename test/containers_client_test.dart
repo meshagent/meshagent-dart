@@ -226,6 +226,7 @@ class _FakeContainersServer {
                     'id': 'container-1',
                     'image': 'demo:latest',
                     'name': 'demo',
+                    'ports': [80],
                     'started_by': {'id': 'p1', 'name': 'user'},
                     'state': 'RUNNING',
                     'private': false,
@@ -433,6 +434,7 @@ void main() {
     expect(images.single.labels, {'role': 'demo'});
     final containers = await harness.room.containers.list();
     expect(containers.single.id, 'container-1');
+    expect(containers.single.ports, [80]);
     expect(await harness.room.containers.waitForExit(containerId: 'container-1'), 0);
 
     final exec = harness.room.containers.exec(containerId: 'container-1', command: 'echo hi');
