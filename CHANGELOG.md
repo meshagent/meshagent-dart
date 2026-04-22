@@ -1,3 +1,7 @@
+## [0.38.2]
+- RoomContainer now includes a `ports` list parsed from server responses.
+- Flutter dev container table displays container ports using the updated container model.
+
 ## [0.38.1]
 - Breaking: `updateUser` now requires `canUseLlmProxy`, and user-management calls accept the new permission flag.
 - Flutter meeting connections now enable camera and microphone in parallel to improve join behavior and keep pending media state accurate.
