@@ -1883,6 +1883,9 @@ class Meshagent {
     String? report,
     List<String>? users,
     String? room,
+    String? provider,
+    String? model,
+    String? usageType,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/usage');
@@ -1893,6 +1896,9 @@ class Meshagent {
       if (report != null) "report": report,
       if (users != null && users.isNotEmpty) "users": users.join(","),
       if (room != null && room.trim().isNotEmpty) "room": room.trim(),
+      if (provider != null && provider.trim().isNotEmpty) "provider": provider.trim(),
+      if (model != null && model.trim().isNotEmpty) "model": model.trim(),
+      if (usageType != null && usageType.trim().isNotEmpty) "usage_type": usageType.trim(),
     };
     final response = await httpClient.get(uri.replace(queryParameters: queryParams));
 
