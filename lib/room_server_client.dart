@@ -93,7 +93,7 @@ RoomServerException _roomClosedBeforeReadyError(Protocol protocol) {
   return RoomServerException("room connection closed before request completed", retryable: true);
 }
 
-abstract class Participant {
+abstract class Participant extends ChangeEmitter {
   Participant({required this.client, required this.id});
 
   final RoomClient client;
@@ -110,11 +110,46 @@ abstract class Participant {
     return _attributes[name];
   }
 
+  bool _hasSameAttributes(Map<String, dynamic> attributes) {
+    if (_attributes.length != attributes.length) {
+      return false;
+    }
+
+    for (final entry in attributes.entries) {
+      if (!_attributes.containsKey(entry.key) || _attributes[entry.key] != entry.value) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void _applyAttributes(Map<String, dynamic> attributes) {
+    var changed = false;
+    for (final entry in attributes.entries) {
+      if (!_attributes.containsKey(entry.key) || _attributes[entry.key] != entry.value) {
+        _attributes[entry.key] = entry.value;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   void _replaceIdentity({required String participantId, required Map<String, dynamic> attributes}) {
+    final identityChanged = id != participantId;
+    final attributesChanged = !_hasSameAttributes(attributes);
+    if (!identityChanged && !attributesChanged) {
+      return;
+    }
+
     id = participantId;
     _attributes
       ..clear()
       ..addAll(attributes);
+    notifyListeners();
   }
 }
 
@@ -125,7 +160,11 @@ class RemoteParticipant extends Participant {
   bool? online;
 
   void _setOnline(bool online) {
+    if (this.online == online) {
+      return;
+    }
     this.online = online;
+    notifyListeners();
   }
 }
 
@@ -133,7 +172,7 @@ class LocalParticipant extends Participant {
   LocalParticipant({required super.client, required super.id});
 
   void setAttribute(String name, dynamic value) {
-    _attributes[name] = value;
+    _applyAttributes({name: value});
     client._sendLocalAttributesNowait({name: value});
   }
 }
@@ -1753,7 +1792,7 @@ class RoomClient extends ChangeEmitter {
   void _onParticipantInit(String participantId, Map<String, dynamic> attributes) {
     if (_localParticipant == null) {
       _localParticipant = LocalParticipant(client: this, id: participantId);
-      _localParticipant!._attributes.addAll(attributes);
+      _localParticipant!._applyAttributes(attributes);
     } else {
       final mergedAttributes = Map<String, dynamic>.from(attributes)..addAll(_localParticipant!._attributes);
       _localParticipant!._replaceIdentity(participantId: participantId, attributes: mergedAttributes);
@@ -5326,9 +5365,7 @@ class MessagingClient extends ChangeEmitter {
     final data = message.message;
     final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"], online: true);
 
-    for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
-      participant._attributes[k] = data["attributes"][k];
-    }
+    participant._applyAttributes(Map<String, dynamic>.from(data["attributes"] as Map));
     _participants[data["id"]] = participant;
     notifyListeners();
   }
@@ -5338,9 +5375,7 @@ class MessagingClient extends ChangeEmitter {
     if (part == null) {
       return;
     }
-    for (final entry in message.message["attributes"].entries) {
-      part._attributes[entry.key] = entry.value;
-    }
+    part._applyAttributes(Map<String, dynamic>.from(message.message["attributes"] as Map));
     notifyListeners();
   }
 
@@ -5354,9 +5389,7 @@ class MessagingClient extends ChangeEmitter {
     for (var data in message.message["participants"]) {
       final participant = RemoteParticipant(client: room, id: data["id"], role: data["role"], online: true);
 
-      for (final k in (data["attributes"] as Map<String, dynamic>).keys) {
-        participant._attributes[k] = data["attributes"][k];
-      }
+      participant._applyAttributes(Map<String, dynamic>.from(data["attributes"] as Map));
       _participants[data["id"]] = participant;
     }
     _setOnline(true);

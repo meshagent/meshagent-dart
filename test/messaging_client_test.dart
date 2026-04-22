@@ -258,6 +258,37 @@ void main() {
     await harness.dispose();
   });
 
+  test('remote participants notify listeners when attributes or online state change', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final remote = harness.room.messaging.remoteParticipants.single;
+    var notifications = 0;
+    remote.addListener(() {
+      notifications++;
+    });
+
+    await harness.server.sendIncomingMessage(
+      harness.pair.serverProtocol,
+      type: 'participant.attributes',
+      message: {
+        'attributes': {'thread.status.text': 'Thinking'},
+      },
+    );
+
+    await _waitUntil(() => notifications == 1);
+    expect(remote.getAttribute('thread.status.text'), 'Thinking');
+
+    await harness.server.sendIncomingMessage(harness.pair.serverProtocol, type: 'participant.disabled', message: {'id': 'remote-1'});
+
+    await _waitUntil(() => notifications == 2);
+    expect(remote.online, isFalse);
+
+    await harness.dispose();
+  });
+
   test('messaging client ignores offline remotes when ignoreOffline is true', () async {
     final harness = await _startMessagingHarness();
 
