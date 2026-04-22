@@ -1912,39 +1912,150 @@ class ImportedImage {
 
 /// Lightweight image description (from `containers.list_images`)
 class ContainerImage {
-  ContainerImage({required this.id, required this.tags, required this.size, required this.labels});
+  ContainerImage({
+    required this.id,
+    required this.preferredRef,
+    required this.references,
+    required this.labels,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.targetMediaType,
+  });
 
   final String id;
-  final List<String> tags;
-  final int? size; // bytes
-  final Map<String, dynamic> labels;
+  final String? preferredRef;
+  final List<String> references;
+  final Map<String, String> labels;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final String? targetMediaType;
 
-  static Map<String, dynamic> _labelsFromJson(Object? value) {
+  static Map<String, String> _stringMapFromJson(Object? value) {
     if (value is List) {
-      final result = <String, dynamic>{};
+      final result = <String, String>{};
       for (final entry in value) {
         if (entry is! Map) {
           continue;
         }
         final key = entry['key'];
         final itemValue = entry['value'];
-        if (key is String && itemValue != null) {
+        if (key is String && itemValue is String) {
           result[key] = itemValue;
         }
       }
       return result;
     }
     if (value is Map) {
-      return Map<String, dynamic>.from(value);
+      return Map<String, String>.from(value);
     }
-    return <String, dynamic>{};
+    return <String, String>{};
+  }
+
+  static List<String> _referencesFromJson(Map<String, dynamic> json) {
+    final references = json['references'];
+    if (references is List) {
+      return references.cast<String>();
+    }
+    final tags = json['tags'];
+    if (tags is List) {
+      return tags.cast<String>();
+    }
+    return const [];
+  }
+
+  static DateTime? _dateTimeFromJson(Object? value) {
+    if (value is! String) {
+      return null;
+    }
+    return DateTime.parse(value);
   }
 
   factory ContainerImage.fromJson(Map<String, dynamic> json) => ContainerImage(
     id: json['id'] as String,
-    tags: (json['tags'] as List?)?.cast<String>() ?? const [],
+    preferredRef:
+        (json['preferred_ref'] as String?) ??
+        (() {
+          final references = _referencesFromJson(json);
+          return references.isEmpty ? null : references.first;
+        })(),
+    references: _referencesFromJson(json),
+    labels: _stringMapFromJson(json['labels']),
+    createdAt: _dateTimeFromJson(json['created_at']),
+    updatedAt: _dateTimeFromJson(json['updated_at']),
+    targetMediaType: json['target_media_type'] as String?,
+  );
+}
+
+class ContainerImageDescriptor {
+  ContainerImageDescriptor({required this.digest, required this.mediaType, required this.size, required this.annotations});
+
+  final String digest;
+  final String? mediaType;
+  final int? size;
+  final Map<String, String> annotations;
+
+  factory ContainerImageDescriptor.fromJson(Map<String, dynamic> json) => ContainerImageDescriptor(
+    digest: json['digest'] as String,
+    mediaType: json['media_type'] as String?,
     size: json['size'] as int?,
-    labels: _labelsFromJson(json['labels']),
+    annotations: ContainerImage._stringMapFromJson(json['annotations']),
+  );
+}
+
+class ContainerImageManifest {
+  ContainerImageManifest({
+    required this.descriptor,
+    required this.platformOs,
+    required this.platformArchitecture,
+    required this.platformVariant,
+  });
+
+  final ContainerImageDescriptor descriptor;
+  final String? platformOs;
+  final String? platformArchitecture;
+  final String? platformVariant;
+
+  factory ContainerImageManifest.fromJson(Map<String, dynamic> json) => ContainerImageManifest(
+    descriptor: ContainerImageDescriptor.fromJson(Map<String, dynamic>.from(json['descriptor'] as Map)),
+    platformOs: json['platform_os'] as String?,
+    platformArchitecture: json['platform_architecture'] as String?,
+    platformVariant: json['platform_variant'] as String?,
+  );
+}
+
+class ContainerImageInspection {
+  ContainerImageInspection({
+    required this.image,
+    required this.target,
+    required this.selectedManifest,
+    required this.manifests,
+    required this.config,
+    required this.layers,
+    required this.contentSize,
+  });
+
+  final ContainerImage image;
+  final ContainerImageDescriptor target;
+  final ContainerImageDescriptor? selectedManifest;
+  final List<ContainerImageManifest> manifests;
+  final ContainerImageDescriptor? config;
+  final List<ContainerImageDescriptor> layers;
+  final int? contentSize;
+
+  factory ContainerImageInspection.fromJson(Map<String, dynamic> json) => ContainerImageInspection(
+    image: ContainerImage.fromJson(Map<String, dynamic>.from(json['image'] as Map)),
+    target: ContainerImageDescriptor.fromJson(Map<String, dynamic>.from(json['target'] as Map)),
+    selectedManifest: json['selected_manifest'] == null
+        ? null
+        : ContainerImageDescriptor.fromJson(Map<String, dynamic>.from(json['selected_manifest'] as Map)),
+    manifests: ((json['manifests'] as List?) ?? const [])
+        .map((entry) => ContainerImageManifest.fromJson(Map<String, dynamic>.from(entry as Map)))
+        .toList(),
+    config: json['config'] == null ? null : ContainerImageDescriptor.fromJson(Map<String, dynamic>.from(json['config'] as Map)),
+    layers: ((json['layers'] as List?) ?? const [])
+        .map((entry) => ContainerImageDescriptor.fromJson(Map<String, dynamic>.from(entry as Map)))
+        .toList(),
+    contentSize: json['content_size'] as int?,
   );
 }
 
@@ -2155,6 +2266,18 @@ class ContainersClient extends ChangeEmitter {
     }
     final res = output.content as JsonContent;
     return (res.json['images'] as List).map((i) => ContainerImage.fromJson(i as Map<String, dynamic>)).toList();
+  }
+
+  Future<ContainerImageInspection> inspectImage({required String imageId}) async {
+    final output = await room.invoke(
+      toolkit: 'containers',
+      tool: 'inspect_image',
+      input: ToolContentInput(JsonContent(json: {'image_id': imageId})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw _unexpectedResponseError(operation: 'inspect_image');
+    }
+    return ContainerImageInspection.fromJson(Map<String, dynamic>.from((output.content as JsonContent).json));
   }
 
   Future<void> deleteImage({required String image}) async {
