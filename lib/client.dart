@@ -1875,7 +1875,15 @@ class Meshagent {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getUsage(String projectId, {DateTime? start, DateTime? end, String? interval, String? report}) async {
+  Future<List<Map<String, dynamic>>> getUsage(
+    String projectId, {
+    DateTime? start,
+    DateTime? end,
+    String? interval,
+    String? report,
+    List<String>? users,
+    String? room,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/usage');
     final queryParams = <String, String>{
@@ -1883,6 +1891,8 @@ class Meshagent {
       if (end != null) "end": end.toIso8601String(),
       if (interval != null) "interval": interval,
       if (report != null) "report": report,
+      if (users != null && users.isNotEmpty) "users": users.join(","),
+      if (room != null && room.trim().isNotEmpty) "room": room.trim(),
     };
     final response = await httpClient.get(uri.replace(queryParameters: queryParams));
 
