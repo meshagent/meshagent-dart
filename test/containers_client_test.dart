@@ -541,7 +541,7 @@ void main() {
     expect(runServiceInput['env'], [
       {'key': 'A', 'value': '1'},
     ]);
-    final logsInput = harness.server.requests[6].input;
+    final logsInput = harness.server.requests[7].input;
     expect(logsInput['kind'], 'start');
     expect(logsInput['container_id'], 'container-1');
     expect(logsInput['follow'], false);
