@@ -1,3 +1,10 @@
+## [0.38.3]
+- Breaking: `ContainerImage` now exposes `references`/`preferredRef` plus timestamps/media type instead of `tags`/`size`, and `inspectImage` returns manifests/layers with content size.
+- Meshagent client adds `canUseLlmProxy` and current-user LLM proxy usage, plus usage filters (users/room/provider/model/usage type).
+- Participant models now emit change notifications on attribute and online status updates for reactive UI binding.
+- Flutter dev containers UI adds image inspection sheets and updated summary columns (reference and updated time).
+- Flutter shadcn adds email parsing with multi-select autocomplete/select-users dialog, and thread list views now react to participant changes.
+
 ## [0.38.2]
 - RoomContainer now includes a `ports` list parsed from server responses.
 - Flutter dev container table displays container ports using the updated container model.
