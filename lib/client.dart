@@ -2089,6 +2089,51 @@ class Meshagent {
     return canCreateRooms;
   }
 
+  Future<bool> canUseLlmProxy(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 403) {
+      throw ForbiddenException('User does not have access to this project. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to check llm proxy access. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final canUseLlmProxy = (jsonDecode(response.body) as Map<String, dynamic>)["can_use_llm_proxy"] ?? false;
+
+    return canUseLlmProxy;
+  }
+
+  Future<List<Map<String, dynamic>>> getCurrentUserLlmProxyUsage(String projectId, {DateTime? start, DateTime? end}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-proxy/usage');
+
+    final queryParameters = <String, String>{
+      if (start != null) "start": start.toIso8601String(),
+      if (end != null) "end": end.toIso8601String(),
+    };
+
+    final response = await httpClient.get(uri.replace(queryParameters: queryParameters.isEmpty ? null : queryParameters));
+
+    if (response.statusCode == 403) {
+      throw ForbiddenException(
+        'User does not have LLM proxy access to this project. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to retrieve current user LLM proxy usage. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data["usage"] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().toList();
+  }
+
   /// Corresponds to: GET /accounts/projects
   /// Returns JSON like { "projects": [...] } on success.
   Future<Map<String, dynamic>> getProject(String projectId) async {
