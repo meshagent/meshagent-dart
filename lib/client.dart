@@ -1308,6 +1308,23 @@ class Meshagent {
     }
   }
 
+  /// Corresponds to: DELETE /projects/:project_id/storage/delete
+  Future<void> delete({required String projectId, required String path}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/projects/$encodedProjectId/storage/delete').replace(queryParameters: {"path": path});
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException("file was not found");
+    }
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Request failed.'
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
   /// Corresponds to: POST /projects/:project_id/storage/download
   Future<Uint8List> download({required String projectId, required String path}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
