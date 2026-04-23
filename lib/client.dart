@@ -105,6 +105,7 @@ class Balance {
     required this.lastRecharge,
     required this.monthlyBudget,
     required this.autoRechargePaused,
+    required this.autoRechargedThisMonth,
   });
 
   final double balance;
@@ -113,6 +114,7 @@ class Balance {
   final DateTime? lastRecharge;
   final double? monthlyBudget;
   final bool autoRechargePaused;
+  final double? autoRechargedThisMonth;
 }
 
 class Transaction {
@@ -1860,6 +1862,7 @@ class Meshagent {
       lastRecharge: lastRechargeStr == null ? null : DateTime.parse(lastRechargeStr),
       monthlyBudget: (data["monthly_budget"] as num?)?.toDouble(),
       autoRechargePaused: data["auto_recharge_paused"] == true,
+      autoRechargedThisMonth: (data["auto_recharged_this_month"] as num?)?.toDouble(),
     );
   }
 
