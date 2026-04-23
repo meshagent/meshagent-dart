@@ -104,6 +104,7 @@ class Balance {
     required this.autoRechargeThreshhold,
     required this.lastRecharge,
     required this.monthlyBudget,
+    required this.autoRechargePaused,
   });
 
   final double balance;
@@ -111,6 +112,7 @@ class Balance {
   final double? autoRechargeAmount;
   final DateTime? lastRecharge;
   final double? monthlyBudget;
+  final bool autoRechargePaused;
 }
 
 class Transaction {
@@ -1857,6 +1859,7 @@ class Meshagent {
       autoRechargeThreshhold: (data["auto_recharge_threshold"] as num?)?.toDouble(),
       lastRecharge: lastRechargeStr == null ? null : DateTime.parse(lastRechargeStr),
       monthlyBudget: (data["monthly_budget"] as num?)?.toDouble(),
+      autoRechargePaused: data["auto_recharge_paused"] == true,
     );
   }
 
