@@ -98,12 +98,19 @@ class RoomSession {
 }
 
 class Balance {
-  Balance({required this.balance, required this.autoRechargeAmount, required this.autoRechargeThreshhold, required this.lastRecharge});
+  Balance({
+    required this.balance,
+    required this.autoRechargeAmount,
+    required this.autoRechargeThreshhold,
+    required this.lastRecharge,
+    required this.monthlyBudget,
+  });
 
   final double balance;
   final double? autoRechargeThreshhold;
   final double? autoRechargeAmount;
   final DateTime? lastRecharge;
+  final double? monthlyBudget;
 }
 
 class Transaction {
@@ -1849,6 +1856,7 @@ class Meshagent {
       autoRechargeAmount: (data["auto_recharge_amount"] as num?)?.toDouble(),
       autoRechargeThreshhold: (data["auto_recharge_threshold"] as num?)?.toDouble(),
       lastRecharge: lastRechargeStr == null ? null : DateTime.parse(lastRechargeStr),
+      monthlyBudget: (data["monthly_budget"] as num?)?.toDouble(),
     );
   }
 
@@ -1882,10 +1890,14 @@ class Meshagent {
     required bool enabled,
     required double amount,
     required double threshold,
+    double? monthlyBudget,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/recharge');
-    final resp = await httpClient.post(uri, body: jsonEncode({"enabled": enabled, "amount": amount, "threshold": threshold}));
+    final resp = await httpClient.post(
+      uri,
+      body: jsonEncode({"enabled": enabled, "amount": amount, "threshold": threshold, "monthly_budget": monthlyBudget}),
+    );
 
     if (resp.statusCode != 200) {
       throw Exception("Unable to update autorecharge");
