@@ -1,3 +1,6 @@
+## [0.38.4]
+- Added `delete({projectId, path})` to the Dart `Meshagent` client for project storage deletion (`/projects/:project_id/storage/delete`), throwing `NotFoundException` on 404.
+
 ## [0.38.3]
 - Breaking: `ContainerImage` now exposes `references`/`preferredRef` plus timestamps/media type instead of `tags`/`size`, and `inspectImage` returns manifests/layers with content size.
 - Meshagent client adds `canUseLlmProxy` and current-user LLM proxy usage, plus usage filters (users/room/provider/model/usage type).
