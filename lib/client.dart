@@ -182,6 +182,98 @@ class Route {
   Map<String, dynamic> toJson() => {'domain': domain, 'room_name': roomName, 'port': port, 'annotations': annotations};
 }
 
+class Feed {
+  final String id;
+  final String projectId;
+  final DateTime createdAt;
+  final String name;
+  final String description;
+  final String visibility;
+  final bool paused;
+  final Map<String, String> annotations;
+  final Object? messageSchema;
+
+  Feed({
+    required this.id,
+    required this.projectId,
+    required this.createdAt,
+    required this.name,
+    required this.description,
+    required this.visibility,
+    required this.paused,
+    required this.annotations,
+    required this.messageSchema,
+  });
+
+  factory Feed.fromJson(Map<String, dynamic> json) => Feed(
+    id: json['id'] as String,
+    projectId: json['project_id'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    name: json['name'] as String,
+    description: json['description'] as String? ?? '',
+    visibility: json['visibility'] as String? ?? 'private',
+    paused: json['paused'] as bool? ?? false,
+    annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>(),
+    messageSchema: json['message_schema'],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'project_id': projectId,
+    'created_at': createdAt.toIso8601String(),
+    'name': name,
+    'description': description,
+    'visibility': visibility,
+    'paused': paused,
+    'annotations': annotations,
+    'message_schema': messageSchema,
+  };
+}
+
+class FeedSubscription {
+  final String id;
+  final String feedId;
+  final String projectId;
+  final String room;
+  final String? roomId;
+  final String path;
+  final DateTime createdAt;
+  final Map<String, String> annotations;
+
+  FeedSubscription({
+    required this.id,
+    required this.feedId,
+    required this.projectId,
+    required this.room,
+    required this.roomId,
+    required this.path,
+    required this.createdAt,
+    required this.annotations,
+  });
+
+  factory FeedSubscription.fromJson(Map<String, dynamic> json) => FeedSubscription(
+    id: json['id'] as String,
+    feedId: json['feed_id'] as String,
+    projectId: json['project_id'] as String,
+    room: json['room'] as String,
+    roomId: json['room_id'] as String?,
+    path: json['path'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'feed_id': feedId,
+    'project_id': projectId,
+    'room': room,
+    if (roomId != null) 'room_id': roomId,
+    'path': path,
+    'created_at': createdAt.toIso8601String(),
+    'annotations': annotations,
+  };
+}
+
 class ProjectRepository {
   final String id;
   final String projectId;
@@ -380,6 +472,7 @@ class ScheduledTask {
     required this.active,
     required this.once,
     required this.annotations,
+    this.storageWritePath,
     this.roomId,
     this.lastRunId,
     this.lastStartTime,
@@ -401,6 +494,7 @@ class ScheduledTask {
   final String schedule;
   final bool active;
   final bool once;
+  final String? storageWritePath;
 
   final int? lastRunId;
   final DateTime? lastStartTime;
@@ -420,6 +514,7 @@ class ScheduledTask {
     active: (json['active'] as bool?) ?? true,
     once: (json['once'] as bool?) ?? false,
     annotations: (json['annotations'] as Map).cast<String, String>(),
+    storageWritePath: json['storage_write_path'] as String?,
     lastRunId: (json['last_run_id'] as num?)?.toInt(),
     lastStartTime: json['last_start_time'] == null ? null : DateTime.parse(json['last_start_time'] as String),
     lastEndTime: json['last_end_time'] == null ? null : DateTime.parse(json['last_end_time'] as String),
@@ -438,6 +533,7 @@ class ScheduledTask {
     'active': active,
     'once': once,
     'annotations': annotations,
+    if (storageWritePath != null) 'storage_write_path': storageWritePath,
     if (lastRunId != null) 'last_run_id': lastRunId,
     if (lastStartTime != null) 'last_start_time': lastStartTime!.toIso8601String(),
     if (lastEndTime != null) 'last_end_time': lastEndTime!.toIso8601String(),
@@ -456,6 +552,7 @@ class _CreateScheduledTaskRequest {
     this.active = true,
     this.once = false,
     required this.annotations,
+    this.storageWritePath,
   });
 
   final String? id;
@@ -467,6 +564,7 @@ class _CreateScheduledTaskRequest {
   final Map<String, dynamic> payload;
 
   final Map<String, String> annotations;
+  final String? storageWritePath;
 
   final String schedule;
   final bool active;
@@ -480,11 +578,20 @@ class _CreateScheduledTaskRequest {
     'active': active,
     'once': once,
     'annotations': annotations,
+    if (storageWritePath != null) 'storage_write_path': storageWritePath,
   };
 }
 
 class _UpdateScheduledTaskRequest {
-  _UpdateScheduledTaskRequest({this.roomName, this.queueName, this.payload, this.schedule, this.active, required this.annotations});
+  _UpdateScheduledTaskRequest({
+    this.roomName,
+    this.queueName,
+    this.payload,
+    this.schedule,
+    this.active,
+    required this.annotations,
+    this.storageWritePath,
+  });
 
   final String? roomName;
   final String? queueName;
@@ -492,6 +599,7 @@ class _UpdateScheduledTaskRequest {
   final String? schedule;
   final bool? active;
   final Map<String, String> annotations;
+  final String? storageWritePath;
 
   Map<String, dynamic> toJson() {
     final out = <String, dynamic>{};
@@ -500,6 +608,7 @@ class _UpdateScheduledTaskRequest {
     if (payload != null) out['payload'] = payload;
     if (schedule != null) out['schedule'] = schedule;
     if (active != null) out['active'] = active;
+    if (storageWritePath != null) out['storage_write_path'] = storageWritePath;
     out["annotations"] = annotations;
     return out;
   }
@@ -787,6 +896,259 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete domain. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<Feed> createFeed({
+    required String projectId,
+    required String name,
+    String description = '',
+    String visibility = 'private',
+    bool paused = false,
+    Map<String, String> annotations = const {},
+    Object? messageSchema,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds');
+    final body = {
+      'name': name,
+      'description': description,
+      'visibility': visibility,
+      'paused': paused,
+      'annotations': annotations,
+      'message_schema': messageSchema,
+    };
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create feed. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return Feed.fromJson(data['feed'] as Map<String, dynamic>);
+  }
+
+  Future<void> updateFeed({
+    required String projectId,
+    required String feedId,
+    required String name,
+    String description = '',
+    bool paused = false,
+    Map<String, String> annotations = const {},
+    Object? messageSchema,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId');
+    final body = {'name': name, 'description': description, 'paused': paused, 'annotations': annotations, 'message_schema': messageSchema};
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update feed. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<Feed> getFeed({required String projectId, required String feedId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Feed not found: $feedId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get feed. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return Feed.fromJson(data['feed'] as Map<String, dynamic>);
+  }
+
+  Future<List<Feed>> listFeeds(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list feeds. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['feeds'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Feed.fromJson).toList();
+  }
+
+  Future<List<Feed>> listRoomFeeds({required String projectId, required String roomName}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/feeds');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room feeds. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['feeds'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(Feed.fromJson).toList();
+  }
+
+  Future<void> deleteFeed({required String projectId, required String feedId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete feed. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> publishFeedMessage({required String projectId, required String feedId, required Object? message}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/messages');
+    final response = await httpClient.post(uri, body: jsonEncode(message));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to publish feed message. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> publishFeedBatch({required String projectId, required String feedId, required List<Object?> messages}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/messages/batch');
+    final response = await httpClient.post(uri, body: jsonEncode(messages));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to publish feed messages. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<FeedSubscription> createFeedSubscription({
+    required String projectId,
+    required String feedId,
+    required String room,
+    required String path,
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions');
+    final body = {'room': room, 'path': path, 'annotations': annotations};
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create feed subscription. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return FeedSubscription.fromJson(data['subscription'] as Map<String, dynamic>);
+  }
+
+  Future<void> updateFeedSubscription({
+    required String projectId,
+    required String feedId,
+    required String subscriptionId,
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final encodedSubscriptionId = Uri.encodeComponent(subscriptionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions/$encodedSubscriptionId');
+    final body = {'annotations': annotations};
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update feed subscription. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<FeedSubscription> getFeedSubscription({required String projectId, required String feedId, required String subscriptionId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final encodedSubscriptionId = Uri.encodeComponent(subscriptionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions/$encodedSubscriptionId');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('Feed subscription not found: $subscriptionId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get feed subscription. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return FeedSubscription.fromJson(data['subscription'] as Map<String, dynamic>);
+  }
+
+  Future<List<FeedSubscription>> listFeedSubscriptions({required String projectId, required String feedId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list feed subscriptions. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['subscriptions'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(FeedSubscription.fromJson).toList();
+  }
+
+  Future<void> deleteFeedSubscription({required String projectId, required String feedId, required String subscriptionId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedFeedId = Uri.encodeComponent(feedId);
+    final encodedSubscriptionId = Uri.encodeComponent(subscriptionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions/$encodedSubscriptionId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete feed subscription. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -3230,6 +3592,7 @@ class Meshagent {
     bool once = false,
     String? taskId,
     Map<String, String> annotations = const {},
+    String? storageWritePath,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks');
@@ -3242,6 +3605,7 @@ class Meshagent {
       active: active,
       once: once,
       annotations: annotations,
+      storageWritePath: storageWritePath,
     ).toJson();
     final resp = await httpClient.post(uri, body: jsonEncode(body));
 
@@ -3270,6 +3634,7 @@ class Meshagent {
     String? schedule,
     bool? active,
     Map<String, String> annotations = const {},
+    String? storageWritePath,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedTaskId = Uri.encodeComponent(taskId);
@@ -3281,6 +3646,7 @@ class Meshagent {
       schedule: schedule,
       active: active,
       annotations: annotations,
+      storageWritePath: storageWritePath,
     ).toJson();
 
     final resp = await httpClient.put(uri, body: jsonEncode(body));
