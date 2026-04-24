@@ -2283,6 +2283,7 @@ class Meshagent {
     String? provider,
     String? model,
     String? usageType,
+    String? client,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/usage');
@@ -2296,6 +2297,7 @@ class Meshagent {
       if (provider != null && provider.trim().isNotEmpty) "provider": provider.trim(),
       if (model != null && model.trim().isNotEmpty) "model": model.trim(),
       if (usageType != null && usageType.trim().isNotEmpty) "usage_type": usageType.trim(),
+      if (client != null && client.trim().isNotEmpty) "client": client.trim(),
     };
     final response = await httpClient.get(uri.replace(queryParameters: queryParams));
 
