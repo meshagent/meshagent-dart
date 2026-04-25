@@ -2431,6 +2431,7 @@ class Meshagent {
     String? model,
     String? usageType,
     String? client,
+    Map<String, String>? annotations,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/usage');
@@ -2445,6 +2446,7 @@ class Meshagent {
       if (model != null && model.trim().isNotEmpty) "model": model.trim(),
       if (usageType != null && usageType.trim().isNotEmpty) "usage_type": usageType.trim(),
       if (client != null && client.trim().isNotEmpty) "client": client.trim(),
+      if (annotations != null && annotations.isNotEmpty) "annotations": jsonEncode(annotations),
     };
     final response = await httpClient.get(uri.replace(queryParameters: queryParams));
 
