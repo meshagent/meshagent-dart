@@ -274,6 +274,46 @@ class FeedSubscription {
   };
 }
 
+class LlmLogger {
+  final String id;
+  final String projectId;
+  final String destinationFeedId;
+  final String filterExpression;
+  final bool paused;
+  final DateTime createdAt;
+  final Map<String, String> annotations;
+
+  LlmLogger({
+    required this.id,
+    required this.projectId,
+    required this.destinationFeedId,
+    required this.filterExpression,
+    required this.paused,
+    required this.createdAt,
+    required this.annotations,
+  });
+
+  factory LlmLogger.fromJson(Map<String, dynamic> json) => LlmLogger(
+    id: json['id'] as String,
+    projectId: json['project_id'] as String,
+    destinationFeedId: json['destination_feed_id'] as String,
+    filterExpression: json['filter_expression'] as String,
+    paused: json['paused'] as bool? ?? false,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'project_id': projectId,
+    'destination_feed_id': destinationFeedId,
+    'filter_expression': filterExpression,
+    'paused': paused,
+    'created_at': createdAt.toIso8601String(),
+    'annotations': annotations,
+  };
+}
+
 class ProjectRepository {
   final String id;
   final String projectId;
@@ -1149,6 +1189,113 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete feed subscription. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<LlmLogger> createLlmLogger({
+    required String projectId,
+    required String destinationFeedId,
+    required String filterExpression,
+    bool paused = false,
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-loggers');
+    final body = {
+      'destination_feed_id': destinationFeedId,
+      'filter_expression': filterExpression,
+      'paused': paused,
+      'annotations': annotations,
+    };
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create LLM logger. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return LlmLogger.fromJson(data['logger'] as Map<String, dynamic>);
+  }
+
+  Future<void> updateLlmLogger({
+    required String projectId,
+    required String loggerId,
+    required String destinationFeedId,
+    required String filterExpression,
+    bool paused = false,
+    Map<String, String> annotations = const {},
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedLoggerId = Uri.encodeComponent(loggerId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-loggers/$encodedLoggerId');
+    final body = {
+      'destination_feed_id': destinationFeedId,
+      'filter_expression': filterExpression,
+      'paused': paused,
+      'annotations': annotations,
+    };
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update LLM logger. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<LlmLogger> getLlmLogger({required String projectId, required String loggerId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedLoggerId = Uri.encodeComponent(loggerId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-loggers/$encodedLoggerId');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('LLM logger not found: $loggerId');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get LLM logger. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return LlmLogger.fromJson(data['logger'] as Map<String, dynamic>);
+  }
+
+  Future<List<LlmLogger>> listLlmLoggers(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-loggers');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list LLM loggers. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['loggers'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(LlmLogger.fromJson).toList();
+  }
+
+  Future<void> deleteLlmLogger({required String projectId, required String loggerId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedLoggerId = Uri.encodeComponent(loggerId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-loggers/$encodedLoggerId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete LLM logger. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
