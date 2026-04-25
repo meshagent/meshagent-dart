@@ -14,7 +14,6 @@ import 'package:meshagent/yaml/yaml.dart';
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 
-import 'database_client.dart';
 import 'runtime.dart';
 import 'src/websocket_connect_status_stub.dart' if (dart.library.io) 'src/websocket_connect_status_io.dart' as websocket_connect_status;
 
@@ -635,7 +634,7 @@ class RoomClient extends ChangeEmitter {
     messaging = MessagingClient(room: this);
     agents = AgentsClient(room: this);
     queues = QueuesClient(room: this);
-    database = DatabaseClient(room: this);
+    datasets = DatasetsClient(room: this);
     memory = MemoryClient(room: this);
     containers = ContainersClient(room: this);
     services = ServicesClient(room: this);
@@ -653,7 +652,7 @@ class RoomClient extends ChangeEmitter {
   late final DeveloperClient developer;
   late final MessagingClient messaging;
   late final AgentsClient agents;
-  late final DatabaseClient database;
+  late final DatasetsClient datasets;
   late final MemoryClient memory;
   late final ContainersClient containers;
   late final ServicesClient services;

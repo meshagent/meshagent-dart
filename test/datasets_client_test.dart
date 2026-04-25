@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:meshagent/meshagent.dart';
-import 'package:meshagent/database_client.dart';
 import 'package:test/test.dart';
 
 class _ProtocolPair {
@@ -76,7 +75,7 @@ class _RecordedRequest {
   final Map<String, dynamic> input;
 }
 
-Object? _encodedDatabaseValue(Object? value) {
+Object? _encodedDatasetValue(Object? value) {
   if (value == null || value is bool || value is num || value is String) {
     return value;
   }
@@ -86,28 +85,28 @@ Object? _encodedDatabaseValue(Object? value) {
   if (value is UuidValue) {
     return {'uuid': value.toFormattedString(validate: true)};
   }
-  if (value is DatabaseExpression) {
+  if (value is DatasetExpression) {
     return {'expression': value.expression};
   }
-  if (value is DatabaseDate) {
+  if (value is DatasetDate) {
     return {'date': value.toString()};
   }
   if (value is DateTime) {
     final normalized = value.isUtc ? value : value.toUtc();
     return {'timestamp': normalized.toIso8601String().replaceFirst("+00:00", "Z")};
   }
-  if (value is DatabaseStruct) {
+  if (value is DatasetStruct) {
     return {'struct': value.toJson()};
   }
-  if (value is DatabaseJson) {
+  if (value is DatasetJson) {
     return {'json': value.toJson()};
   }
   if (value is List) {
-    return {'list': value.map(_encodedDatabaseValue).toList(growable: false)};
+    return {'list': value.map(_encodedDatasetValue).toList(growable: false)};
   }
   if (value is Map<String, Object?>) {
     return {
-      'struct': {for (final entry in value.entries) entry.key: _encodedDatabaseValue(entry.value)},
+      'struct': {for (final entry in value.entries) entry.key: _encodedDatasetValue(entry.value)},
     };
   }
   throw StateError('unsupported typed value ${value.runtimeType}');
@@ -121,7 +120,7 @@ Map<String, dynamic> _rowsChunk(List<Map<String, dynamic>> rows) {
           (row) => {
             'columns': row.entries
                 .map((entry) {
-                  return {'name': entry.key, 'value': _encodedDatabaseValue(entry.value)};
+                  return {'name': entry.key, 'value': _encodedDatasetValue(entry.value)};
                 })
                 .toList(growable: false),
           },
@@ -130,12 +129,12 @@ Map<String, dynamic> _rowsChunk(List<Map<String, dynamic>> rows) {
   };
 }
 
-class _DatabaseHarness {
-  _DatabaseHarness({required this.pair, required this.room, required this.server});
+class _DatasetsHarness {
+  _DatasetsHarness({required this.pair, required this.room, required this.server});
 
   final _ProtocolPair pair;
   final RoomClient room;
-  final _FakeDatabaseServer server;
+  final _FakeDatasetsServer server;
 
   Future<void> dispose() async {
     room.dispose();
@@ -143,7 +142,7 @@ class _DatabaseHarness {
   }
 }
 
-class _FakeDatabaseServer {
+class _FakeDatasetsServer {
   final requests = <_RecordedRequest>[];
   final writeStarts = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
   final writeChunks = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
@@ -186,7 +185,7 @@ class _FakeDatabaseServer {
     final message = unpackMessage(data);
     final request = message.header;
     if (type == 'room.invoke_tool') {
-      if (request['toolkit'] != 'database') {
+      if (request['toolkit'] != 'datasets') {
         return;
       }
 
@@ -199,7 +198,7 @@ class _FakeDatabaseServer {
         return;
       }
       if (input is! JsonContent) {
-        throw StateError('database.$tool expected JsonContent input');
+        throw StateError('datasets.$tool expected JsonContent input');
       }
 
       requests.add(_RecordedRequest(tool: tool, input: Map<String, dynamic>.from(input.json)));
@@ -287,7 +286,7 @@ class _FakeDatabaseServer {
 
       if (chunk is ControlContent) {
         if (chunk.method != 'close') {
-          throw StateError('unsupported control chunk for database.$tool');
+          throw StateError('unsupported control chunk for datasets.$tool');
         }
         if (tool == 'create_table' || tool == 'insert' || tool == 'merge') {
           await _sendResponseChunk(protocol, toolCallId, ControlContent(method: 'close'));
@@ -296,7 +295,7 @@ class _FakeDatabaseServer {
       }
 
       if (chunk is! JsonContent) {
-        throw StateError('database.$tool expected JsonContent chunk');
+        throw StateError('datasets.$tool expected JsonContent chunk');
       }
 
       if (tool == 'create_table' || tool == 'insert' || tool == 'merge') {
@@ -328,7 +327,7 @@ class _FakeDatabaseServer {
         return;
       }
 
-      throw StateError('unsupported streamed database operation: $tool');
+      throw StateError('unsupported streamed datasets operation: $tool');
     }
   }
 
@@ -353,9 +352,9 @@ class _FakeDatabaseServer {
   }
 }
 
-Future<_DatabaseHarness> _startDatabaseHarness() async {
+Future<_DatasetsHarness> _startDatasetsHarness() async {
   final pair = _ProtocolPair();
-  final server = _FakeDatabaseServer();
+  final server = _FakeDatasetsServer();
   pair.serverProtocol.start(onMessage: server.handleMessage);
 
   final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
@@ -363,14 +362,14 @@ Future<_DatabaseHarness> _startDatabaseHarness() async {
   await _sendRoomReady(pair.serverProtocol);
   await startFuture;
 
-  return _DatabaseHarness(pair: pair, room: room, server: server);
+  return _DatasetsHarness(pair: pair, room: room, server: server);
 }
 
 void main() {
-  test('database client streams structured row chunks', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets client streams structured row chunks', () async {
+    final harness = await _startDatasetsHarness();
 
-    await harness.room.database.createTableWithSchema(
+    await harness.room.datasets.createTableWithSchema(
       name: 'records',
       schema: {
         'annotations': ListDataType(elementType: StructDataType(fields: {'key': TextDataType(), 'value': TextDataType()})),
@@ -378,13 +377,13 @@ void main() {
       branch: 'exp',
       metadata: {'kind': 'demo'},
     );
-    await harness.room.database.createTableFromData(
+    await harness.room.datasets.createTableFromData(
       name: 'records-from-data',
       data: [
         {'created_at': DateTime.utc(2025, 5, 21, 18, 32, 56)},
       ],
     );
-    await harness.room.database.insert(
+    await harness.room.datasets.insert(
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
@@ -392,7 +391,7 @@ void main() {
         {'payload': Uint8List.fromList('inserted'.codeUnits)},
       ],
     );
-    await harness.room.database.merge(
+    await harness.room.datasets.merge(
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
@@ -454,10 +453,10 @@ void main() {
     await harness.dispose();
   });
 
-  test('database inspect, search, and sql decode streamed row chunks', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets inspect, search, and sql decode streamed row chunks', () async {
+    final harness = await _startDatasetsHarness();
 
-    final schema = await harness.room.database.inspect('records', branch: 'exp', version: 7);
+    final schema = await harness.room.datasets.inspect('records', branch: 'exp', version: 7);
     expect(schema['annotations'], isA<ListDataType>());
     final annotations = schema['annotations'] as ListDataType;
     expect(annotations.elementType, isA<StructDataType>());
@@ -465,12 +464,12 @@ void main() {
     expect(struct.fields['key'], isA<TextDataType>());
     expect(struct.fields['value'], isA<TextDataType>());
 
-    final rows = await harness.room.database.search(table: 'records', branch: 'exp', version: 7);
+    final rows = await harness.room.datasets.search(table: 'records', branch: 'exp', version: 7);
     expect(rows, hasLength(1));
     expect(rows.single['payload'], isA<Uint8List>());
     expect(utf8.decode(rows.single['payload'] as Uint8List), 'hello');
 
-    final sqlRows = await harness.room.database.sql(
+    final sqlRows = await harness.room.datasets.sql(
       query: 'SELECT * FROM records',
       tables: [TableRef(name: 'records', branch: 'exp', version: 7)],
     );
@@ -478,12 +477,12 @@ void main() {
     expect(sqlRows.single['id'], 1);
     expect(utf8.decode(sqlRows.single['payload'] as Uint8List), 'sql-result');
 
-    final versions = await harness.room.database.listVersions('records', branch: 'exp');
+    final versions = await harness.room.datasets.listVersions('records', branch: 'exp');
     expect(versions, hasLength(1));
     expect(versions.single.version, 1);
     expect(versions.single.metadata, {'kind': 'demo'});
 
-    final branches = await harness.room.database.listBranches(namespace: ['team']);
+    final branches = await harness.room.datasets.listBranches(namespace: ['team']);
     expect(branches, hasLength(1));
     expect(branches.single.name, 'main');
     expect(branches.single.parentBranch, isNull);
@@ -491,14 +490,14 @@ void main() {
     expect(branches.single.createdAt, DateTime.parse('2025-01-01T00:00:00Z'));
     expect(branches.single.manifestSize, 1);
 
-    await harness.room.database.createBranch(branch: 'exp', fromBranch: 'main', namespace: ['team']);
-    await harness.room.database.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
-    await harness.room.database.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
-    await harness.room.database.optimize(table: 'records', namespace: ['team'], branch: 'exp');
-    final indexes = await harness.room.database.listIndexes('records', namespace: ['team'], branch: 'exp', version: 7);
+    await harness.room.datasets.createBranch(branch: 'exp', fromBranch: 'main', namespace: ['team']);
+    await harness.room.datasets.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
+    await harness.room.datasets.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
+    await harness.room.datasets.optimize(table: 'records', namespace: ['team'], branch: 'exp');
+    final indexes = await harness.room.datasets.listIndexes('records', namespace: ['team'], branch: 'exp', version: 7);
     expect(indexes, hasLength(1));
     expect(indexes.single.name, 'idx_records_id');
-    await harness.room.database.deleteBranch(branch: 'exp', namespace: ['team']);
+    await harness.room.datasets.deleteBranch(branch: 'exp', namespace: ['team']);
 
     expect(harness.server.readStarts['search']!.single, {
       'kind': 'start',
@@ -567,18 +566,18 @@ void main() {
     await harness.dispose();
   });
 
-  test('database where maps use json semantics', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets where maps use json semantics', () async {
+    final harness = await _startDatasetsHarness();
 
-    await harness.room.database.search(table: 'records', where: {'id': 1, 'active': true, 'name': "O'Reilly"});
+    await harness.room.datasets.search(table: 'records', where: {'id': 1, 'active': true, 'name': "O'Reilly"});
 
     expect(harness.server.readStarts['search']!.single['where'], 'id = 1 AND active = true AND name = "O\'Reilly"');
 
     await harness.dispose();
   });
 
-  test('database client supports uuid schemas, values, and where filters', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets client supports uuid schemas, values, and where filters', () async {
+    final harness = await _startDatasetsHarness();
     final id = UuidValue.withValidation('123e4567-e89b-12d3-a456-426614174000');
 
     harness.server.inspectFields = [
@@ -591,22 +590,22 @@ void main() {
       {'id': id},
     ];
 
-    await harness.room.database.createTableWithSchema(name: 'uuid_records', schema: {'id': UuidDataType()});
-    await harness.room.database.insert(
+    await harness.room.datasets.createTableWithSchema(name: 'uuid_records', schema: {'id': UuidDataType()});
+    await harness.room.datasets.insert(
       table: 'uuid_records',
       records: [
         {'id': id},
       ],
     );
 
-    final schema = await harness.room.database.inspect('uuid_records');
+    final schema = await harness.room.datasets.inspect('uuid_records');
     expect(schema['id'], isA<UuidDataType>());
 
-    final rows = await harness.room.database.search(table: 'uuid_records', where: {'id': id});
+    final rows = await harness.room.datasets.search(table: 'uuid_records', where: {'id': id});
     expect(rows, hasLength(1));
     expect(rows.single['id'], equals(id));
 
-    await harness.room.database.count(table: 'uuid_records', where: {'id': id});
+    await harness.room.datasets.count(table: 'uuid_records', where: {'id': id});
 
     expect(harness.server.writeStarts['create_table']!.single, {
       'kind': 'start',
@@ -643,9 +642,9 @@ void main() {
     await harness.dispose();
   });
 
-  test('database client supports json schemas and values', () async {
-    final harness = await _startDatabaseHarness();
-    final payload = DatabaseJson({
+  test('datasets client supports json schemas and values', () async {
+    final harness = await _startDatasetsHarness();
+    final payload = DatasetJson({
       'kind': 'demo',
       'count': 3,
       'tags': ['a', 'b'],
@@ -661,21 +660,21 @@ void main() {
       {'payload': payload},
     ];
 
-    await harness.room.database.createTableWithSchema(name: 'json_records', schema: {'payload': JsonDataType()});
-    await harness.room.database.insert(
+    await harness.room.datasets.createTableWithSchema(name: 'json_records', schema: {'payload': JsonDataType()});
+    await harness.room.datasets.insert(
       table: 'json_records',
       records: [
         {'payload': payload},
       ],
     );
 
-    final schema = await harness.room.database.inspect('json_records');
+    final schema = await harness.room.datasets.inspect('json_records');
     expect(schema['payload'], isA<JsonDataType>());
 
-    final rows = await harness.room.database.search(table: 'json_records');
+    final rows = await harness.room.datasets.search(table: 'json_records');
     expect(rows, hasLength(1));
-    expect(rows.single['payload'], isA<DatabaseJson>());
-    expect((rows.single['payload'] as DatabaseJson).toJson(), payload.toJson());
+    expect(rows.single['payload'], isA<DatasetJson>());
+    expect((rows.single['payload'] as DatasetJson).toJson(), payload.toJson());
 
     expect(harness.server.writeStarts['create_table']!.single, {
       'kind': 'start',
@@ -700,24 +699,24 @@ void main() {
     await harness.dispose();
   });
 
-  test('database client encodes expressions for streamed writes and updates', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets client encodes expressions for streamed writes and updates', () async {
+    final harness = await _startDatasetsHarness();
 
-    await harness.room.database.insert(
+    await harness.room.datasets.insert(
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
       records: [
-        {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+        {'id': DatasetExpression('uuid()'), 'upper_name': DatasetExpression('upper(name)')},
       ],
     );
 
-    await harness.room.database.update(
+    await harness.room.datasets.update(
       table: 'records',
       where: 'true',
       namespace: ['team'],
       branch: 'exp',
-      values: {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+      values: {'id': DatasetExpression('uuid()'), 'upper_name': DatasetExpression('upper(name)')},
     );
 
     expect(harness.server.writeStarts['insert']!.single, {
@@ -728,7 +727,7 @@ void main() {
     });
     expect(harness.server.writeChunks['insert'], [
       _rowsChunk([
-        {'id': DatabaseExpression('uuid()'), 'upper_name': DatabaseExpression('upper(name)')},
+        {'id': DatasetExpression('uuid()'), 'upper_name': DatasetExpression('upper(name)')},
       ]),
     ]);
     expect(harness.server.requests.firstWhere((request) => request.tool == 'update').input, {
@@ -745,27 +744,27 @@ void main() {
     await harness.dispose();
   });
 
-  test('database client decodes typed date and timestamp row values', () async {
-    final harness = await _startDatabaseHarness();
+  test('datasets client decodes typed date and timestamp row values', () async {
+    final harness = await _startDatasetsHarness();
     harness.server.searchRows = [
-      {'event_date': DatabaseDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
+      {'event_date': DatasetDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
     ];
     harness.server.sqlRows = [
-      {'event_date': DatabaseDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
+      {'event_date': DatasetDate('2026-04-09'), 'created_at': DateTime.parse('2026-04-09T12:30:45Z')},
     ];
 
-    final searchRows = await harness.room.database.search(table: 'records');
-    final sqlRows = await harness.room.database.sql(
+    final searchRows = await harness.room.datasets.search(table: 'records');
+    final sqlRows = await harness.room.datasets.sql(
       query: 'SELECT * FROM records',
       tables: [TableRef(name: 'records')],
     );
 
-    expect(searchRows.single['event_date'], isA<DatabaseDate>());
+    expect(searchRows.single['event_date'], isA<DatasetDate>());
     expect(searchRows.single['event_date'].toString(), '2026-04-09');
     expect(searchRows.single['created_at'], isA<DateTime>());
     expect((searchRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');
 
-    expect(sqlRows.single['event_date'], isA<DatabaseDate>());
+    expect(sqlRows.single['event_date'], isA<DatasetDate>());
     expect(sqlRows.single['event_date'].toString(), '2026-04-09');
     expect(sqlRows.single['created_at'], isA<DateTime>());
     expect((sqlRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');

@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:json_schema/json_schema.dart';
 import 'package:meshagent/agents_client.dart';
 import 'package:logging/logging.dart';
-import 'package:meshagent/database_client.dart';
+import 'package:meshagent/datasets_client.dart';
 import 'package:meshagent/protocol.dart';
 import 'package:meshagent/room_server_client.dart';
 
@@ -726,16 +726,16 @@ class _RemoteToolkitWrapper {
 /// Install (create + index + optimize) a RequiredTable in the current room.
 Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger, bool optimize = true}) async {
   logger ??= Logger.root;
-  final database = room.database;
+  final datasets = room.datasets;
 
-  await database.createTableWithSchema(
+  await datasets.createTableWithSchema(
     name: table.name,
     mode: CreateMode.createIfNotExists,
     schema: table.schema,
     namespace: table.namespace,
   );
 
-  final indexes = await database.listIndexes(table.name, namespace: table.namespace);
+  final indexes = await datasets.listIndexes(table.name, namespace: table.namespace);
 
   bool indexExists(String column) {
     for (final idx in indexes) {
@@ -747,7 +747,7 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final vi in table.vectorIndexes ?? const <String>[]) {
     if (indexExists(vi)) continue;
     try {
-      await database.createVectorIndex(table: table.name, column: vi, namespace: table.namespace, replace: true);
+      await datasets.createVectorIndex(table: table.name, column: vi, namespace: table.namespace, replace: true);
     } catch (error, st) {
       logger.warning('unable to create vector index for "$vi": $error', error, st);
     }
@@ -756,7 +756,7 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final ti in table.fullTextSearchIndexes ?? const <String>[]) {
     if (indexExists(ti)) continue;
     try {
-      await database.createFullTextSearchIndex(table: table.name, column: ti, namespace: table.namespace, replace: true);
+      await datasets.createFullTextSearchIndex(table: table.name, column: ti, namespace: table.namespace, replace: true);
     } catch (error, st) {
       logger.warning('unable to create full text search index for "$ti": $error', error, st);
     }
@@ -765,7 +765,7 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final si in table.scalarIndexes ?? const <String>[]) {
     if (indexExists(si)) continue;
     try {
-      await database.createScalarIndex(table: table.name, column: si, namespace: table.namespace, replace: true);
+      await datasets.createScalarIndex(table: table.name, column: si, namespace: table.namespace, replace: true);
     } catch (error, st) {
       logger.warning('unable to create scalar index for "$si": $error', error, st);
     }
@@ -773,6 +773,6 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
 
   if (optimize) {
     logger.info('optimizing table ${table.name} in ${table.namespace}');
-    await database.optimize(table: table.name, namespace: table.namespace);
+    await datasets.optimize(table: table.name, namespace: table.namespace);
   }
 }

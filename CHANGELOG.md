@@ -32,7 +32,7 @@
 - Breaking: `TranscriptSegment` now requires a transcript start time parameter to render timecodes.
 
 ## [0.37.0]
-- Breaking: Database client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatabaseJson/DatabaseStruct/DatabaseExpression/DatabaseDate/UuidValue); list/struct values must be wrapped and SQL params use the new encoding.
+- Breaking: Datasets client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatasetJson/DatasetStruct/DatasetExpression/DatasetDate/UuidValue); list/struct values must be wrapped and SQL params use the new encoding.
 - Breaking: Containers build now streams build contexts (start/data chunks) with `mountPath`/`chunks` and removes `startBuild`.
 - Breaking: Toolkit/hosting refactor replaces RemoteToolkit with HostedToolkit/startHostedToolkit, removes ToolkitConfig and `supports_context`, and introduces room-bound toolkits with validationMode.
 - Added MCP connector discovery helpers and chat UI capability negotiation (tool-choice and MCP selection) in Flutter Shadcn components.

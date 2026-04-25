@@ -7,6 +7,7 @@ export 'package:meshagent/agent.dart';
 export 'package:meshagent/schema.dart';
 export 'package:meshagent/protocol.dart';
 export 'package:meshagent/data_types.dart';
+export 'package:meshagent/datasets_client.dart';
 export 'package:meshagent/client.dart';
 export 'package:meshagent/api_keys.dart';
 export 'package:meshagent/toolkit_config.dart';

@@ -138,11 +138,11 @@ class TableGrant {
   );
 }
 
-class DatabaseGrant {
+class DatasetGrant {
   final List<TableGrant>? tables;
   final bool listTables;
 
-  DatabaseGrant({this.tables, this.listTables = true});
+  DatasetGrant({this.tables, this.listTables = true});
 
   List<TableGrant> _matchingTables({required String table, List<String>? namespace}) {
     if (tables == null) {
@@ -203,7 +203,7 @@ class DatabaseGrant {
 
   Map<String, dynamic> toJson() => {if (tables != null) 'tables': tables!.map((e) => e.toJson()).toList(), 'list_tables': listTables};
 
-  factory DatabaseGrant.fromJson(Map<String, dynamic> j) => DatabaseGrant(
+  factory DatasetGrant.fromJson(Map<String, dynamic> j) => DatasetGrant(
     tables: (j['tables'] as List?)?.map((e) => TableGrant.fromJson(e as Map<String, dynamic>)).toList(),
     listTables: j['list_tables'] ?? true,
   );
@@ -596,6 +596,14 @@ class TunnelsGrant {
   factory TunnelsGrant.fromJson(Map<String, dynamic> j) => TunnelsGrant(ports: (j['ports'] as List?)?.cast<String>());
 }
 
+DatasetGrant? _apiScopeDatasetGrantFromJson(Map<String, dynamic> json) {
+  final rawDataset = json['dataset'] ?? json['database'] ?? json['datasets'];
+  if (rawDataset is Map<String, dynamic>) {
+    return DatasetGrant.fromJson(rawDataset);
+  }
+  return null;
+}
+
 /// ---------------------------
 /// ApiScope (mirror Python)
 /// ---------------------------
@@ -604,7 +612,7 @@ class ApiScope {
   final LivekitGrant? livekit;
   final QueuesGrant? queues;
   final MessagingGrant? messaging;
-  final DatabaseGrant? database;
+  final DatasetGrant? dataset;
   final MemoryGrant? memory;
   final SyncGrant? sync;
   final StorageGrant? storage;
@@ -621,7 +629,7 @@ class ApiScope {
     this.livekit,
     this.queues,
     this.messaging,
-    this.database,
+    this.dataset,
     this.memory,
     this.sync,
     this.storage,
@@ -639,7 +647,7 @@ class ApiScope {
     livekit: LivekitGrant(),
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
-    database: DatabaseGrant(),
+    dataset: DatasetGrant(),
     memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
@@ -654,7 +662,7 @@ class ApiScope {
     livekit: LivekitGrant(),
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
-    database: DatabaseGrant(),
+    dataset: DatasetGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
     containers: ContainersGrant(),
@@ -669,7 +677,7 @@ class ApiScope {
     livekit: LivekitGrant(),
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
-    database: DatabaseGrant(),
+    dataset: DatasetGrant(),
     memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
@@ -687,7 +695,7 @@ class ApiScope {
     if (livekit != null) 'livekit': livekit!.toJson(),
     if (queues != null) 'queues': queues!.toJson(),
     if (messaging != null) 'messaging': messaging!.toJson(),
-    if (database != null) 'database': database!.toJson(),
+    if (dataset != null) 'dataset': dataset!.toJson(),
     if (memory != null) 'memory': memory!.toJson(),
     if (sync != null) 'sync': sync!.toJson(),
     if (storage != null) 'storage': storage!.toJson(),
@@ -705,7 +713,7 @@ class ApiScope {
     livekit: j['livekit'] != null ? LivekitGrant.fromJson(j['livekit'] as Map<String, dynamic>) : null,
     queues: j['queues'] != null ? QueuesGrant.fromJson(j['queues'] as Map<String, dynamic>) : null,
     messaging: j['messaging'] != null ? MessagingGrant.fromJson(j['messaging'] as Map<String, dynamic>) : null,
-    database: j['database'] != null ? DatabaseGrant.fromJson(j['database'] as Map<String, dynamic>) : null,
+    dataset: _apiScopeDatasetGrantFromJson(j),
     memory: j['memory'] != null ? MemoryGrant.fromJson(j['memory'] as Map<String, dynamic>) : null,
     sync: j['sync'] != null ? SyncGrant.fromJson(j['sync'] as Map<String, dynamic>) : null,
     storage: j['storage'] != null ? StorageGrant.fromJson(j['storage'] as Map<String, dynamic>) : null,
@@ -834,7 +842,7 @@ class ParticipantToken {
         livekit: LivekitGrant(),
         queues: QueuesGrant(),
         messaging: MessagingGrant(),
-        database: DatabaseGrant(),
+        dataset: DatasetGrant(),
         sync: SyncGrant(),
         storage: StorageGrant(),
         agents: AgentsGrant(),

@@ -2,9 +2,9 @@ import 'package:meshagent/participant_token.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('DatabaseGrant', () {
+  group('DatasetGrant', () {
     test('allows all operations when no table restrictions are configured', () {
-      final grant = DatabaseGrant();
+      final grant = DatasetGrant();
 
       expect(grant.canRead('tbl'), isTrue);
       expect(grant.canWrite('tbl'), isTrue);
@@ -13,7 +13,7 @@ void main() {
     });
 
     test('enforces table and namespace-scoped permissions', () {
-      final grant = DatabaseGrant(
+      final grant = DatasetGrant(
         tables: [
           TableGrant(name: 'read_only', read: true, write: false, alter: false),
           TableGrant(name: 'write_only', namespace: ['analytics'], read: false, write: true, alter: false),

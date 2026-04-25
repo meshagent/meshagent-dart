@@ -64,27 +64,27 @@ class TableBranch {
   }
 }
 
-typedef DatabaseRecord = Map<String, Object?>;
-typedef DatabaseRows = List<DatabaseRecord>;
-typedef DatabaseRowChunks = Stream<DatabaseRows>;
+typedef DatasetRecord = Map<String, Object?>;
+typedef DatasetRows = List<DatasetRecord>;
+typedef DatasetRowChunks = Stream<DatasetRows>;
 
-sealed class DatabaseValueEncoder {
-  const DatabaseValueEncoder();
+sealed class DatasetValueEncoder {
+  const DatasetValueEncoder();
 
-  Object? encodeDatabaseValue();
+  Object? encodeDatasetValue();
 }
 
-final class DatabaseExpression extends DatabaseValueEncoder {
-  DatabaseExpression(String expression) : expression = expression.trim() {
+final class DatasetExpression extends DatasetValueEncoder {
+  DatasetExpression(String expression) : expression = expression.trim() {
     if (this.expression.isEmpty) {
-      throw ArgumentError.value(expression, 'expression', 'database expression must not be empty');
+      throw ArgumentError.value(expression, 'expression', 'dataset expression must not be empty');
     }
   }
 
   final String expression;
 
   @override
-  Map<String, String> encodeDatabaseValue() {
+  Map<String, String> encodeDatasetValue() {
     return {"expression": expression};
   }
 
@@ -92,19 +92,19 @@ final class DatabaseExpression extends DatabaseValueEncoder {
   String toString() => expression;
 }
 
-final class DatabaseDate extends DatabaseValueEncoder {
-  DatabaseDate(String value) : value = value.trim() {
+final class DatasetDate extends DatasetValueEncoder {
+  DatasetDate(String value) : value = value.trim() {
     final match = RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(this.value);
     final parsed = DateTime.tryParse(this.value);
     if (!match || parsed == null || parsed.toUtc().toIso8601String().substring(0, 10) != this.value) {
-      throw ArgumentError.value(value, 'value', 'invalid database date format');
+      throw ArgumentError.value(value, 'value', 'invalid dataset date format');
     }
   }
 
   final String value;
 
   @override
-  Map<String, String> encodeDatabaseValue() {
+  Map<String, String> encodeDatasetValue() {
     return {"date": value};
   }
 
@@ -112,8 +112,8 @@ final class DatabaseDate extends DatabaseValueEncoder {
   String toString() => value;
 }
 
-final class DatabaseStruct extends DatabaseValueEncoder {
-  DatabaseStruct(Map<String, Object?> fields) : fields = Map.unmodifiable(fields);
+final class DatasetStruct extends DatasetValueEncoder {
+  DatasetStruct(Map<String, Object?> fields) : fields = Map.unmodifiable(fields);
 
   final Map<String, Object?> fields;
 
@@ -122,42 +122,42 @@ final class DatabaseStruct extends DatabaseValueEncoder {
   }
 
   @override
-  Map<String, dynamic> encodeDatabaseValue() {
+  Map<String, dynamic> encodeDatasetValue() {
     return {"struct": toJson()};
   }
 }
 
-final class DatabaseJson extends DatabaseValueEncoder {
-  DatabaseJson(Object? value) : value = _normalizeDatabaseJsonValue(value);
+final class DatasetJson extends DatasetValueEncoder {
+  DatasetJson(Object? value) : value = _normalizeDatasetJsonValue(value);
 
   final Object? value;
 
   Object? toJson() => value;
 
   @override
-  Map<String, dynamic> encodeDatabaseValue() {
+  Map<String, dynamic> encodeDatasetValue() {
     return {"json": value};
   }
 }
 
-Object? _normalizeDatabaseJsonValue(Object? value) {
+Object? _normalizeDatasetJsonValue(Object? value) {
   if (value == null || value is bool || value is num || value is String) {
     return value;
   }
   if (value is List) {
-    return value.map(_normalizeDatabaseJsonValue).toList(growable: false);
+    return value.map(_normalizeDatasetJsonValue).toList(growable: false);
   }
   if (value is Map) {
     final normalized = <String, Object?>{};
     for (final entry in value.entries) {
       if (entry.key is! String) {
-        throw ArgumentError.value(value, 'value', 'database json object keys must be strings');
+        throw ArgumentError.value(value, 'value', 'dataset json object keys must be strings');
       }
-      normalized[entry.key as String] = _normalizeDatabaseJsonValue(entry.value);
+      normalized[entry.key as String] = _normalizeDatasetJsonValue(entry.value);
     }
     return Map<String, Object?>.unmodifiable(normalized);
   }
-  throw ArgumentError.value(value, 'value', 'database json values must be valid JSON');
+  throw ArgumentError.value(value, 'value', 'dataset json values must be valid JSON');
 }
 
 List<Map<String, dynamic>>? _metadataEntries(Map<String, dynamic>? metadata) {
@@ -192,24 +192,24 @@ Map<String, dynamic> _toolkitDataTypeJson(DataType dataType) {
 
 Map<String, dynamic> _publicDataTypeJson(dynamic value) {
   if (value is! Map) {
-    throw RoomServerException("unexpected return type from database.inspect call");
+    throw RoomServerException("unexpected return type from datasets.inspect call");
   }
 
   final type = value["type"];
   if (type is! String) {
-    throw RoomServerException("unexpected return type from database.inspect call");
+    throw RoomServerException("unexpected return type from datasets.inspect call");
   }
 
   final metadata = value["metadata"];
   Map<String, dynamic>? decodedMetadata;
   if (metadata != null) {
     if (metadata is! List) {
-      throw RoomServerException("unexpected return type from database.inspect call");
+      throw RoomServerException("unexpected return type from datasets.inspect call");
     }
     decodedMetadata = <String, dynamic>{};
     for (final entry in metadata) {
       if (entry is! Map || entry["key"] is! String || entry["value"] is! String) {
-        throw RoomServerException("unexpected return type from database.inspect call");
+        throw RoomServerException("unexpected return type from datasets.inspect call");
       }
       decodedMetadata[entry["key"] as String] = entry["value"];
     }
@@ -225,14 +225,14 @@ Map<String, dynamic> _publicDataTypeJson(dynamic value) {
   } else if (type == "struct") {
     final rawFields = value["fields"];
     if (rawFields is! List) {
-      throw RoomServerException("unexpected return type from database.inspect call");
+      throw RoomServerException("unexpected return type from datasets.inspect call");
     }
     payload["fields"] = {
       for (final rawField in rawFields)
         if (rawField is Map && rawField["name"] is String) rawField["name"] as String: _publicDataTypeJson(rawField["data_type"]),
     };
     if ((payload["fields"] as Map).length != rawFields.length) {
-      throw RoomServerException("unexpected return type from database.inspect call");
+      throw RoomServerException("unexpected return type from datasets.inspect call");
     }
   }
 
@@ -250,7 +250,7 @@ String _valueJson(Object? value) {
   return jsonEncode(_encodeRecordValue(value));
 }
 
-Map<String, dynamic> _encodeDatabaseRecord(DatabaseRecord record) {
+Map<String, dynamic> _encodeDatasetRecord(DatasetRecord record) {
   return {for (final entry in record.entries) entry.key: _encodeRecordValue(entry.value)};
 }
 
@@ -262,28 +262,28 @@ String _bytesToHex(Uint8List bytes) {
   return buffer.toString();
 }
 
-String _databaseSqlLiteral(Object? value) {
+String _datasetSqlLiteral(Object? value) {
   if (value is UuidValue) {
     return "X'${_bytesToHex(value.toBytes(validate: true))}'";
   }
-  if (value is DatabaseDate) {
+  if (value is DatasetDate) {
     return jsonEncode(value.toString());
   }
   if (value is DateTime) {
     final normalized = value.isUtc ? value : value.toUtc();
     return jsonEncode(normalized.toIso8601String().replaceFirst("+00:00", "Z"));
   }
-  if (value is DatabaseJson) {
+  if (value is DatasetJson) {
     return jsonEncode(jsonEncode(value.toJson()));
   }
-  if (value is DatabaseStruct) {
-    final fields = value.fields.entries.map((entry) => "${jsonEncode(entry.key)}, ${_databaseSqlLiteral(entry.value)}").join(", ");
+  if (value is DatasetStruct) {
+    final fields = value.fields.entries.map((entry) => "${jsonEncode(entry.key)}, ${_datasetSqlLiteral(entry.value)}").join(", ");
     return "named_struct($fields)";
   }
   return jsonEncode(_encodeRecordValue(value));
 }
 
-Map<String, dynamic> _rowsChunk(DatabaseRows rows) {
+Map<String, dynamic> _rowsChunk(DatasetRows rows) {
   return {
     "kind": "rows",
     "rows": rows
@@ -296,33 +296,33 @@ Map<String, dynamic> _rowsChunk(DatabaseRows rows) {
   };
 }
 
-DatabaseRows _recordsFromRowsChunk(Map<String, dynamic> json, String operation) {
+DatasetRows _recordsFromRowsChunk(Map<String, dynamic> json, String operation) {
   if (json["kind"] != "rows") {
-    throw RoomServerException("unexpected return type from database.$operation call");
+    throw RoomServerException("unexpected return type from datasets.$operation call");
   }
   final rows = json["rows"];
   if (rows is! List) {
-    throw RoomServerException("unexpected return type from database.$operation call");
+    throw RoomServerException("unexpected return type from datasets.$operation call");
   }
 
   return rows
       .map((rawRow) {
         if (rawRow is! Map) {
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         final columns = rawRow["columns"];
         if (columns is! List) {
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         final decoded = <String, Object?>{};
         for (final rawColumn in columns) {
           if (rawColumn is! Map || rawColumn["name"] is! String) {
-            throw RoomServerException("unexpected return type from database.$operation call");
+            throw RoomServerException("unexpected return type from datasets.$operation call");
           }
           try {
             decoded[rawColumn["name"] as String] = _decodeRecordValue(rawColumn["value"]);
           } catch (_) {
-            throw RoomServerException("unexpected return type from database.$operation call");
+            throw RoomServerException("unexpected return type from datasets.$operation call");
           }
         }
         return decoded;
@@ -330,11 +330,11 @@ DatabaseRows _recordsFromRowsChunk(Map<String, dynamic> json, String operation) 
       .toList(growable: false);
 }
 
-List<DatabaseRows> _rowChunks(DatabaseRows rows, {int rowsPerChunk = 128}) {
+List<DatasetRows> _rowChunks(DatasetRows rows, {int rowsPerChunk = 128}) {
   if (rowsPerChunk <= 0) {
     throw RoomServerException("rowsPerChunk must be greater than zero");
   }
-  final chunks = <DatabaseRows>[];
+  final chunks = <DatasetRows>[];
   for (var index = 0; index < rows.length; index += rowsPerChunk) {
     final end = index + rowsPerChunk > rows.length ? rows.length : index + rowsPerChunk;
     chunks.add(rows.sublist(index, end));
@@ -346,7 +346,7 @@ String? _whereClause(Object? where) {
   if (where is Map) {
     final parts = <String>[];
     where.forEach((key, value) {
-      parts.add("${key.toString()} = ${_databaseSqlLiteral(value)}");
+      parts.add("${key.toString()} = ${_datasetSqlLiteral(value)}");
     });
     return parts.join(" AND ");
   }
@@ -356,11 +356,11 @@ String? _whereClause(Object? where) {
   return null;
 }
 
-class _DatabaseWriteInputStream {
-  _DatabaseWriteInputStream({required this.start, required DatabaseRowChunks chunks}) : _source = StreamQueue(chunks);
+class _DatasetWriteInputStream {
+  _DatasetWriteInputStream({required this.start, required DatasetRowChunks chunks}) : _source = StreamQueue(chunks);
 
   final Map<String, dynamic> start;
-  final StreamQueue<DatabaseRows> _source;
+  final StreamQueue<DatasetRows> _source;
   final _pulls = StreamController<void>();
   bool _closed = false;
 
@@ -398,8 +398,8 @@ class _DatabaseWriteInputStream {
   }
 }
 
-class _DatabaseReadInputStream {
-  _DatabaseReadInputStream({required this.start});
+class _DatasetReadInputStream {
+  _DatasetReadInputStream({required this.start});
 
   final Map<String, dynamic> start;
   final _pulls = StreamController<void>();
@@ -431,32 +431,32 @@ class _DatabaseReadInputStream {
   }
 }
 
-class DatabaseClient {
+class DatasetsClient {
   final RoomClient room;
 
-  DatabaseClient({required this.room});
+  DatasetsClient({required this.room});
 
   Future<Content> _invoke(String operation, Map<String, dynamic> input) async {
     final output = await room.invoke(
-      toolkit: "database",
+      toolkit: "dataset",
       tool: operation,
       input: ToolContentInput(JsonContent(json: input)),
     );
     if (output is ToolContentOutput) {
       return output.content;
     }
-    throw RoomServerException("unexpected return type from database.$operation call");
+    throw RoomServerException("unexpected return type from datasets.$operation call");
   }
 
   Future<Stream<Content>> _invokeStream(String operation, Stream<Content> input) async {
-    final output = await room.invoke(toolkit: "database", tool: operation, input: ToolStreamInput(input));
+    final output = await room.invoke(toolkit: "dataset", tool: operation, input: ToolStreamInput(input));
     if (output is! ToolStreamOutput) {
-      throw RoomServerException("unexpected return type from database.$operation call");
+      throw RoomServerException("unexpected return type from datasets.$operation call");
     }
     return output.stream;
   }
 
-  Future<void> _drainWriteStream(String operation, _DatabaseWriteInputStream input) async {
+  Future<void> _drainWriteStream(String operation, _DatasetWriteInputStream input) async {
     final output = await _invokeStream(operation, input.inputStream());
     try {
       await for (final chunk in output) {
@@ -467,10 +467,10 @@ class DatabaseClient {
           if (chunk.method == "close") {
             return;
           }
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         if (chunk is! JsonContent || chunk.json["kind"] != "pull") {
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         input.requestNext();
       }
@@ -479,8 +479,8 @@ class DatabaseClient {
     }
   }
 
-  DatabaseRowChunks _streamRows(String operation, Map<String, dynamic> start) async* {
-    final input = _DatabaseReadInputStream(start: start);
+  DatasetRowChunks _streamRows(String operation, Map<String, dynamic> start) async* {
+    final input = _DatasetReadInputStream(start: start);
     final output = await _invokeStream(operation, input.inputStream());
     input.requestNext();
     try {
@@ -492,10 +492,10 @@ class DatabaseClient {
           if (chunk.method == "close") {
             return;
           }
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         if (chunk is! JsonContent) {
-          throw RoomServerException("unexpected return type from database.$operation call");
+          throw RoomServerException("unexpected return type from datasets.$operation call");
         }
         yield _recordsFromRowsChunk(chunk.json, operation);
         input.requestNext();
@@ -508,7 +508,7 @@ class DatabaseClient {
   Future<List<String>> listTables({List<String>? namespace, String? branch}) async {
     final response = await _invoke("list_tables", {"namespace": namespace, "branch": branch});
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.list_tables call");
+      throw RoomServerException("unexpected return type from datasets.list_tables call");
     }
 
     final tables = response.json["tables"] as List<dynamic>? ?? [];
@@ -517,14 +517,14 @@ class DatabaseClient {
 
   Future<void> _createTable({
     required String name,
-    DatabaseRowChunks? data,
+    DatasetRowChunks? data,
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
     String? branch,
     Map<String, dynamic>? metadata,
   }) async {
-    final input = _DatabaseWriteInputStream(
+    final input = _DatasetWriteInputStream(
       start: {
         "kind": "start",
         "name": name,
@@ -534,7 +534,7 @@ class DatabaseClient {
         "branch": branch,
         "metadata": _metadataEntries(metadata),
       },
-      chunks: data ?? Stream<DatabaseRows>.empty(),
+      chunks: data ?? Stream<DatasetRows>.empty(),
     );
     await _drainWriteStream("create_table", input);
   }
@@ -552,7 +552,7 @@ class DatabaseClient {
 
   Future<void> createTableFromData({
     required String name,
-    required DatabaseRows data,
+    required DatasetRows data,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
     String? branch,
@@ -570,7 +570,7 @@ class DatabaseClient {
 
   Future<void> createTableFromDataStream({
     required String name,
-    required DatabaseRowChunks chunks,
+    required DatasetRowChunks chunks,
     Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
@@ -624,12 +624,12 @@ class DatabaseClient {
     await _invoke("drop_index", {"table": table, "name": name, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> insert({required String table, required DatabaseRows records, List<String>? namespace, String? branch}) async {
+  Future<void> insert({required String table, required DatasetRows records, List<String>? namespace, String? branch}) async {
     await insertStream(table: table, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
   }
 
-  Future<void> insertStream({required String table, required DatabaseRowChunks chunks, List<String>? namespace, String? branch}) async {
-    final input = _DatabaseWriteInputStream(
+  Future<void> insertStream({required String table, required DatasetRowChunks chunks, List<String>? namespace, String? branch}) async {
+    final input = _DatasetWriteInputStream(
       start: {"kind": "start", "table": table, "namespace": namespace, "branch": branch},
       chunks: chunks,
     );
@@ -639,7 +639,7 @@ class DatabaseClient {
   Future<void> update({
     required String table,
     required String where,
-    required DatabaseRecord values,
+    required DatasetRecord values,
     List<String>? namespace,
     String? branch,
   }) async {
@@ -659,7 +659,7 @@ class DatabaseClient {
   Future<void> merge({
     required String table,
     required String on,
-    required DatabaseRows records,
+    required DatasetRows records,
     List<String>? namespace,
     String? branch,
   }) async {
@@ -669,35 +669,35 @@ class DatabaseClient {
   Future<void> mergeStream({
     required String table,
     required String on,
-    required DatabaseRowChunks chunks,
+    required DatasetRowChunks chunks,
     List<String>? namespace,
     String? branch,
   }) async {
-    final input = _DatabaseWriteInputStream(
+    final input = _DatasetWriteInputStream(
       start: {"kind": "start", "table": table, "on": on, "namespace": namespace, "branch": branch},
       chunks: chunks,
     );
     await _drainWriteStream("merge", input);
   }
 
-  Future<DatabaseRows> sql({required String query, required List<TableRef> tables, DatabaseRecord? params}) async {
-    final rows = <DatabaseRecord>[];
+  Future<DatasetRows> sql({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
+    final rows = <DatasetRecord>[];
     await for (final chunk in sqlStream(query: query, tables: tables, params: params)) {
       rows.addAll(chunk);
     }
     return rows;
   }
 
-  DatabaseRowChunks sqlStream({required String query, required List<TableRef> tables, DatabaseRecord? params}) {
+  DatasetRowChunks sqlStream({required String query, required List<TableRef> tables, DatasetRecord? params}) {
     return _streamRows("sql", {
       "kind": "start",
       "query": query,
       "tables": tables.map((table) => table.toJson()).toList(growable: false),
-      "params_json": params == null ? null : jsonEncode(_encodeDatabaseRecord(params)),
+      "params_json": params == null ? null : jsonEncode(_encodeDatasetRecord(params)),
     });
   }
 
-  Future<DatabaseRows> search({
+  Future<DatasetRows> search({
     required String table,
     String? text,
     List<double>? vector,
@@ -709,7 +709,7 @@ class DatabaseClient {
     String? branch,
     int? version,
   }) async {
-    final rows = <DatabaseRecord>[];
+    final rows = <DatasetRecord>[];
     await for (final chunk in searchStream(
       table: table,
       text: text,
@@ -727,7 +727,7 @@ class DatabaseClient {
     return rows;
   }
 
-  DatabaseRowChunks searchStream({
+  DatasetRowChunks searchStream({
     required String table,
     String? text,
     List<double>? vector,
@@ -775,11 +775,11 @@ class DatabaseClient {
       "version": version,
     });
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.count call");
+      throw RoomServerException("unexpected return type from datasets.count call");
     }
     final count = response.json["count"];
     if (count is! num) {
-      throw RoomServerException("unexpected return type from database.count call");
+      throw RoomServerException("unexpected return type from datasets.count call");
     }
     return count.toInt();
   }
@@ -795,11 +795,11 @@ class DatabaseClient {
   Future<Map<String, DataType>> inspect(String table, {List<String>? namespace, String? branch, int? version}) async {
     final response = await _invoke("inspect", {"table": table, "namespace": namespace, "branch": branch, "version": version});
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.inspect call");
+      throw RoomServerException("unexpected return type from datasets.inspect call");
     }
     final fields = response.json["fields"];
     if (fields is! List) {
-      throw RoomServerException("unexpected return type from database.inspect call");
+      throw RoomServerException("unexpected return type from datasets.inspect call");
     }
     return {
       for (final rawField in fields)
@@ -811,24 +811,24 @@ class DatabaseClient {
   Future<List<TableVersion>> listVersions(String table, {List<String>? namespace, String? branch}) async {
     final response = await _invoke("list_versions", {"table": table, "namespace": namespace, "branch": branch});
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.list_versions call");
+      throw RoomServerException("unexpected return type from datasets.list_versions call");
     }
     final versions = response.json["versions"];
     if (versions is! List) {
-      throw RoomServerException("unexpected return type from database.list_versions call");
+      throw RoomServerException("unexpected return type from datasets.list_versions call");
     }
     return versions
         .map((value) {
           if (value is! Map) {
-            throw RoomServerException("unexpected return type from database.list_versions call");
+            throw RoomServerException("unexpected return type from datasets.list_versions call");
           }
           final metadataJson = value["metadata_json"];
           if (metadataJson is! String) {
-            throw RoomServerException("unexpected return type from database.list_versions call");
+            throw RoomServerException("unexpected return type from datasets.list_versions call");
           }
           final metadata = jsonDecode(metadataJson);
           if (metadata is! Map) {
-            throw RoomServerException("unexpected return type from database.list_versions call");
+            throw RoomServerException("unexpected return type from datasets.list_versions call");
           }
           return TableVersion(
             version: (value["version"] as num).toInt(),
@@ -878,11 +878,11 @@ class DatabaseClient {
   Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace, String? branch, int? version}) async {
     final response = await _invoke("list_indexes", {"table": table, "namespace": namespace, "branch": branch, "version": version});
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.list_indexes call");
+      throw RoomServerException("unexpected return type from datasets.list_indexes call");
     }
     final indexes = response.json["indexes"];
     if (indexes is! List) {
-      throw RoomServerException("unexpected return type from database.list_indexes call");
+      throw RoomServerException("unexpected return type from datasets.list_indexes call");
     }
     return indexes.map((value) => TableIndex.fromJson(Map<String, dynamic>.from(value as Map))).toList(growable: false);
   }
@@ -890,11 +890,11 @@ class DatabaseClient {
   Future<List<TableBranch>> listBranches({List<String>? namespace}) async {
     final response = await _invoke("list_branches", {"namespace": namespace});
     if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from database.list_branches call");
+      throw RoomServerException("unexpected return type from datasets.list_branches call");
     }
     final branches = response.json["branches"];
     if (branches is! List) {
-      throw RoomServerException("unexpected return type from database.list_branches call");
+      throw RoomServerException("unexpected return type from datasets.list_branches call");
     }
     return branches.map((value) => TableBranch.fromJson(Map<String, dynamic>.from(value as Map))).toList(growable: false);
   }
@@ -930,63 +930,61 @@ class TableIndex {
 
 Object? _decodeRecordValue(Object? value) {
   if (value is List) {
-    throw RoomServerException("database list values must use a {'list': [...]} wrapper");
+    throw RoomServerException("dataset list values must use a {'list': [...]} wrapper");
   }
 
   if (value is Map<String, dynamic>) {
     if (value.length != 1) {
-      throw RoomServerException("database object values must use a single-key type wrapper");
+      throw RoomServerException("dataset object values must use a single-key type wrapper");
     }
     final entry = value.entries.single;
     switch (entry.key) {
       case "binary":
         if (entry.value is! String) {
-          throw RoomServerException("database binary values must be base64 strings");
+          throw RoomServerException("dataset binary values must be base64 strings");
         }
         return base64Decode(entry.value as String);
       case "uuid":
         if (entry.value is! String) {
-          throw RoomServerException("database uuid values must be strings");
+          throw RoomServerException("dataset uuid values must be strings");
         }
         return UuidValue.withValidation(entry.value as String);
       case "expression":
         if (entry.value is! String) {
-          throw RoomServerException("database expression values must be strings");
+          throw RoomServerException("dataset expression values must be strings");
         }
-        return DatabaseExpression(entry.value as String);
+        return DatasetExpression(entry.value as String);
       case "date":
         if (entry.value is! String) {
-          throw RoomServerException("database date values must be strings");
+          throw RoomServerException("dataset date values must be strings");
         }
-        return DatabaseDate(entry.value as String);
+        return DatasetDate(entry.value as String);
       case "timestamp":
         if (entry.value is! String) {
-          throw RoomServerException("database timestamp values must be strings");
+          throw RoomServerException("dataset timestamp values must be strings");
         }
         return DateTime.parse(entry.value as String);
       case "list":
         if (entry.value is! List) {
-          throw RoomServerException("database list values must be arrays");
+          throw RoomServerException("dataset list values must be arrays");
         }
         return (entry.value as List).map(_decodeRecordValue).toList(growable: false);
       case "struct":
         if (entry.value is! Map<String, dynamic>) {
-          throw RoomServerException("database struct values must be objects");
+          throw RoomServerException("dataset struct values must be objects");
         }
-        return DatabaseStruct(
-          (entry.value as Map<String, dynamic>).map((key, innerValue) => MapEntry(key, _decodeRecordValue(innerValue))),
-        );
+        return DatasetStruct((entry.value as Map<String, dynamic>).map((key, innerValue) => MapEntry(key, _decodeRecordValue(innerValue))));
       case "json":
-        return DatabaseJson(entry.value);
+        return DatasetJson(entry.value);
       default:
-        throw RoomServerException("unsupported database value wrapper '${entry.key}'");
+        throw RoomServerException("unsupported dataset value wrapper '${entry.key}'");
     }
   }
 
   return value;
 }
 
-DatabaseRows decodeRecords(DatabaseRows records) {
+DatasetRows decodeRecords(DatasetRows records) {
   for (final record in records) {
     for (final key in record.keys.toList()) {
       record[key] = _decodeRecordValue(record[key]);
@@ -996,8 +994,8 @@ DatabaseRows decodeRecords(DatabaseRows records) {
 }
 
 Object? _encodeRecordValue(Object? value) {
-  if (value is DatabaseValueEncoder) {
-    return value.encodeDatabaseValue();
+  if (value is DatasetValueEncoder) {
+    return value.encodeDatasetValue();
   }
   if (value is UuidValue) {
     return {"uuid": value.toFormattedString(validate: true)};
@@ -1013,11 +1011,11 @@ Object? _encodeRecordValue(Object? value) {
     return {"list": value.map(_encodeRecordValue).toList(growable: false)};
   }
   if (value is Map<String, dynamic>) {
-    throw RoomServerException("database object values must use DatabaseStruct or DatabaseJson");
+    throw RoomServerException("dataset object values must use DatasetStruct or DatasetJson");
   }
   return value;
 }
 
-DatabaseRows encodeRecords(DatabaseRows records) {
+DatasetRows encodeRecords(DatasetRows records) {
   return records.map((record) => record.map((key, value) => MapEntry(key, _encodeRecordValue(value)))).toList(growable: false);
 }
