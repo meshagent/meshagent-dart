@@ -185,7 +185,7 @@ class _FakeDatasetsServer {
     final message = unpackMessage(data);
     final request = message.header;
     if (type == 'room.invoke_tool') {
-      if (request['toolkit'] != 'datasets') {
+      if (request['toolkit'] != 'dataset') {
         return;
       }
 
