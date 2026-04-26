@@ -64,6 +64,31 @@ class TableBranch {
   }
 }
 
+sealed class DatasetSqlExecution {
+  const DatasetSqlExecution();
+}
+
+class DatasetSqlQuery extends DatasetSqlExecution {
+  const DatasetSqlQuery({required this.schema, required this.queryId});
+
+  final ArrowSchema schema;
+  final String queryId;
+}
+
+class DatasetSqlStatement extends DatasetSqlExecution {
+  const DatasetSqlStatement({required this.rowsAffected});
+
+  final int rowsAffected;
+}
+
+enum DatasetSqlCancelStatus { cancelled, cancelling, notCancellable }
+
+class DatasetSqlCancelResult {
+  const DatasetSqlCancelResult({required this.status});
+
+  final DatasetSqlCancelStatus status;
+}
+
 typedef DatasetRecord = Map<String, Object?>;
 typedef DatasetRows = List<DatasetRecord>;
 typedef DatasetRowChunks = Stream<DatasetRows>;
@@ -178,10 +203,6 @@ List<Map<String, dynamic>>? _metadataEntries(Map<String, dynamic>? metadata) {
 
 String _valueJson(Object? value) {
   return jsonEncode(_encodeRecordValue(value));
-}
-
-Map<String, dynamic> _encodeDatasetRecord(DatasetRecord record) {
-  return {for (final entry in record.entries) entry.key: _encodeRecordValue(entry.value)};
 }
 
 String _bytesToHex(Uint8List bytes) {
@@ -823,25 +844,176 @@ class DatasetsClient {
     await _drainArrowWriteStream("merge", input);
   }
 
-  Future<List<ArrowRecordBatch>> sql({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
+  Future<List<ArrowRecordBatch>> sql({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) async {
     final rows = <ArrowRecordBatch>[];
-    await for (final chunk in sqlStream(query: query, tables: tables, params: params)) {
+    await for (final chunk in sqlStream(query: query, tables: tables, params: params, namespace: namespace, branch: branch)) {
       rows.add(chunk);
     }
     return rows;
   }
 
-  Future<ArrowTable> sqlTable({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
-    return _tableFromBatches(await sql(query: query, tables: tables, params: params));
+  Future<ArrowTable> sqlTable({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    return _tableFromBatches(await sql(query: query, tables: tables, params: params, namespace: namespace, branch: branch));
   }
 
-  DatasetArrowBatches sqlStream({required String query, required List<TableRef> tables, DatasetRecord? params}) {
-    return _streamArrow("sql", {
-      "kind": "start",
-      "query": query,
-      "tables": tables.map((table) => table.toJson()).toList(growable: false),
-      "params_json": params == null ? null : jsonEncode(_encodeDatasetRecord(params)),
-    });
+  Future<DatasetSqlQuery> openSqlQuery({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final response = await _invokeContent(
+      "open_sql_query",
+      BinaryContent(
+        data: params == null ? Uint8List(0) : ArrowIpcStreamWriter.fromTable(params).write(),
+        headers: {
+          "query": query,
+          "tables": (tables ?? const <TableRef>[]).map((table) => table.toJson()).toList(growable: false),
+          "namespace": namespace,
+          "branch": branch,
+        },
+      ),
+    );
+    if (response is! BinaryContent) {
+      throw RoomServerException("unexpected return type from datasets.open_sql_query call");
+    }
+    final queryId = response.headers["query_id"];
+    if (queryId is! String || queryId.isEmpty) {
+      throw RoomServerException("unexpected return type from datasets.open_sql_query call");
+    }
+    return DatasetSqlQuery(schema: ArrowIpcSchema(response.data).schema, queryId: queryId);
+  }
+
+  Future<DatasetSqlExecution> executeSql({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final response = await _invokeContent(
+      "execute_sql",
+      BinaryContent(
+        data: params == null ? Uint8List(0) : ArrowIpcStreamWriter.fromTable(params).write(),
+        headers: {
+          "query": query,
+          "tables": (tables ?? const <TableRef>[]).map((table) => table.toJson()).toList(growable: false),
+          "namespace": namespace,
+          "branch": branch,
+        },
+      ),
+    );
+    if (response is BinaryContent) {
+      if (response.headers["kind"] != "query") {
+        throw RoomServerException("unexpected return type from datasets.execute_sql call");
+      }
+      final queryId = response.headers["query_id"];
+      if (queryId is! String || queryId.isEmpty) {
+        throw RoomServerException("unexpected return type from datasets.execute_sql call");
+      }
+      return DatasetSqlQuery(schema: ArrowIpcSchema(response.data).schema, queryId: queryId);
+    }
+    if (response is JsonContent) {
+      if (response.json["kind"] != "statement") {
+        throw RoomServerException("unexpected return type from datasets.execute_sql call");
+      }
+      final rowsAffected = response.json["rows_affected"];
+      if (rowsAffected is! int) {
+        throw RoomServerException("unexpected return type from datasets.execute_sql call");
+      }
+      return DatasetSqlStatement(rowsAffected: rowsAffected);
+    }
+    throw RoomServerException("unexpected return type from datasets.execute_sql call");
+  }
+
+  DatasetArrowBatches sqlStream({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) {
+    return (() async* {
+      final result = await executeSql(query: query, tables: tables, params: params, namespace: namespace, branch: branch);
+      if (result is DatasetSqlStatement) {
+        throw RoomServerException("SQL statement did not return rows; rows_affected=${result.rowsAffected}");
+      }
+      final opened = result as DatasetSqlQuery;
+      try {
+        yield* readSqlQuery(queryId: opened.queryId);
+      } finally {
+        await closeSqlQuery(queryId: opened.queryId);
+      }
+    })();
+  }
+
+  DatasetArrowBatches readSqlQuery({required String queryId}) {
+    return _streamArrow("read_sql_query", {"kind": "start", "query_id": queryId});
+  }
+
+  Future<void> closeSqlQuery({required String queryId}) async {
+    final response = await _invoke("close_sql_query", {"query_id": queryId});
+    if (response is! EmptyContent) {
+      throw RoomServerException("unexpected return type from datasets.close_sql_query call");
+    }
+  }
+
+  Future<DatasetSqlCancelResult> cancelSqlQuery({required String queryId}) async {
+    final response = await _invoke("cancel_sql_query", {"query_id": queryId});
+    if (response is! JsonContent) {
+      throw RoomServerException("unexpected return type from datasets.cancel_sql_query call");
+    }
+    final status = response.json["status"];
+    return DatasetSqlCancelResult(
+      status: switch (status) {
+        "cancelled" => DatasetSqlCancelStatus.cancelled,
+        "cancelling" => DatasetSqlCancelStatus.cancelling,
+        "not_cancellable" => DatasetSqlCancelStatus.notCancellable,
+        _ => throw RoomServerException("unexpected return type from datasets.cancel_sql_query call"),
+      },
+    );
+  }
+
+  Future<int> executeSqlStatement({
+    required String query,
+    List<TableRef>? tables,
+    ArrowTable? params,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final response = await _invokeContent(
+      "execute_sql_statement",
+      BinaryContent(
+        data: params == null ? Uint8List(0) : ArrowIpcStreamWriter.fromTable(params).write(),
+        headers: {
+          "query": query,
+          "tables": (tables ?? const <TableRef>[]).map((table) => table.toJson()).toList(growable: false),
+          "namespace": namespace,
+          "branch": branch,
+        },
+      ),
+    );
+    if (response is! JsonContent) {
+      throw RoomServerException("unexpected return type from datasets.execute_sql_statement call");
+    }
+    final rowsAffected = response.json["rows_affected"];
+    if (rowsAffected is! int) {
+      throw RoomServerException("unexpected return type from datasets.execute_sql_statement call");
+    }
+    return rowsAffected;
   }
 
   Future<List<ArrowRecordBatch>> search({

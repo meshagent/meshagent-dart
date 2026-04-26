@@ -155,6 +155,7 @@ class _DatasetsHarness {
   final _FakeDatasetsServer server;
 
   Future<void> dispose() async {
+    await Future<void>.delayed(Duration.zero);
     room.dispose();
     await pair.dispose();
   }
@@ -165,8 +166,8 @@ class _FakeDatasetsServer {
   final writeStarts = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
   final writeStartData = <String, List<Uint8List>>{'create_table': [], 'insert': [], 'merge': []};
   final writeChunks = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
-  final readStarts = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
-  final readPulls = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
+  final readStarts = <String, List<Map<String, dynamic>>>{'search': [], 'read_sql_query': []};
+  final readPulls = <String, List<Map<String, dynamic>>>{'search': [], 'read_sql_query': []};
   final _toolCallTools = <String, String>{};
   var inspectFields = <Map<String, dynamic>>[
     {
@@ -237,6 +238,30 @@ class _FakeDatasetsServer {
         await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
         return;
       }
+      if (tool == 'open_sql_query' || tool == 'execute_sql') {
+        if (input is! BinaryContent) {
+          throw StateError('datasets.$tool expected BinaryContent input');
+        }
+        requests.add(_RecordedRequest(tool: tool, input: Map<String, dynamic>.from(input.headers)));
+        await protocol.send(
+          '__response__',
+          BinaryContent(
+            data: ArrowIpcSchema.fromSchema(_testArrowSchema()).bytes,
+            headers: const {'kind': 'query', 'query_id': 'sql-query-1'},
+          ).pack(),
+          id: messageId,
+        );
+        return;
+      }
+      if (tool == 'execute_sql_statement') {
+        if (input is! BinaryContent) {
+          throw StateError('datasets.$tool expected BinaryContent input');
+        }
+        requests.add(_RecordedRequest(tool: tool, input: Map<String, dynamic>.from(input.headers)));
+        await protocol.send('__response__', JsonContent(json: const {'rows_affected': 3}).pack(), id: messageId);
+        return;
+      }
+
       if (input is! JsonContent) {
         throw StateError('datasets.$tool expected JsonContent input');
       }
@@ -260,6 +285,12 @@ class _FakeDatasetsServer {
           return;
         case 'count':
           await protocol.send('__response__', JsonContent(json: {'count': 1}).pack(), id: messageId);
+          return;
+        case 'close_sql_query':
+          await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+          return;
+        case 'cancel_sql_query':
+          await protocol.send('__response__', JsonContent(json: {'status': 'cancelling'}).pack(), id: messageId);
           return;
         case 'list_versions':
           await protocol.send(
@@ -359,7 +390,7 @@ class _FakeDatasetsServer {
         return;
       }
 
-      if (tool == 'search' || tool == 'sql') {
+      if (tool == 'search' || tool == 'read_sql_query') {
         if (chunk is! BinaryContent) {
           throw StateError('datasets.$tool expected BinaryContent chunk');
         }
@@ -610,18 +641,42 @@ void main() {
       {'kind': 'pull'},
       {'kind': 'pull'},
     ]);
-    expect(harness.server.readStarts['sql']!.single, {
-      'kind': 'start',
+    expect(harness.server.readStarts['read_sql_query']!.single, {'kind': 'start', 'query_id': 'sql-query-1'});
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'execute_sql').input, {
       'query': 'SELECT * FROM records',
       'tables': [
         {'name': 'records', 'namespace': null, 'alias': null, 'branch': 'exp', 'version': 7},
       ],
-      'params_json': null,
+      'namespace': null,
+      'branch': null,
     });
-    expect(harness.server.readPulls['sql'], [
+    expect(harness.server.readPulls['read_sql_query'], [
       {'kind': 'pull'},
       {'kind': 'pull'},
     ]);
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'close_sql_query').input, {'query_id': 'sql-query-1'});
+
+    final cancelResult = await harness.room.datasets.cancelSqlQuery(queryId: 'sql-query-1');
+    expect(cancelResult.status, DatasetSqlCancelStatus.cancelling);
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'cancel_sql_query').input, {'query_id': 'sql-query-1'});
+
+    final rowsAffected = await harness.room.datasets.executeSqlStatement(
+      query: 'DELETE FROM records WHERE id = \$id',
+      tables: [TableRef(name: 'records')],
+      params: ArrowTable(
+        schema: _testArrowSchema(),
+        batches: [_testArrowBatch(id: 1, label: 'delete')],
+      ),
+    );
+    expect(rowsAffected, 3);
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'execute_sql_statement').input, {
+      'query': 'DELETE FROM records WHERE id = \$id',
+      'tables': [
+        {'name': 'records', 'namespace': null, 'alias': null, 'branch': null, 'version': null},
+      ],
+      'namespace': null,
+      'branch': null,
+    });
 
     expect(harness.server.requests.firstWhere((request) => request.tool == 'inspect').input, {
       'table': 'records',
