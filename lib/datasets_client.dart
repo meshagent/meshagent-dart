@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:async/async.dart';
+import 'package:meshagent_dart_arrow/meshagent_dart_arrow.dart';
 import 'package:uuid/uuid.dart';
 
 import 'agents_client.dart';
-import 'data_types.dart';
 import 'room_server_client.dart';
 
 enum CreateMode { create, overwrite, createIfNotExists }
@@ -67,6 +67,13 @@ class TableBranch {
 typedef DatasetRecord = Map<String, Object?>;
 typedef DatasetRows = List<DatasetRecord>;
 typedef DatasetRowChunks = Stream<DatasetRows>;
+typedef DatasetArrowBatches = Stream<ArrowRecordBatch>;
+
+const _arrowIpcStreamMimeType = "application/vnd.apache.arrow.stream";
+
+ArrowTable _tableFromBatches(List<ArrowRecordBatch> batches) {
+  return ArrowTable(schema: batches.isEmpty ? const ArrowSchema([]) : batches.first.schema, batches: batches);
+}
 
 sealed class DatasetValueEncoder {
   const DatasetValueEncoder();
@@ -167,83 +174,6 @@ List<Map<String, dynamic>>? _metadataEntries(Map<String, dynamic>? metadata) {
   return metadata.entries
       .map((entry) => {"key": entry.key, "value": entry.value is String ? entry.value : jsonEncode(_encodeRecordValue(entry.value))})
       .toList(growable: false);
-}
-
-Map<String, dynamic> _toolkitDataTypeJson(DataType dataType) {
-  final payload = <String, dynamic>{
-    "type": dataType.toJson()["type"],
-    "nullable": dataType.nullable,
-    "metadata": _metadataEntries(dataType.metadata),
-  };
-
-  if (dataType is VectorDataType) {
-    payload["size"] = dataType.size;
-    payload["element_type"] = _toolkitDataTypeJson(dataType.elementType);
-  } else if (dataType is ListDataType) {
-    payload["element_type"] = _toolkitDataTypeJson(dataType.elementType);
-  } else if (dataType is StructDataType) {
-    payload["fields"] = dataType.fields.entries
-        .map((entry) => {"name": entry.key, "data_type": _toolkitDataTypeJson(entry.value)})
-        .toList(growable: false);
-  }
-
-  return payload;
-}
-
-Map<String, dynamic> _publicDataTypeJson(dynamic value) {
-  if (value is! Map) {
-    throw RoomServerException("unexpected return type from datasets.inspect call");
-  }
-
-  final type = value["type"];
-  if (type is! String) {
-    throw RoomServerException("unexpected return type from datasets.inspect call");
-  }
-
-  final metadata = value["metadata"];
-  Map<String, dynamic>? decodedMetadata;
-  if (metadata != null) {
-    if (metadata is! List) {
-      throw RoomServerException("unexpected return type from datasets.inspect call");
-    }
-    decodedMetadata = <String, dynamic>{};
-    for (final entry in metadata) {
-      if (entry is! Map || entry["key"] is! String || entry["value"] is! String) {
-        throw RoomServerException("unexpected return type from datasets.inspect call");
-      }
-      decodedMetadata[entry["key"] as String] = entry["value"];
-    }
-  }
-
-  final payload = <String, dynamic>{"type": type, "nullable": value["nullable"], "metadata": decodedMetadata};
-
-  if (type == "vector") {
-    payload["size"] = value["size"];
-    payload["element_type"] = _publicDataTypeJson(value["element_type"]);
-  } else if (type == "list") {
-    payload["element_type"] = _publicDataTypeJson(value["element_type"]);
-  } else if (type == "struct") {
-    final rawFields = value["fields"];
-    if (rawFields is! List) {
-      throw RoomServerException("unexpected return type from datasets.inspect call");
-    }
-    payload["fields"] = {
-      for (final rawField in rawFields)
-        if (rawField is Map && rawField["name"] is String) rawField["name"] as String: _publicDataTypeJson(rawField["data_type"]),
-    };
-    if ((payload["fields"] as Map).length != rawFields.length) {
-      throw RoomServerException("unexpected return type from datasets.inspect call");
-    }
-  }
-
-  return payload;
-}
-
-List<Map<String, dynamic>> _schemaEntries(Map<String, DataType>? schema) {
-  if (schema == null) {
-    return <Map<String, dynamic>>[];
-  }
-  return schema.entries.map((entry) => {"name": entry.key, "data_type": _toolkitDataTypeJson(entry.value)}).toList(growable: false);
 }
 
 String _valueJson(Object? value) {
@@ -431,6 +361,82 @@ class _DatasetReadInputStream {
   }
 }
 
+class _DatasetArrowWriteInputStream {
+  _DatasetArrowWriteInputStream({required this.start, required DatasetArrowBatches chunks, this.schema}) : _source = StreamQueue(chunks);
+
+  final Map<String, dynamic> start;
+  final ArrowSchema? schema;
+  final StreamQueue<ArrowRecordBatch> _source;
+  final _pulls = StreamController<void>();
+  bool _closed = false;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(data: schema == null ? Uint8List(0) : ArrowIpcSchema.fromSchema(schema!).bytes, headers: start);
+    await for (final _ in _pulls.stream) {
+      if (_closed) {
+        return;
+      }
+      if (!await _source.hasNext) {
+        return;
+      }
+      final nextChunk = await _source.next;
+      if (nextChunk.ipcBytes.isEmpty) {
+        continue;
+      }
+      yield BinaryContent(data: nextChunk.ipcBytes, headers: const {"kind": "data", "content_type": _arrowIpcStreamMimeType});
+    }
+  }
+
+  void requestNext() {
+    if (_closed) {
+      return;
+    }
+    _pulls.add(null);
+  }
+
+  void close() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    unawaited(_pulls.close());
+    unawaited(_source.cancel());
+  }
+}
+
+class _DatasetArrowReadInputStream {
+  _DatasetArrowReadInputStream({required this.start});
+
+  final Map<String, dynamic> start;
+  final _pulls = StreamController<void>();
+  bool _closed = false;
+
+  Stream<Content> inputStream() async* {
+    yield BinaryContent(data: Uint8List(0), headers: start);
+    await for (final _ in _pulls.stream) {
+      if (_closed) {
+        return;
+      }
+      yield BinaryContent(data: Uint8List(0), headers: const {"kind": "pull"});
+    }
+  }
+
+  void requestNext() {
+    if (_closed) {
+      return;
+    }
+    _pulls.add(null);
+  }
+
+  void close() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    unawaited(_pulls.close());
+  }
+}
+
 class DatasetsClient {
   final RoomClient room;
 
@@ -443,6 +449,22 @@ class DatasetsClient {
       input: ToolContentInput(JsonContent(json: input)),
     );
     if (output is ToolContentOutput) {
+      if (output.content is ErrorContent) {
+        final error = output.content as ErrorContent;
+        throw RoomServerException(error.text, code: error.code);
+      }
+      return output.content;
+    }
+    throw RoomServerException("unexpected return type from datasets.$operation call");
+  }
+
+  Future<Content> _invokeContent(String operation, Content input) async {
+    final output = await room.invoke(toolkit: "dataset", tool: operation, input: ToolContentInput(input));
+    if (output is ToolContentOutput) {
+      if (output.content is ErrorContent) {
+        final error = output.content as ErrorContent;
+        throw RoomServerException(error.text, code: error.code);
+      }
       return output.content;
     }
     throw RoomServerException("unexpected return type from datasets.$operation call");
@@ -479,6 +501,30 @@ class DatasetsClient {
     }
   }
 
+  Future<void> _drainArrowWriteStream(String operation, _DatasetArrowWriteInputStream input) async {
+    final output = await _invokeStream(operation, input.inputStream());
+    try {
+      await for (final chunk in output) {
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw RoomServerException("unexpected return type from datasets.$operation call");
+        }
+        if (chunk is! BinaryContent || chunk.headers["kind"] != "pull") {
+          throw RoomServerException("unexpected return type from datasets.$operation call");
+        }
+        input.requestNext();
+      }
+    } finally {
+      input.close();
+    }
+  }
+
+  // ignore: unused_element
   DatasetRowChunks _streamRows(String operation, Map<String, dynamic> start) async* {
     final input = _DatasetReadInputStream(start: start);
     final output = await _invokeStream(operation, input.inputStream());
@@ -505,6 +551,32 @@ class DatasetsClient {
     }
   }
 
+  DatasetArrowBatches _streamArrow(String operation, Map<String, dynamic> start) async* {
+    final input = _DatasetArrowReadInputStream(start: start);
+    final output = await _invokeStream(operation, input.inputStream());
+    input.requestNext();
+    try {
+      await for (final chunk in output) {
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw RoomServerException("unexpected return type from datasets.$operation call");
+        }
+        if (chunk is! BinaryContent || chunk.headers["kind"] != "data") {
+          throw RoomServerException("unexpected return type from datasets.$operation call");
+        }
+        yield ArrowRecordBatch(chunk.data);
+        input.requestNext();
+      }
+    } finally {
+      input.close();
+    }
+  }
+
   Future<List<String>> listTables({List<String>? namespace, String? branch}) async {
     final response = await _invoke("list_tables", {"namespace": namespace, "branch": branch});
     if (response is! JsonContent) {
@@ -518,7 +590,6 @@ class DatasetsClient {
   Future<void> _createTable({
     required String name,
     DatasetRowChunks? data,
-    Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
     String? branch,
@@ -528,7 +599,6 @@ class DatasetsClient {
       start: {
         "kind": "start",
         "name": name,
-        "fields": schema == null ? null : _schemaEntries(schema),
         "mode": mode.value,
         "namespace": namespace,
         "branch": branch,
@@ -541,13 +611,13 @@ class DatasetsClient {
 
   Future<void> createTableWithSchema({
     required String name,
-    required Map<String, DataType> schema,
+    required ArrowSchema schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
     String? branch,
     Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, schema: schema, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
+    return createTableWithArrowSchema(name: name, schema: schema, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
   }
 
   Future<void> createTableFromData({
@@ -571,13 +641,77 @@ class DatasetsClient {
   Future<void> createTableFromDataStream({
     required String name,
     required DatasetRowChunks chunks,
-    Map<String, DataType>? schema,
     CreateMode mode = CreateMode.create,
     List<String>? namespace,
     String? branch,
     Map<String, dynamic>? metadata,
   }) {
-    return _createTable(name: name, data: chunks, schema: schema, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
+    return _createTable(name: name, data: chunks, mode: mode, namespace: namespace, branch: branch, metadata: metadata);
+  }
+
+  Future<void> createTableWithArrowSchema({
+    required String name,
+    required ArrowSchema schema,
+    DatasetArrowBatches? batches,
+    CreateMode mode = CreateMode.create,
+    List<String>? namespace,
+    String? branch,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final input = _DatasetArrowWriteInputStream(
+      start: {
+        "kind": "start",
+        "name": name,
+        "mode": mode.value,
+        "namespace": namespace,
+        "branch": branch,
+        "metadata": _metadataEntries(metadata),
+      },
+      chunks: batches ?? const Stream<ArrowRecordBatch>.empty(),
+      schema: schema,
+    );
+    await _drainArrowWriteStream("create_table", input);
+  }
+
+  Future<void> createTableFromArrowBatches({
+    required String name,
+    required DatasetArrowBatches batches,
+    CreateMode mode = CreateMode.create,
+    List<String>? namespace,
+    String? branch,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final input = _DatasetArrowWriteInputStream(
+      start: {
+        "kind": "start",
+        "name": name,
+        "mode": mode.value,
+        "namespace": namespace,
+        "branch": branch,
+        "metadata": _metadataEntries(metadata),
+      },
+      chunks: batches,
+    );
+    await _drainArrowWriteStream("create_table", input);
+  }
+
+  Future<void> createTableFromArrowTable({
+    required String name,
+    required ArrowTable table,
+    CreateMode mode = CreateMode.create,
+    List<String>? namespace,
+    String? branch,
+    Map<String, dynamic>? metadata,
+  }) {
+    return createTableWithArrowSchema(
+      name: name,
+      schema: table.schema,
+      batches: Stream.fromIterable(table.batches),
+      mode: mode,
+      namespace: namespace,
+      branch: branch,
+      metadata: metadata,
+    );
   }
 
   Future<void> dropTable({required String name, bool ignoreMissing = false, List<String>? namespace, String? branch}) async {
@@ -592,28 +726,23 @@ class DatasetsClient {
   }) async {
     await _invoke("add_columns", {
       "table": table,
-      "columns": newColumns.entries
-          .map((entry) => {"name": entry.key, "value_sql": entry.value, "data_type": null})
-          .toList(growable: false),
+      "columns": newColumns.entries.map((entry) => {"name": entry.key, "value_sql": entry.value}).toList(growable: false),
       "namespace": namespace,
       "branch": branch,
     });
   }
 
-  Future<void> addColumnsOfType({
-    required String table,
-    required Map<String, DataType> newColumns,
-    List<String>? namespace,
-    String? branch,
-  }) async {
-    await _invoke("add_columns", {
-      "table": table,
-      "columns": newColumns.entries
-          .map((entry) => {"name": entry.key, "value_sql": null, "data_type": _toolkitDataTypeJson(entry.value)})
-          .toList(growable: false),
-      "namespace": namespace,
-      "branch": branch,
-    });
+  Future<void> addColumnsWithSchema({required String table, required ArrowSchema schema, List<String>? namespace, String? branch}) async {
+    final output = await _invokeContent(
+      "add_columns",
+      BinaryContent(
+        data: ArrowIpcSchema.fromSchema(schema).bytes,
+        headers: {"table": table, "namespace": namespace, "branch": branch, "content_type": _arrowIpcStreamMimeType},
+      ),
+    );
+    if (output is! EmptyContent) {
+      throw RoomServerException("unexpected return type from datasets.add_columns call");
+    }
   }
 
   Future<void> dropColumns({required String table, required List<String> columns, List<String>? namespace, String? branch}) async {
@@ -624,16 +753,20 @@ class DatasetsClient {
     await _invoke("drop_index", {"table": table, "name": name, "namespace": namespace, "branch": branch});
   }
 
-  Future<void> insert({required String table, required DatasetRows records, List<String>? namespace, String? branch}) async {
-    await insertStream(table: table, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
+  Future<void> insert({required String table, required ArrowRecordBatch records, List<String>? namespace, String? branch}) async {
+    await insertStream(table: table, chunks: Stream.fromIterable([records]), namespace: namespace, branch: branch);
   }
 
-  Future<void> insertStream({required String table, required DatasetRowChunks chunks, List<String>? namespace, String? branch}) async {
-    final input = _DatasetWriteInputStream(
+  Future<void> insertTable({required String table, required ArrowTable records, List<String>? namespace, String? branch}) async {
+    await insertStream(table: table, chunks: Stream.fromIterable(records.batches), namespace: namespace, branch: branch);
+  }
+
+  Future<void> insertStream({required String table, required DatasetArrowBatches chunks, List<String>? namespace, String? branch}) async {
+    final input = _DatasetArrowWriteInputStream(
       start: {"kind": "start", "table": table, "namespace": namespace, "branch": branch},
       chunks: chunks,
     );
-    await _drainWriteStream("insert", input);
+    await _drainArrowWriteStream("insert", input);
   }
 
   Future<void> update({
@@ -659,37 +792,51 @@ class DatasetsClient {
   Future<void> merge({
     required String table,
     required String on,
-    required DatasetRows records,
+    required ArrowRecordBatch records,
     List<String>? namespace,
     String? branch,
   }) async {
-    await mergeStream(table: table, on: on, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
+    await mergeStream(table: table, on: on, chunks: Stream.fromIterable([records]), namespace: namespace, branch: branch);
+  }
+
+  Future<void> mergeTable({
+    required String table,
+    required String on,
+    required ArrowTable records,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    await mergeStream(table: table, on: on, chunks: Stream.fromIterable(records.batches), namespace: namespace, branch: branch);
   }
 
   Future<void> mergeStream({
     required String table,
     required String on,
-    required DatasetRowChunks chunks,
+    required DatasetArrowBatches chunks,
     List<String>? namespace,
     String? branch,
   }) async {
-    final input = _DatasetWriteInputStream(
+    final input = _DatasetArrowWriteInputStream(
       start: {"kind": "start", "table": table, "on": on, "namespace": namespace, "branch": branch},
       chunks: chunks,
     );
-    await _drainWriteStream("merge", input);
+    await _drainArrowWriteStream("merge", input);
   }
 
-  Future<DatasetRows> sql({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
-    final rows = <DatasetRecord>[];
+  Future<List<ArrowRecordBatch>> sql({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
+    final rows = <ArrowRecordBatch>[];
     await for (final chunk in sqlStream(query: query, tables: tables, params: params)) {
-      rows.addAll(chunk);
+      rows.add(chunk);
     }
     return rows;
   }
 
-  DatasetRowChunks sqlStream({required String query, required List<TableRef> tables, DatasetRecord? params}) {
-    return _streamRows("sql", {
+  Future<ArrowTable> sqlTable({required String query, required List<TableRef> tables, DatasetRecord? params}) async {
+    return _tableFromBatches(await sql(query: query, tables: tables, params: params));
+  }
+
+  DatasetArrowBatches sqlStream({required String query, required List<TableRef> tables, DatasetRecord? params}) {
+    return _streamArrow("sql", {
       "kind": "start",
       "query": query,
       "tables": tables.map((table) => table.toJson()).toList(growable: false),
@@ -697,7 +844,7 @@ class DatasetsClient {
     });
   }
 
-  Future<DatasetRows> search({
+  Future<List<ArrowRecordBatch>> search({
     required String table,
     String? text,
     List<double>? vector,
@@ -709,7 +856,7 @@ class DatasetsClient {
     String? branch,
     int? version,
   }) async {
-    final rows = <DatasetRecord>[];
+    final rows = <ArrowRecordBatch>[];
     await for (final chunk in searchStream(
       table: table,
       text: text,
@@ -722,12 +869,40 @@ class DatasetsClient {
       branch: branch,
       version: version,
     )) {
-      rows.addAll(chunk);
+      rows.add(chunk);
     }
     return rows;
   }
 
-  DatasetRowChunks searchStream({
+  Future<ArrowTable> searchTable({
+    required String table,
+    String? text,
+    List<double>? vector,
+    Object? where,
+    int? offset,
+    int? limit,
+    List<String>? select,
+    List<String>? namespace,
+    String? branch,
+    int? version,
+  }) async {
+    return _tableFromBatches(
+      await search(
+        table: table,
+        text: text,
+        vector: vector,
+        where: where,
+        offset: offset,
+        limit: limit,
+        select: select,
+        namespace: namespace,
+        branch: branch,
+        version: version,
+      ),
+    );
+  }
+
+  DatasetArrowBatches searchStream({
     required String table,
     String? text,
     List<double>? vector,
@@ -739,7 +914,7 @@ class DatasetsClient {
     String? branch,
     int? version,
   }) {
-    return _streamRows("search", {
+    return _streamArrow("search", {
       "kind": "start",
       "table": table,
       "text": text,
@@ -792,20 +967,12 @@ class DatasetsClient {
     await _invoke("restore", {"table": table, "version": version, "namespace": namespace, "branch": branch});
   }
 
-  Future<Map<String, DataType>> inspect(String table, {List<String>? namespace, String? branch, int? version}) async {
+  Future<ArrowSchema> inspect(String table, {List<String>? namespace, String? branch, int? version}) async {
     final response = await _invoke("inspect", {"table": table, "namespace": namespace, "branch": branch, "version": version});
-    if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from datasets.inspect call");
+    if (response is! BinaryContent) {
+      throw RoomServerException("unexpected return type from datasets.inspect call: ${response.runtimeType}");
     }
-    final fields = response.json["fields"];
-    if (fields is! List) {
-      throw RoomServerException("unexpected return type from datasets.inspect call");
-    }
-    return {
-      for (final rawField in fields)
-        if (rawField is Map && rawField["name"] is String)
-          rawField["name"] as String: DataType.fromJson(_publicDataTypeJson(rawField["data_type"])),
-    };
+    return ArrowIpcSchema(response.data).schema;
   }
 
   Future<List<TableVersion>> listVersions(String table, {List<String>? namespace, String? branch}) async {

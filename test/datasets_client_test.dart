@@ -129,6 +129,24 @@ Map<String, dynamic> _rowsChunk(List<Map<String, dynamic>> rows) {
   };
 }
 
+ArrowSchema _testArrowSchema() {
+  return const ArrowSchema([
+    ArrowField(name: 'id', type: ArrowIntType(bitWidth: 64, signed: true)),
+    ArrowField(name: 'label', type: ArrowUtf8Type()),
+  ]);
+}
+
+ArrowRecordBatch _testArrowBatch({int id = 1, String label = 'alpha'}) {
+  final schema = _testArrowSchema();
+  return ArrowRecordBatch.fromColumns(
+    schema: schema,
+    columns: [
+      ArrowValueArray(field: schema.fields[0], values: [BigInt.from(id)]),
+      ArrowValueArray(field: schema.fields[1], values: [label]),
+    ],
+  );
+}
+
 class _DatasetsHarness {
   _DatasetsHarness({required this.pair, required this.room, required this.server});
 
@@ -145,6 +163,7 @@ class _DatasetsHarness {
 class _FakeDatasetsServer {
   final requests = <_RecordedRequest>[];
   final writeStarts = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
+  final writeStartData = <String, List<Uint8List>>{'create_table': [], 'insert': [], 'merge': []};
   final writeChunks = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': [], 'merge': []};
   final readStarts = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
   final readPulls = <String, List<Map<String, dynamic>>>{'search': [], 'sql': []};
@@ -180,6 +199,27 @@ class _FakeDatasetsServer {
   var sqlRows = <Map<String, dynamic>>[
     {'id': 1, 'payload': Uint8List.fromList('sql-result'.codeUnits)},
   ];
+  late final inspectSchema = ArrowSchema(
+    [
+      ArrowField(
+        name: 'annotations',
+        metadata: {'field': 'annotations'},
+        type: ArrowListType(
+          ArrowField(
+            name: 'item',
+            type: ArrowStructType([
+              ArrowField(name: 'key', type: ArrowUtf8Type(), nullable: false, metadata: {'role': 'key'}),
+              ArrowField(name: 'value', type: ArrowUtf8Type(large: true), metadata: {'role': 'value'}),
+            ]),
+          ),
+        ),
+      ),
+    ],
+    metadata: {'schema': 'inspect'},
+  );
+  late final inspectSchemaBytes = ArrowIpcSchema.fromSchema(inspectSchema).bytes;
+  late Uint8List searchBatchBytes = _testArrowBatch(id: 1, label: 'search').ipcBytes;
+  late Uint8List sqlBatchBytes = _testArrowBatch(id: 2, label: 'sql').ipcBytes;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     final message = unpackMessage(data);
@@ -216,7 +256,7 @@ class _FakeDatasetsServer {
           );
           return;
         case 'inspect':
-          await protocol.send('__response__', JsonContent(json: {'fields': inspectFields, 'metadata': null}).pack(), id: messageId);
+          await protocol.send('__response__', BinaryContent(data: inspectSchemaBytes).pack(), id: messageId);
           return;
         case 'count':
           await protocol.send('__response__', JsonContent(json: {'count': 1}).pack(), id: messageId);
@@ -294,11 +334,21 @@ class _FakeDatasetsServer {
         return;
       }
 
-      if (chunk is! JsonContent) {
-        throw StateError('datasets.$tool expected JsonContent chunk');
-      }
-
       if (tool == 'create_table' || tool == 'insert' || tool == 'merge') {
+        if (chunk is BinaryContent) {
+          if (chunk.headers['kind'] == 'start') {
+            writeStarts[tool]!.add(Map<String, dynamic>.from(chunk.headers));
+            writeStartData[tool]!.add(chunk.data);
+            await _sendResponseChunk(protocol, toolCallId, BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}));
+            return;
+          }
+          writeChunks[tool]!.add({'headers': Map<String, dynamic>.from(chunk.headers), 'data': chunk.data});
+          await _sendResponseChunk(protocol, toolCallId, BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}));
+          return;
+        }
+        if (chunk is! JsonContent) {
+          throw StateError('datasets.$tool expected JsonContent or BinaryContent chunk');
+        }
         if (chunk.json['kind'] == 'start') {
           writeStarts[tool]!.add(Map<String, dynamic>.from(chunk.json));
           await _sendResponseChunk(protocol, toolCallId, JsonContent(json: const {'kind': 'pull'}));
@@ -310,17 +360,20 @@ class _FakeDatasetsServer {
       }
 
       if (tool == 'search' || tool == 'sql') {
-        if (chunk.json['kind'] == 'start') {
-          readStarts[tool]!.add(Map<String, dynamic>.from(chunk.json));
+        if (chunk is! BinaryContent) {
+          throw StateError('datasets.$tool expected BinaryContent chunk');
+        }
+        if (chunk.headers['kind'] == 'start') {
+          readStarts[tool]!.add(Map<String, dynamic>.from(chunk.headers));
           return;
         }
-        readPulls[tool]!.add(Map<String, dynamic>.from(chunk.json));
+        readPulls[tool]!.add(Map<String, dynamic>.from(chunk.headers));
         if (readPulls[tool]!.length == 1) {
-          if (tool == 'search') {
-            await _sendResponseChunk(protocol, toolCallId, JsonContent(json: _rowsChunk(searchRows)));
-          } else {
-            await _sendResponseChunk(protocol, toolCallId, JsonContent(json: _rowsChunk(sqlRows)));
-          }
+          await _sendResponseChunk(
+            protocol,
+            toolCallId,
+            BinaryContent(data: tool == 'search' ? searchBatchBytes : sqlBatchBytes, headers: const {'kind': 'data'}),
+          );
           return;
         }
         await _sendResponseChunk(protocol, toolCallId, ControlContent(method: 'close'));
@@ -366,17 +419,12 @@ Future<_DatasetsHarness> _startDatasetsHarness() async {
 }
 
 void main() {
+  final tableSchema = ArrowSchema([ArrowField(name: 'id', type: ArrowIntType(bitWidth: 64, signed: true))]);
+
   test('datasets client streams structured row chunks', () async {
     final harness = await _startDatasetsHarness();
 
-    await harness.room.datasets.createTableWithSchema(
-      name: 'records',
-      schema: {
-        'annotations': ListDataType(elementType: StructDataType(fields: {'key': TextDataType(), 'value': TextDataType()})),
-      },
-      branch: 'exp',
-      metadata: {'kind': 'demo'},
-    );
+    await harness.room.datasets.createTableWithSchema(name: 'records', schema: tableSchema, branch: 'exp', metadata: {'kind': 'demo'});
     await harness.room.datasets.createTableFromData(
       name: 'records-from-data',
       data: [
@@ -387,40 +435,24 @@ void main() {
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
-      records: [
-        {'payload': Uint8List.fromList('inserted'.codeUnits)},
-      ],
+      records: ArrowRecordBatch(Uint8List.fromList('inserted'.codeUnits)),
     );
     await harness.room.datasets.merge(
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
       on: 'id',
-      records: [
-        {'id': 1, 'payload': Uint8List.fromList('merged'.codeUnits)},
-      ],
+      records: ArrowRecordBatch(Uint8List.fromList('merged'.codeUnits)),
     );
 
     final createStart = harness.server.writeStarts['create_table']!.first;
-    expect(createStart['fields'], isA<List>());
-    final fields = createStart['fields'] as List<dynamic>;
-    expect(fields.single['name'], 'annotations');
-    expect(fields.single['data_type']['type'], 'list');
-    expect(fields.single['data_type']['element_type']['type'], 'struct');
-    expect(fields.single['data_type']['element_type']['fields'], [
-      {
-        'name': 'key',
-        'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
-      },
-      {
-        'name': 'value',
-        'data_type': {'type': 'text', 'nullable': null, 'metadata': null},
-      },
-    ]);
+    expect(createStart['kind'], 'start');
+    expect(createStart['name'], 'records');
     expect(createStart['metadata'], [
       {'key': 'kind', 'value': 'demo'},
     ]);
     expect(createStart['branch'], 'exp');
+    expect(ArrowIpcSchema(harness.server.writeStartData['create_table']!.first).schema.fields.single.name, 'id');
     expect(harness.server.writeChunks['create_table'], [
       _rowsChunk([
         {'created_at': DateTime.utc(2025, 5, 21, 18, 32, 56)},
@@ -433,9 +465,10 @@ void main() {
       'branch': 'exp',
     });
     expect(harness.server.writeChunks['insert'], [
-      _rowsChunk([
-        {'payload': Uint8List.fromList('inserted'.codeUnits)},
-      ]),
+      {
+        'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+        'data': Uint8List.fromList('inserted'.codeUnits),
+      },
     ]);
     expect(harness.server.writeStarts['merge']!.single, {
       'kind': 'start',
@@ -445,9 +478,68 @@ void main() {
       'branch': 'exp',
     });
     expect(harness.server.writeChunks['merge'], [
-      _rowsChunk([
-        {'id': 1, 'payload': Uint8List.fromList('merged'.codeUnits)},
-      ]),
+      {
+        'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+        'data': Uint8List.fromList('merged'.codeUnits),
+      },
+    ]);
+
+    await harness.dispose();
+  });
+
+  test('datasets client exposes native Arrow table helpers', () async {
+    final harness = await _startDatasetsHarness();
+    final batch = _testArrowBatch(id: 42, label: 'forty-two');
+    final table = ArrowTable(schema: batch.schema, batches: [batch]);
+
+    await harness.room.datasets.createTableFromArrowTable(
+      name: 'native_records',
+      table: table,
+      mode: CreateMode.overwrite,
+      namespace: ['team'],
+      branch: 'exp',
+      metadata: {'kind': 'arrow'},
+    );
+    await harness.room.datasets.insertTable(table: 'native_records', records: table, namespace: ['team'], branch: 'exp');
+    await harness.room.datasets.mergeTable(table: 'native_records', on: 'id', records: table, namespace: ['team'], branch: 'exp');
+
+    final searchTable = await harness.room.datasets.searchTable(table: 'native_records', branch: 'exp');
+    final sqlTable = await harness.room.datasets.sqlTable(
+      query: 'SELECT * FROM native_records',
+      tables: [TableRef(name: 'native_records', branch: 'exp')],
+    );
+
+    expect(harness.server.writeStarts['create_table']!.single, {
+      'kind': 'start',
+      'name': 'native_records',
+      'mode': 'overwrite',
+      'namespace': ['team'],
+      'branch': 'exp',
+      'metadata': [
+        {'key': 'kind', 'value': 'arrow'},
+      ],
+    });
+    expect(ArrowIpcSchema(harness.server.writeStartData['create_table']!.single).schema.fields.map((field) => field.name), ['id', 'label']);
+    expect(harness.server.writeChunks['create_table']!.single, {
+      'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+      'data': batch.ipcBytes,
+    });
+    expect(harness.server.writeChunks['insert']!.single, {
+      'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+      'data': batch.ipcBytes,
+    });
+    expect(harness.server.writeChunks['merge']!.single, {
+      'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+      'data': batch.ipcBytes,
+    });
+
+    expect(searchTable.schema.fields.map((field) => field.name), ['id', 'label']);
+    expect(searchTable.toRows(), [
+      {'id': BigInt.one, 'label': 'search'},
+    ]);
+    expect(sqlTable.schema.fields.map((field) => field.name), ['id', 'label']);
+    expect(sqlTable.toRows(), [
+      {'id': BigInt.from(2), 'label': 'sql'},
     ]);
 
     await harness.dispose();
@@ -456,26 +548,27 @@ void main() {
   test('datasets inspect, search, and sql decode streamed row chunks', () async {
     final harness = await _startDatasetsHarness();
 
-    final schema = await harness.room.datasets.inspect('records', branch: 'exp', version: 7);
-    expect(schema['annotations'], isA<ListDataType>());
-    final annotations = schema['annotations'] as ListDataType;
-    expect(annotations.elementType, isA<StructDataType>());
-    final struct = annotations.elementType as StructDataType;
-    expect(struct.fields['key'], isA<TextDataType>());
-    expect(struct.fields['value'], isA<TextDataType>());
+    final inspectedSchema = await harness.room.datasets.inspect('records', branch: 'exp', version: 7);
+    expect(inspectedSchema.fields.single.name, 'annotations');
+    expect(inspectedSchema.metadata, {'schema': 'inspect'});
+    expect(inspectedSchema.fields.single.metadata, {'field': 'annotations'});
+    final annotationsType = inspectedSchema.fields.single.type as ArrowListType;
+    final itemType = annotationsType.valueField.type as ArrowStructType;
+    expect(itemType.fields[0].nullable, isFalse);
+    expect(itemType.fields[0].metadata, {'role': 'key'});
+    final valueType = itemType.fields[1].type as ArrowUtf8Type;
+    expect(valueType.large, isTrue);
 
     final rows = await harness.room.datasets.search(table: 'records', branch: 'exp', version: 7);
     expect(rows, hasLength(1));
-    expect(rows.single['payload'], isA<Uint8List>());
-    expect(utf8.decode(rows.single['payload'] as Uint8List), 'hello');
+    expect(rows.single.ipcBytes, harness.server.searchBatchBytes);
 
     final sqlRows = await harness.room.datasets.sql(
       query: 'SELECT * FROM records',
       tables: [TableRef(name: 'records', branch: 'exp', version: 7)],
     );
     expect(sqlRows, hasLength(1));
-    expect(sqlRows.single['id'], 1);
-    expect(utf8.decode(sqlRows.single['payload'] as Uint8List), 'sql-result');
+    expect(sqlRows.single.ipcBytes, harness.server.sqlBatchBytes);
 
     final versions = await harness.room.datasets.listVersions('records', branch: 'exp');
     expect(versions, hasLength(1));
@@ -590,42 +683,33 @@ void main() {
       {'id': id},
     ];
 
-    await harness.room.datasets.createTableWithSchema(name: 'uuid_records', schema: {'id': UuidDataType()});
-    await harness.room.datasets.insert(
-      table: 'uuid_records',
-      records: [
-        {'id': id},
-      ],
-    );
+    await harness.room.datasets.createTableWithSchema(name: 'uuid_records', schema: tableSchema);
+    await harness.room.datasets.insert(table: 'uuid_records', records: ArrowRecordBatch(Uint8List.fromList([10, 11, 12])));
 
-    final schema = await harness.room.datasets.inspect('uuid_records');
-    expect(schema['id'], isA<UuidDataType>());
+    final inspectedSchema = await harness.room.datasets.inspect('uuid_records');
+    expect(inspectedSchema.fields.single.name, 'annotations');
 
     final rows = await harness.room.datasets.search(table: 'uuid_records', where: {'id': id});
     expect(rows, hasLength(1));
-    expect(rows.single['id'], equals(id));
+    expect(rows.single.ipcBytes, harness.server.searchBatchBytes);
 
     await harness.room.datasets.count(table: 'uuid_records', where: {'id': id});
 
     expect(harness.server.writeStarts['create_table']!.single, {
       'kind': 'start',
       'name': 'uuid_records',
-      'fields': [
-        {
-          'name': 'id',
-          'data_type': {'type': 'uuid', 'nullable': null, 'metadata': null},
-        },
-      ],
       'mode': 'create',
       'namespace': null,
       'branch': null,
       'metadata': null,
     });
+    expect(ArrowIpcSchema(harness.server.writeStartData['create_table']!.single).schema.fields.single.name, 'id');
     expect(harness.server.writeStarts['insert']!.single, {'kind': 'start', 'table': 'uuid_records', 'namespace': null, 'branch': null});
     expect(harness.server.writeChunks['insert'], [
-      _rowsChunk([
-        {'id': id},
-      ]),
+      {
+        'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+        'data': Uint8List.fromList([10, 11, 12]),
+      },
     ]);
     expect(harness.server.readStarts['search']!.single['where'], "id = X'123e4567e89b12d3a456426614174000'");
     expect(harness.server.requests.firstWhere((request) => request.tool == 'count').input, {
@@ -660,40 +744,30 @@ void main() {
       {'payload': payload},
     ];
 
-    await harness.room.datasets.createTableWithSchema(name: 'json_records', schema: {'payload': JsonDataType()});
-    await harness.room.datasets.insert(
-      table: 'json_records',
-      records: [
-        {'payload': payload},
-      ],
-    );
+    await harness.room.datasets.createTableWithSchema(name: 'json_records', schema: tableSchema);
+    await harness.room.datasets.insert(table: 'json_records', records: ArrowRecordBatch(Uint8List.fromList([13, 14, 15])));
 
-    final schema = await harness.room.datasets.inspect('json_records');
-    expect(schema['payload'], isA<JsonDataType>());
+    final inspectedSchema = await harness.room.datasets.inspect('json_records');
+    expect(inspectedSchema.fields.single.name, 'annotations');
 
     final rows = await harness.room.datasets.search(table: 'json_records');
     expect(rows, hasLength(1));
-    expect(rows.single['payload'], isA<DatasetJson>());
-    expect((rows.single['payload'] as DatasetJson).toJson(), payload.toJson());
+    expect(rows.single.ipcBytes, harness.server.searchBatchBytes);
 
     expect(harness.server.writeStarts['create_table']!.single, {
       'kind': 'start',
       'name': 'json_records',
-      'fields': [
-        {
-          'name': 'payload',
-          'data_type': {'type': 'json', 'nullable': null, 'metadata': null},
-        },
-      ],
       'mode': 'create',
       'namespace': null,
       'branch': null,
       'metadata': null,
     });
+    expect(ArrowIpcSchema(harness.server.writeStartData['create_table']!.single).schema.fields.single.name, 'id');
     expect(harness.server.writeChunks['insert'], [
-      _rowsChunk([
-        {'payload': payload},
-      ]),
+      {
+        'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+        'data': Uint8List.fromList([13, 14, 15]),
+      },
     ]);
 
     await harness.dispose();
@@ -706,9 +780,7 @@ void main() {
       table: 'records',
       namespace: ['team'],
       branch: 'exp',
-      records: [
-        {'id': DatasetExpression('uuid()'), 'upper_name': DatasetExpression('upper(name)')},
-      ],
+      records: ArrowRecordBatch(Uint8List.fromList([16, 17, 18])),
     );
 
     await harness.room.datasets.update(
@@ -726,9 +798,10 @@ void main() {
       'branch': 'exp',
     });
     expect(harness.server.writeChunks['insert'], [
-      _rowsChunk([
-        {'id': DatasetExpression('uuid()'), 'upper_name': DatasetExpression('upper(name)')},
-      ]),
+      {
+        'headers': {'kind': 'data', 'content_type': 'application/vnd.apache.arrow.stream'},
+        'data': Uint8List.fromList([16, 17, 18]),
+      },
     ]);
     expect(harness.server.requests.firstWhere((request) => request.tool == 'update').input, {
       'table': 'records',
@@ -759,15 +832,8 @@ void main() {
       tables: [TableRef(name: 'records')],
     );
 
-    expect(searchRows.single['event_date'], isA<DatasetDate>());
-    expect(searchRows.single['event_date'].toString(), '2026-04-09');
-    expect(searchRows.single['created_at'], isA<DateTime>());
-    expect((searchRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');
-
-    expect(sqlRows.single['event_date'], isA<DatasetDate>());
-    expect(sqlRows.single['event_date'].toString(), '2026-04-09');
-    expect(sqlRows.single['created_at'], isA<DateTime>());
-    expect((sqlRows.single['created_at'] as DateTime).toUtc().toIso8601String(), '2026-04-09T12:30:45.000Z');
+    expect(searchRows.single.ipcBytes, harness.server.searchBatchBytes);
+    expect(sqlRows.single.ipcBytes, harness.server.sqlBatchBytes);
 
     await harness.dispose();
   });

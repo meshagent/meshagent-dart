@@ -241,10 +241,10 @@ abstract class Requirement {
   static Requirement fromJson(Map<String, dynamic> json) {
     if (json["toolkit"] != null) {
       return RequiredToolkit.fromJson(json);
-    } else if (json["schema"] != null) {
-      return RequiredSchema.fromJson(json);
     } else if (json["table"] != null) {
       return RequiredTable.fromJson(json);
+    } else if (json["schema"] != null) {
+      return RequiredSchema.fromJson(json);
     }
     throw Exception("Unexpected requirement");
   }
@@ -273,8 +273,8 @@ class RequiredTable extends Requirement {
     this.vectorIndexes,
   });
 
-  /// Column name -> datatype
-  final Map<String, DataType> schema;
+  /// Arrow table schema.
+  final ArrowSchema schema;
 
   /// Optional namespace path
   final List<String>? namespace;
@@ -287,7 +287,7 @@ class RequiredTable extends Requirement {
   Map<String, dynamic> toJson() {
     return {
       'table': name,
-      'schema': schema.map((key, value) => MapEntry(key, value.toJson())),
+      'schema': base64Encode(ArrowIpcSchema.fromSchema(schema).bytes),
       'namespace': namespace,
       'scalar_indexes': scalarIndexes,
       'full_text_search_indexes': fullTextSearchIndexes,
@@ -296,11 +296,14 @@ class RequiredTable extends Requirement {
   }
 
   static RequiredTable fromJson(Map<String, dynamic> json) {
-    final rawSchema = json['schema'] as Map<String, dynamic>;
+    final rawSchema = json['schema'];
+    if (rawSchema is! String) {
+      throw RoomServerException("required table schema must be a base64 Arrow IPC schema");
+    }
 
     return RequiredTable(
       name: json['table'] as String,
-      schema: rawSchema.map((key, value) => MapEntry(key, DataType.fromJson(value as Map<String, dynamic>))),
+      schema: ArrowIpcSchema(Uint8List.fromList(base64Decode(rawSchema))).schema,
       namespace: (json['namespace'] as List?)?.cast<String>(),
       scalarIndexes: (json['scalar_indexes'] as List?)?.cast<String>(),
       fullTextSearchIndexes: (json['full_text_search_indexes'] as List?)?.cast<String>(),
