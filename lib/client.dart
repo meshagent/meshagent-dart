@@ -1642,11 +1642,11 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets');
     final body = <String, dynamic>{
       'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      if (secretId != null) 'secret_id': secretId,
-      if (name != null) 'name': name,
-      if (type != null) 'type': type,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (forIdentity != null) 'for_identity': forIdentity,
+      'secret_id': ?secretId,
+      'name': ?name,
+      'type': ?type,
+      'delegated_to': ?delegatedTo,
+      'for_identity': ?forIdentity,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -1677,10 +1677,10 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets/$encodedSecretId');
     final body = <String, dynamic>{
       'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      if (name != null) 'name': name,
-      if (type != null) 'type': type,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (forIdentity != null) 'for_identity': forIdentity,
+      'name': ?name,
+      'type': ?type,
+      'delegated_to': ?delegatedTo,
+      'for_identity': ?forIdentity,
     };
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
@@ -2333,10 +2333,10 @@ class Meshagent {
     final body = {
       'project_id': projectId,
       'user_id': userId,
-      if (isAdmin != null) "is_admin": isAdmin,
-      if (isDeveloper != null) "is_developer": isDeveloper,
-      if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
-      if (canUseLlmProxy != null) "can_use_llm_proxy": canUseLlmProxy,
+      "is_admin": ?isAdmin,
+      "is_developer": ?isDeveloper,
+      "can_create_rooms": ?canCreateRooms,
+      "can_use_llm_proxy": ?canUseLlmProxy,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -2438,8 +2438,8 @@ class Meshagent {
     final queryParams = <String, String>{
       if (start != null) "start": start.toIso8601String(),
       if (end != null) "end": end.toIso8601String(),
-      if (interval != null) "interval": interval,
-      if (report != null) "report": report,
+      "interval": ?interval,
+      "report": ?report,
       if (users != null && users.isNotEmpty) "users": users.join(","),
       if (room != null && room.trim().isNotEmpty) "room": room.trim(),
       if (provider != null && provider.trim().isNotEmpty) "provider": provider.trim(),
@@ -2502,10 +2502,10 @@ class Meshagent {
     final body = {
       'project_id': projectId,
       'email': email,
-      if (isAdmin != null) "is_admin": isAdmin,
-      if (isDeveloper != null) "is_developer": isDeveloper,
-      if (canCreateRooms != null) "can_create_rooms": canCreateRooms,
-      if (canUseLlmProxy != null) "can_use_llm_proxy": canUseLlmProxy,
+      "is_admin": ?isAdmin,
+      "is_developer": ?isDeveloper,
+      "can_create_rooms": ?canCreateRooms,
+      "can_use_llm_proxy": ?canUseLlmProxy,
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -3528,9 +3528,9 @@ class Meshagent {
     final body = <String, dynamic>{
       'oauth': oauth.toJson(),
       'client_id': clientId,
-      if (clientSecret != null) 'client_secret': clientSecret,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (connector != null) 'connector': connector.toJson(),
+      'client_secret': ?clientSecret,
+      'delegated_to': ?delegatedTo,
+      'connector': ?connector?.toJson(),
     };
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
@@ -3559,9 +3559,9 @@ class Meshagent {
     final body = <String, dynamic>{
       'oauth': oauth.toJson(),
       'client_id': clientId,
-      if (clientSecret != null) 'client_secret': clientSecret,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (connector != null) 'connector': connector.toJson(),
+      'client_secret': ?clientSecret,
+      'delegated_to': ?delegatedTo,
+      'connector': ?connector?.toJson(),
     };
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -3634,9 +3634,9 @@ class Meshagent {
     final body = <String, dynamic>{
       'oauth': oauth.toJson(),
       'client_id': clientId,
-      if (clientSecret != null) 'client_secret': clientSecret,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (connector != null) 'connector': connector.toJson(),
+      'client_secret': ?clientSecret,
+      'delegated_to': ?delegatedTo,
+      'connector': ?connector?.toJson(),
     };
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
@@ -3667,9 +3667,9 @@ class Meshagent {
     final body = <String, dynamic>{
       'oauth': oauth.toJson(),
       'client_id': clientId,
-      if (clientSecret != null) 'client_secret': clientSecret,
-      if (delegatedTo != null) 'delegated_to': delegatedTo,
-      if (connector != null) 'connector': connector.toJson(),
+      'client_secret': ?clientSecret,
+      'delegated_to': ?delegatedTo,
+      'connector': ?connector?.toJson(),
     };
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
