@@ -33,7 +33,7 @@ resolution: workspace
 dependencies:
   async: ^2.13.0
   meshagent_dart_arrow: ^0.38.4
-  dart_jsonwebtoken: ^2.14.2
+  dart_jsonwebtoken: ^3.4.1
   http: ^1.6.0
   json_schema: ^5.2.0
   logging: ^1.3.0
