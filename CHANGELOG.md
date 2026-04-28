@@ -1,3 +1,11 @@
+## [0.39.0]
+- Added expanded dataset index management support to the Dart datasets client, including index configuration/remapping and richer index metadata.
+- Added dataset SQL cancellation support to Dart datasets client operations, including typed cancel status/results.
+- Applied “database” -> “datasets” terminology and API/tooling updates across Dart clients (breaking for prior database-named usage).
+- Updated Dart clients to support improved usage/cost reporting plumbing (usage export/annotations) and enhanced LLM proxy “pipes” plus custom LLM usage tracking.
+- Added/updated the Dart Arrow package for Arrow body compression with VM/web support and interop coverage.
+- Updated Dart SDK pricing-related surfaces to include gpt-5.5 model release pricing.
+
 ## [0.38.4]
 - Added `delete({projectId, path})` to the Dart `Meshagent` client for project storage deletion (`/projects/:project_id/storage/delete`), throwing `NotFoundException` on 404.
 
