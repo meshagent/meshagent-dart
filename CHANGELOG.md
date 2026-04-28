@@ -1,3 +1,8 @@
+## [0.39.1]
+- Added paged response model types (e.g., `MailboxesPage`, `RoutesPage`, `FeedsPage`, `ScheduledTasksPage`, plus related paging models for users/rooms/grants/OAuth clients).
+- Added `Meshagent` Dart client methods for paged listing (e.g., `listMailboxesPage`, `listRoutesPage`, `listFeedsPage`, `listRoomsPage`, `listRoomGrantsByUserPage`, `listUniqueUsersWithGrantsPage`, `listOAuthClientsPage`, `listScheduledTasksPage`) with `count`/`offset`/`filter` support and `total`.
+- Updated existing Dart list methods to route through paging and accept `count`/`offset`/`filter` options, with default page-size behavior updated (default page size changed from the prior smaller default behavior).
+
 ## [0.39.0]
 - Added expanded dataset index management support to the Dart datasets client, including index configuration/remapping and richer index metadata.
 - Added dataset SQL cancellation support to Dart datasets client operations, including typed cancel status/results.
