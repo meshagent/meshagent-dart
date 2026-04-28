@@ -1,3 +1,6 @@
+## [0.39.2]
+- Updated Dart/Flutter SDK package versions and internal dependency constraints to `0.39.1` (from `0.39.0`) across the `meshagent` Flutter-related packages (e.g. `meshagent_flutter`, `meshagent_flutter_auth`, `meshagent_flutter_shadcn`, `meshagent_super_editor`, `meshagent_flutter_dev`, and related SDK packages).
+
 ## [0.39.1]
 - Added paged response model types (e.g., `MailboxesPage`, `RoutesPage`, `FeedsPage`, `ScheduledTasksPage`, plus related paging models for users/rooms/grants/OAuth clients).
 - Added `Meshagent` Dart client methods for paged listing (e.g., `listMailboxesPage`, `listRoutesPage`, `listFeedsPage`, `listRoomsPage`, `listRoomGrantsByUserPage`, `listUniqueUsersWithGrantsPage`, `listOAuthClientsPage`, `listScheduledTasksPage`) with `count`/`offset`/`filter` support and `total`.
