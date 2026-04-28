@@ -1131,8 +1131,31 @@ class DatasetsClient {
     return count.toInt();
   }
 
-  Future<void> optimize({required String table, List<String>? namespace, String? branch}) async {
-    await _invoke("optimize", {"table": table, "namespace": namespace, "branch": branch});
+  Future<DatasetOptimizeResult> optimize({
+    required String table,
+    List<String>? namespace,
+    String? branch,
+    DatasetOptimizeConfig? config,
+  }) async {
+    final response = await _invoke("optimize", {"table": table, "namespace": namespace, "branch": branch, "config": config?.toJson()});
+    if (response is! JsonContent) {
+      throw RoomServerException("unexpected return type from datasets.optimize call");
+    }
+    return DatasetOptimizeResult.fromJson(response.json);
+  }
+
+  Future<DatasetTableStats> stats(String table, {List<String>? namespace, String? branch, int? version, int? maxRowsPerGroup}) async {
+    final response = await _invoke("stats", {
+      "table": table,
+      "namespace": namespace,
+      "branch": branch,
+      "version": version,
+      "max_rows_per_group": maxRowsPerGroup,
+    });
+    if (response is! JsonContent) {
+      throw RoomServerException("unexpected return type from datasets.stats call");
+    }
+    return DatasetTableStats.fromJson(response.json);
   }
 
   Future<void> restore({required String table, required int version, List<String>? namespace, String? branch}) async {
@@ -1178,40 +1201,8 @@ class DatasetsClient {
         .toList(growable: false);
   }
 
-  Future<void> createVectorIndex({
-    required String table,
-    required String column,
-    List<String>? namespace,
-    String? branch,
-    bool replace = false,
-  }) async {
-    await _invoke("create_vector_index", {"table": table, "column": column, "namespace": namespace, "branch": branch, "replace": replace});
-  }
-
-  Future<void> createScalarIndex({
-    required String table,
-    required String column,
-    List<String>? namespace,
-    String? branch,
-    bool replace = false,
-  }) async {
-    await _invoke("create_scalar_index", {"table": table, "column": column, "namespace": namespace, "branch": branch, "replace": replace});
-  }
-
-  Future<void> createFullTextSearchIndex({
-    required String table,
-    required String column,
-    List<String>? namespace,
-    String? branch,
-    bool replace = false,
-  }) async {
-    await _invoke("create_full_text_search_index", {
-      "table": table,
-      "column": column,
-      "namespace": namespace,
-      "branch": branch,
-      "replace": replace,
-    });
+  Future<void> createIndex({required String table, required DatasetIndexConfig config, List<String>? namespace, String? branch}) async {
+    await _invoke("create_index", {"table": table, "config": config.toJson(), "namespace": namespace, "branch": branch});
   }
 
   Future<List<TableIndex>> listIndexes(String table, {List<String>? namespace, String? branch, int? version}) async {
@@ -1256,14 +1247,317 @@ class TableVersion {
 }
 
 class TableIndex {
-  const TableIndex({required this.columns, required this.type, required this.name});
+  const TableIndex({
+    required this.columns,
+    required this.type,
+    required this.name,
+    this.fields = const [],
+    this.typeUrl,
+    this.numRowsIndexed,
+    this.numSegments,
+    this.totalSizeBytes,
+    this.details = const {},
+    this.statistics = const {},
+  });
 
   final List<String> columns;
   final String name;
   final String type;
+  final List<int> fields;
+  final String? typeUrl;
+  final int? numRowsIndexed;
+  final int? numSegments;
+  final int? totalSizeBytes;
+  final Map<String, dynamic> details;
+  final Map<String, dynamic> statistics;
 
   static TableIndex fromJson(Map<String, dynamic> json) {
-    return TableIndex(columns: [...json["columns"]], type: json["type"], name: json["name"]);
+    final detailsJson = json["details_json"];
+    final statisticsJson = json["statistics_json"];
+    return TableIndex(
+      columns: [...json["columns"]],
+      type: json["type"],
+      name: json["name"],
+      fields: (json["fields"] as List? ?? const []).map((value) => (value as num).toInt()).toList(growable: false),
+      typeUrl: json["type_url"] as String?,
+      numRowsIndexed: (json["num_rows_indexed"] as num?)?.toInt(),
+      numSegments: (json["num_segments"] as num?)?.toInt(),
+      totalSizeBytes: (json["total_size_bytes"] as num?)?.toInt(),
+      details: detailsJson is String
+          ? Map<String, dynamic>.from(jsonDecode(detailsJson) as Map)
+          : Map<String, dynamic>.from(json["details"] as Map? ?? const {}),
+      statistics: statisticsJson is String
+          ? Map<String, dynamic>.from(jsonDecode(statisticsJson) as Map)
+          : Map<String, dynamic>.from(json["statistics"] as Map? ?? const {}),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      "name": name,
+      "columns": columns,
+      "type": type,
+      "fields": fields,
+      "type_url": typeUrl,
+      "num_rows_indexed": numRowsIndexed,
+      "num_segments": numSegments,
+      "total_size_bytes": totalSizeBytes,
+      "details": details,
+      "statistics": statistics,
+    };
+  }
+}
+
+class DatasetOptimizeConfig {
+  const DatasetOptimizeConfig({
+    this.compactFiles = true,
+    this.optimizeIndices = true,
+    this.cleanupOldVersions = true,
+    this.targetRowsPerFragment,
+    this.maxRowsPerGroup,
+    this.maxBytesPerFile,
+    this.materializeDeletions,
+    this.materializeDeletionsThreshold,
+    this.deferIndexRemap,
+    this.numThreads,
+    this.batchSize,
+    this.compactionMode,
+    this.binaryCopyReadBatchBytes,
+    this.numIndicesToMerge,
+    this.indexNames,
+    this.retrain,
+    this.olderThanSeconds = 604800,
+    this.retainVersions,
+    this.deleteUnverified,
+    this.errorIfTaggedOldVersions,
+    this.deleteRateLimit,
+  });
+
+  final bool? compactFiles;
+  final bool? optimizeIndices;
+  final bool? cleanupOldVersions;
+  final int? targetRowsPerFragment;
+  final int? maxRowsPerGroup;
+  final int? maxBytesPerFile;
+  final bool? materializeDeletions;
+  final double? materializeDeletionsThreshold;
+  final bool? deferIndexRemap;
+  final int? numThreads;
+  final int? batchSize;
+  final String? compactionMode;
+  final int? binaryCopyReadBatchBytes;
+  final int? numIndicesToMerge;
+  final List<String>? indexNames;
+  final bool? retrain;
+  final double? olderThanSeconds;
+  final int? retainVersions;
+  final bool? deleteUnverified;
+  final bool? errorIfTaggedOldVersions;
+  final int? deleteRateLimit;
+
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{};
+    void add(String key, Object? value) {
+      if (value != null) json[key] = value;
+    }
+
+    add("compact_files", compactFiles);
+    add("optimize_indices", optimizeIndices);
+    add("cleanup_old_versions", cleanupOldVersions);
+    add("target_rows_per_fragment", targetRowsPerFragment);
+    add("max_rows_per_group", maxRowsPerGroup);
+    add("max_bytes_per_file", maxBytesPerFile);
+    add("materialize_deletions", materializeDeletions);
+    add("materialize_deletions_threshold", materializeDeletionsThreshold);
+    add("defer_index_remap", deferIndexRemap);
+    add("num_threads", numThreads);
+    add("batch_size", batchSize);
+    add("compaction_mode", compactionMode);
+    add("binary_copy_read_batch_bytes", binaryCopyReadBatchBytes);
+    add("num_indices_to_merge", numIndicesToMerge);
+    add("index_names", indexNames);
+    add("retrain", retrain);
+    add("older_than_seconds", olderThanSeconds);
+    add("retain_versions", retainVersions);
+    add("delete_unverified", deleteUnverified);
+    add("error_if_tagged_old_versions", errorIfTaggedOldVersions);
+    add("delete_rate_limit", deleteRateLimit);
+    return json;
+  }
+}
+
+class DatasetOptimizeResult {
+  const DatasetOptimizeResult({this.compaction, required this.optimizedIndices, this.cleanup});
+
+  final Map<String, dynamic>? compaction;
+  final bool optimizedIndices;
+  final Map<String, dynamic>? cleanup;
+
+  static DatasetOptimizeResult fromJson(Map<String, dynamic> json) {
+    final compactionJson = json["compaction_json"];
+    final cleanupJson = json["cleanup_json"];
+    return DatasetOptimizeResult(
+      compaction: compactionJson is String
+          ? Map<String, dynamic>.from(jsonDecode(compactionJson) as Map)
+          : json["compaction"] == null
+          ? null
+          : Map<String, dynamic>.from(json["compaction"] as Map),
+      optimizedIndices: json["optimized_indices"] as bool? ?? false,
+      cleanup: cleanupJson is String
+          ? Map<String, dynamic>.from(jsonDecode(cleanupJson) as Map)
+          : json["cleanup"] == null
+          ? null
+          : Map<String, dynamic>.from(json["cleanup"] as Map),
+    );
+  }
+
+  Map<String, Object?> toJson() => {"compaction": compaction, "optimized_indices": optimizedIndices, "cleanup": cleanup};
+}
+
+class DatasetTableStats {
+  const DatasetTableStats({required this.dataset, required this.data});
+
+  final Map<String, dynamic> dataset;
+  final Map<String, dynamic> data;
+
+  static DatasetTableStats fromJson(Map<String, dynamic> json) {
+    final datasetJson = json["dataset_json"];
+    final dataJson = json["data_json"];
+    return DatasetTableStats(
+      dataset: datasetJson is String
+          ? Map<String, dynamic>.from(jsonDecode(datasetJson) as Map)
+          : Map<String, dynamic>.from(json["dataset"] as Map),
+      data: dataJson is String ? Map<String, dynamic>.from(jsonDecode(dataJson) as Map) : Map<String, dynamic>.from(json["data"] as Map),
+    );
+  }
+
+  Map<String, Object?> toJson() => {"dataset": dataset, "data": data};
+}
+
+class DatasetIndexConfig {
+  const DatasetIndexConfig({
+    required this.column,
+    required this.indexType,
+    this.name,
+    this.metric,
+    this.replace,
+    this.numPartitions,
+    this.ivfCentroids,
+    this.pqCodebook,
+    this.numSubVectors,
+    this.accelerator,
+    this.indexCacheSize,
+    this.shufflePartitionBatches,
+    this.shufflePartitionConcurrency,
+    this.ivfCentroidsFile,
+    this.precomputedPartitionDataset,
+    this.filterNan,
+    this.train,
+    this.fragmentIds,
+    this.indexUuid,
+    this.targetPartitionSize,
+    this.skipTranspose,
+    this.numBits,
+    this.indexFileVersion,
+    this.maxLevel,
+    this.m,
+    this.efConstruction,
+    this.withPosition,
+    this.memoryLimit,
+    this.numWorkers,
+    this.skipMerge,
+    this.baseTokenizer,
+    this.language,
+    this.maxTokenLength,
+    this.lowerCase,
+    this.stem,
+    this.removeStopWords,
+    this.customStopWords,
+    this.asciiFolding,
+  });
+
+  final Object column;
+  final String indexType;
+  final String? name;
+  final String? metric;
+  final bool? replace;
+  final int? numPartitions;
+  final List<List<double>>? ivfCentroids;
+  final List<List<double>>? pqCodebook;
+  final int? numSubVectors;
+  final String? accelerator;
+  final int? indexCacheSize;
+  final int? shufflePartitionBatches;
+  final int? shufflePartitionConcurrency;
+  final String? ivfCentroidsFile;
+  final String? precomputedPartitionDataset;
+  final bool? filterNan;
+  final bool? train;
+  final List<int>? fragmentIds;
+  final String? indexUuid;
+  final int? targetPartitionSize;
+  final bool? skipTranspose;
+  final int? numBits;
+  final String? indexFileVersion;
+  final int? maxLevel;
+  final int? m;
+  final int? efConstruction;
+  final bool? withPosition;
+  final int? memoryLimit;
+  final int? numWorkers;
+  final bool? skipMerge;
+  final String? baseTokenizer;
+  final String? language;
+  final int? maxTokenLength;
+  final bool? lowerCase;
+  final bool? stem;
+  final bool? removeStopWords;
+  final List<String>? customStopWords;
+  final bool? asciiFolding;
+
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{'column': column, 'index_type': indexType};
+    void add(String key, Object? value) {
+      if (value != null) json[key] = value;
+    }
+
+    add('name', name);
+    add('metric', metric);
+    add('replace', replace);
+    add('num_partitions', numPartitions);
+    add('ivf_centroids', ivfCentroids);
+    add('pq_codebook', pqCodebook);
+    add('num_sub_vectors', numSubVectors);
+    add('accelerator', accelerator);
+    add('index_cache_size', indexCacheSize);
+    add('shuffle_partition_batches', shufflePartitionBatches);
+    add('shuffle_partition_concurrency', shufflePartitionConcurrency);
+    add('ivf_centroids_file', ivfCentroidsFile);
+    add('precomputed_partition_dataset', precomputedPartitionDataset);
+    add('filter_nan', filterNan);
+    add('train', train);
+    add('fragment_ids', fragmentIds);
+    add('index_uuid', indexUuid);
+    add('target_partition_size', targetPartitionSize);
+    add('skip_transpose', skipTranspose);
+    add('num_bits', numBits);
+    add('index_file_version', indexFileVersion);
+    add('max_level', maxLevel);
+    add('m', m);
+    add('ef_construction', efConstruction);
+    add('with_position', withPosition);
+    add('memory_limit', memoryLimit);
+    add('num_workers', numWorkers);
+    add('skip_merge', skipMerge);
+    add('base_tokenizer', baseTokenizer);
+    add('language', language);
+    add('max_token_length', maxTokenLength);
+    add('lower_case', lowerCase);
+    add('stem', stem);
+    add('remove_stop_words', removeStopWords);
+    add('custom_stop_words', customStopWords);
+    add('ascii_folding', asciiFolding);
+    return json;
   }
 }
 

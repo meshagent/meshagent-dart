@@ -747,7 +747,11 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final vi in table.vectorIndexes ?? const <String>[]) {
     if (indexExists(vi)) continue;
     try {
-      await datasets.createVectorIndex(table: table.name, column: vi, namespace: table.namespace, replace: true);
+      await datasets.createIndex(
+        table: table.name,
+        config: DatasetIndexConfig(column: vi, indexType: 'IVF_PQ', replace: true),
+        namespace: table.namespace,
+      );
     } catch (error, st) {
       logger.warning('unable to create vector index for "$vi": $error', error, st);
     }
@@ -756,7 +760,11 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final ti in table.fullTextSearchIndexes ?? const <String>[]) {
     if (indexExists(ti)) continue;
     try {
-      await datasets.createFullTextSearchIndex(table: table.name, column: ti, namespace: table.namespace, replace: true);
+      await datasets.createIndex(
+        table: table.name,
+        config: DatasetIndexConfig(column: ti, indexType: 'INVERTED', replace: true),
+        namespace: table.namespace,
+      );
     } catch (error, st) {
       logger.warning('unable to create full text search index for "$ti": $error', error, st);
     }
@@ -765,7 +773,11 @@ Future<void> installTable(RoomClient room, RequiredTable table, {Logger? logger,
   for (final si in table.scalarIndexes ?? const <String>[]) {
     if (indexExists(si)) continue;
     try {
-      await datasets.createScalarIndex(table: table.name, column: si, namespace: table.namespace, replace: true);
+      await datasets.createIndex(
+        table: table.name,
+        config: DatasetIndexConfig(column: si, indexType: 'BTREE', replace: true),
+        namespace: table.namespace,
+      );
     } catch (error, st) {
       logger.warning('unable to create scalar index for "$si": $error', error, st);
     }

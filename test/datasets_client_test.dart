@@ -339,6 +339,31 @@ class _FakeDatasetsServer {
             id: messageId,
           );
           return;
+        case 'optimize':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'compaction': {'fragments_removed': 0, 'fragments_added': 0, 'files_removed': 0, 'files_added': 0},
+                'optimized_indices': true,
+                'cleanup': {'bytes_removed': 0},
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
+        case 'stats':
+          await protocol.send(
+            '__response__',
+            JsonContent(
+              json: {
+                'dataset': {'num_fragments': 1},
+                'data': {'fields': []},
+              },
+            ).pack(),
+            id: messageId,
+          );
+          return;
         default:
           await protocol.send('__response__', EmptyContent().pack(), id: messageId);
           return;
@@ -615,9 +640,18 @@ void main() {
     expect(branches.single.manifestSize, 1);
 
     await harness.room.datasets.createBranch(branch: 'exp', fromBranch: 'main', namespace: ['team']);
+    await harness.room.datasets.createIndex(
+      table: 'records',
+      config: const DatasetIndexConfig(column: 'embedding', indexType: 'IVF_PQ', numPartitions: 32, numSubVectors: 8),
+      namespace: ['team'],
+      branch: 'exp',
+    );
     await harness.room.datasets.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
     await harness.room.datasets.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
-    await harness.room.datasets.optimize(table: 'records', namespace: ['team'], branch: 'exp');
+    final optimizeResult = await harness.room.datasets.optimize(table: 'records', namespace: ['team'], branch: 'exp');
+    expect(optimizeResult.optimizedIndices, isTrue);
+    final stats = await harness.room.datasets.stats('records', namespace: ['team'], branch: 'exp', version: 7);
+    expect(stats.dataset['num_fragments'], 1);
     final indexes = await harness.room.datasets.listIndexes('records', namespace: ['team'], branch: 'exp', version: 7);
     expect(indexes, hasLength(1));
     expect(indexes.single.name, 'idx_records_id');
@@ -700,11 +734,30 @@ void main() {
       'namespace': ['team'],
       'branch': 'exp',
     });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'create_index').input, {
+      'table': 'records',
+      'config': {'column': 'embedding', 'index_type': 'IVF_PQ', 'num_partitions': 32, 'num_sub_vectors': 8},
+      'namespace': ['team'],
+      'branch': 'exp',
+    });
     expect(harness.server.requests.firstWhere((request) => request.tool == 'list_indexes').input, {
       'table': 'records',
       'namespace': ['team'],
       'branch': 'exp',
       'version': 7,
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'optimize').input, {
+      'table': 'records',
+      'namespace': ['team'],
+      'branch': 'exp',
+      'config': null,
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'stats').input, {
+      'table': 'records',
+      'namespace': ['team'],
+      'branch': 'exp',
+      'version': 7,
+      'max_rows_per_group': null,
     });
     expect(harness.server.requests.firstWhere((request) => request.tool == 'delete_branch').input, {
       'branch': 'exp',
