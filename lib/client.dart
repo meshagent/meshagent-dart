@@ -164,6 +164,18 @@ class Mailbox {
   };
 }
 
+class MailboxesPage {
+  final List<Mailbox> mailboxes;
+  final int total;
+
+  MailboxesPage({required this.mailboxes, required this.total});
+
+  factory MailboxesPage.fromJson(Map<String, dynamic> json) {
+    final list = json['mailboxes'] as List<dynamic>? ?? [];
+    return MailboxesPage(mailboxes: list.whereType<Map<String, dynamic>>().map(Mailbox.fromJson).toList(), total: _parseInt(json['total']));
+  }
+}
+
 class Route {
   final String domain;
   final String roomName;
@@ -180,6 +192,18 @@ class Route {
   );
 
   Map<String, dynamic> toJson() => {'domain': domain, 'room_name': roomName, 'port': port, 'annotations': annotations};
+}
+
+class RoutesPage {
+  final List<Route> routes;
+  final int total;
+
+  RoutesPage({required this.routes, required this.total});
+
+  factory RoutesPage.fromJson(Map<String, dynamic> json) {
+    final list = json['routes'] as List<dynamic>? ?? [];
+    return RoutesPage(routes: list.whereType<Map<String, dynamic>>().map(Route.fromJson).toList(), total: _parseInt(json['total']));
+  }
 }
 
 class Feed {
@@ -228,6 +252,18 @@ class Feed {
     'annotations': annotations,
     'message_schema': messageSchema,
   };
+}
+
+class FeedsPage {
+  final List<Feed> feeds;
+  final int total;
+
+  FeedsPage({required this.feeds, required this.total});
+
+  factory FeedsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['feeds'] as List<dynamic>? ?? [];
+    return FeedsPage(feeds: list.whereType<Map<String, dynamic>>().map(Feed.fromJson).toList(), total: _parseInt(json['total']));
+  }
 }
 
 class FeedSubscription {
@@ -582,6 +618,21 @@ class ScheduledTask {
   };
 }
 
+class ScheduledTasksPage {
+  final List<ScheduledTask> tasks;
+  final int total;
+
+  ScheduledTasksPage({required this.tasks, required this.total});
+
+  factory ScheduledTasksPage.fromJson(Map<String, dynamic> json) {
+    final list = json['tasks'] as List<dynamic>? ?? [];
+    return ScheduledTasksPage(
+      tasks: list.whereType<Map>().map((m) => ScheduledTask.fromJson(m.cast<String, dynamic>())).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
 class _CreateScheduledTaskRequest {
   _CreateScheduledTaskRequest({
     this.id,
@@ -758,9 +809,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/mailboxes
   /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
-  Future<List<Mailbox>> listMailboxes(String projectId) async {
+  Future<MailboxesPage> listMailboxesPage(String projectId, {int count = 100, int offset = 0, String? filter}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -771,17 +824,29 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['mailboxes'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Mailbox.fromJson).toList();
+    return MailboxesPage.fromJson(data);
+  }
+
+  Future<List<Mailbox>> listMailboxes(String projectId, {int count = 100, int offset = 0, String? filter}) async {
+    final page = await listMailboxesPage(projectId, count: count, offset: offset, filter: filter);
+    return page.mailboxes;
   }
 
   /// GET /accounts/projects/{project_id}/rooms/{room_name}/mailboxes
   /// Returns { "mailboxes": [ { "address","room","queue" }, ... ] }
-  Future<List<Mailbox>> listRoomMailboxes({required String projectId, required String roomName}) async {
+  Future<MailboxesPage> listRoomMailboxesPage({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomName = Uri.encodeComponent(roomName);
 
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/mailboxes');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/mailboxes').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -792,8 +857,18 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['mailboxes'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Mailbox.fromJson).toList();
+    return MailboxesPage.fromJson(data);
+  }
+
+  Future<List<Mailbox>> listRoomMailboxes({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listRoomMailboxesPage(projectId: projectId, roomName: roomName, count: count, offset: offset, filter: filter);
+    return page.mailboxes;
   }
 
   /// DELETE /accounts/projects/{project_id}/mailboxes/{address}
@@ -886,9 +961,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/routes
   /// Returns { "routes": [ { "domain","room_name" }, ... ] }
-  Future<List<Route>> listRoutes(String projectId) async {
+  Future<RoutesPage> listRoutesPage(String projectId, {int count = 100, int offset = 0, String? filter}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -899,17 +976,29 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['routes'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Route.fromJson).toList();
+    return RoutesPage.fromJson(data);
+  }
+
+  Future<List<Route>> listRoutes(String projectId, {int count = 100, int offset = 0, String? filter}) async {
+    final page = await listRoutesPage(projectId, count: count, offset: offset, filter: filter);
+    return page.routes;
   }
 
   /// GET /accounts/projects/{project_id}/rooms/{room_name}/routes
   /// Returns { "routes": [ { "domain","room_name" }, ... ] }
-  Future<List<Route>> listRoomRoutes({required String projectId, required String roomName}) async {
+  Future<RoutesPage> listRoomRoutesPage({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomName = Uri.encodeComponent(roomName);
 
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/routes');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/routes').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -920,8 +1009,18 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['routes'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Route.fromJson).toList();
+    return RoutesPage.fromJson(data);
+  }
+
+  Future<List<Route>> listRoomRoutes({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listRoomRoutesPage(projectId: projectId, roomName: roomName, count: count, offset: offset, filter: filter);
+    return page.routes;
   }
 
   /// DELETE /accounts/projects/{project_id}/routes/{domain}
@@ -1017,9 +1116,11 @@ class Meshagent {
     return Feed.fromJson(data['feed'] as Map<String, dynamic>);
   }
 
-  Future<List<Feed>> listFeeds(String projectId) async {
+  Future<FeedsPage> listFeedsPage(String projectId, {int count = 100, int offset = 0, String? filter}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -1030,14 +1131,26 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['feeds'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Feed.fromJson).toList();
+    return FeedsPage.fromJson(data);
   }
 
-  Future<List<Feed>> listRoomFeeds({required String projectId, required String roomName}) async {
+  Future<List<Feed>> listFeeds(String projectId, {int count = 100, int offset = 0, String? filter}) async {
+    final page = await listFeedsPage(projectId, count: count, offset: offset, filter: filter);
+    return page.feeds;
+  }
+
+  Future<FeedsPage> listRoomFeedsPage({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomName = Uri.encodeComponent(roomName);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/feeds');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/feeds').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -1048,8 +1161,18 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['feeds'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Feed.fromJson).toList();
+    return FeedsPage.fromJson(data);
+  }
+
+  Future<List<Feed>> listRoomFeeds({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listRoomFeedsPage(projectId: projectId, roomName: roomName, count: count, offset: offset, filter: filter);
+    return page.feeds;
   }
 
   Future<void> deleteFeed({required String projectId, required String feedId}) async {
@@ -2534,12 +2657,22 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/:project_id/users
   /// Returns JSON like { "users": [...] } on success.
-  Future<List<Map<String, dynamic>>> getUsersInProject(String projectId, {String? email}) async {
+  Future<ProjectMembersPage> getUsersInProjectPage(
+    String projectId, {
+    String? email,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     Uri uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
 
     if (email != null) {
       uri = uri.replace(queryParameters: {"email": email});
+    } else {
+      final query = <String, String>{'count': '$count', 'offset': '$offset'};
+      if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+      uri = uri.replace(queryParameters: query);
     }
 
     final response = await httpClient.get(uri);
@@ -2547,7 +2680,18 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get users in project. Status code: ${response.statusCode}, body: ${response.body}');
     }
-    return (jsonDecode(response.body)["users"] as List).whereType<Map<String, dynamic>>().toList();
+    return ProjectMembersPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> getUsersInProject(
+    String projectId, {
+    String? email,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await getUsersInProjectPage(projectId, email: email, count: count, offset: offset, filter: filter);
+    return page.users;
   }
 
   /// Corresponds to: GET /accounts/profiles/:user_id
@@ -3119,12 +3263,32 @@ class Meshagent {
     return ProjectRoomGrant.fromJson(data);
   }
 
-  /// GET /accounts/projects/{project_id}/rooms?limit=&offset=&order_by=
-  Future<List<Room>> listRooms({required String projectId, int limit = 50, int offset = 0, String orderBy = 'room_name'}) async {
+  /// GET /accounts/projects/{project_id}/rooms?limit=&offset=&order_by=&filter=
+  Future<List<Room>> listRooms({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'room_name',
+    String? filter,
+  }) async {
+    final page = await listRoomsPage(projectId: projectId, limit: limit, offset: offset, orderBy: orderBy, filter: filter);
+    return page.rooms;
+  }
+
+  /// GET /accounts/projects/{project_id}/rooms?limit=&offset=&order_by=&filter=
+  Future<RoomsPage> listRoomsPage({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'room_name',
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms',
-    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final queryParameters = {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy};
+    if (filter != null) {
+      queryParameters['filter'] = filter;
+    }
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms').replace(queryParameters: queryParameters);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -3135,8 +3299,7 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['rooms'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(Room.fromJson).toList();
+    return RoomsPage.fromJson(data);
   }
 
   /// GET /accounts/projects/{project_id}/room-grants?limit=&offset=&order_by=
@@ -3168,15 +3331,40 @@ class Meshagent {
   Future<List<ProjectRoomGrant>> listRoomGrantsByUser({
     required String projectId,
     required String userId,
-    int limit = 50,
+    int limit = 100,
     int offset = 0,
     String orderBy = 'room_name',
+    String? filter,
+  }) async {
+    final page = await listRoomGrantsByUserPage(
+      projectId: projectId,
+      userId: userId,
+      limit: limit,
+      offset: offset,
+      orderBy: orderBy,
+      filter: filter,
+    );
+    return page.roomGrants;
+  }
+
+  /// GET /accounts/projects/{project_id}/room-grants/by-user/{user_id}?limit=&offset=&order_by=&filter=
+  Future<RoomGrantsPage> listRoomGrantsByUserPage({
+    required String projectId,
+    required String userId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'room_name',
+    String? filter,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedUserId = Uri.encodeComponent(userId);
+    final queryParameters = {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy};
+    if (filter != null) {
+      queryParameters['filter'] = filter;
+    }
     final uri = Uri.parse(
       '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-user/$encodedUserId',
-    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    ).replace(queryParameters: queryParameters);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -3187,8 +3375,7 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['room_grants'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(ProjectRoomGrant.fromJson).toList();
+    return RoomGrantsPage.fromJson(data);
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-room/{room_name}?limit=&offset=&order_by=
@@ -3240,11 +3427,16 @@ class Meshagent {
   }
 
   /// GET /accounts/projects/{project_id}/room-grants/by-user?limit=&offset=
-  Future<List<ProjectUserGrantCount>> listUniqueUsersWithGrants({required String projectId, int limit = 50, int offset = 0}) async {
+  Future<ProjectUserGrantCountsPage> listUniqueUsersWithGrantsPage({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-user',
-    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset'});
+    final query = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants/by-user').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -3255,8 +3447,17 @@ class Meshagent {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = data['users'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(ProjectUserGrantCount.fromJson).toList();
+    return ProjectUserGrantCountsPage.fromJson(data);
+  }
+
+  Future<List<ProjectUserGrantCount>> listUniqueUsersWithGrants({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listUniqueUsersWithGrantsPage(projectId: projectId, limit: limit, offset: offset, filter: filter);
+    return page.users;
   }
 
   /// --------------------------------
@@ -3459,9 +3660,11 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/oauth/clients
   /// Returns a list of OAuthClient (no secrets).
-  Future<List<OAuthClient>> listOAuthClients(String projectId) async {
+  Future<OAuthClientsPage> listOAuthClientsPage(String projectId, {int count = 100, int offset = 0, String? filter}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients');
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/oauth/clients').replace(queryParameters: query);
     final response = await httpClient.get(uri);
 
     if (response.statusCode >= 400) {
@@ -3472,8 +3675,12 @@ class Meshagent {
     }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = decoded['clients'] as List<dynamic>? ?? const [];
-    return list.whereType<Map<String, dynamic>>().map(OAuthClient.fromJson).toList();
+    return OAuthClientsPage.fromJson(decoded);
+  }
+
+  Future<List<OAuthClient>> listOAuthClients(String projectId, {int count = 100, int offset = 0, String? filter}) async {
+    final page = await listOAuthClientsPage(projectId, count: count, offset: offset, filter: filter);
+    return page.clients;
   }
 
   /// GET /accounts/projects/{project_id}/oauth/clients/{client_id}
@@ -3823,18 +4030,20 @@ class Meshagent {
 
   /// GET /accounts/projects/{project_id}/scheduled-tasks?room_name=&task_id=&active=&limit=&offset=
   /// Returns { "tasks": [ ... ] }
-  Future<List<ScheduledTask>> listScheduledTasks({
+  Future<ScheduledTasksPage> listScheduledTasksPage({
     required String projectId,
     String? roomName,
     String? taskId,
     bool? active,
-    int limit = 200,
+    int limit = 100,
     int offset = 0,
+    String? filter,
   }) async {
     final qp = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (roomName != null) qp['room_name'] = roomName;
     if (taskId != null) qp['task_id'] = taskId;
     if (active != null) qp['active'] = active ? 'true' : 'false';
+    if (filter != null && filter.trim().isNotEmpty) qp['filter'] = filter;
 
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks').replace(queryParameters: qp);
@@ -3852,7 +4061,28 @@ class Meshagent {
       throw MeshagentException("Invalid scheduled-tasks payload: expected 'tasks' to be a list");
     }
 
-    return tasksRaw.whereType<Map>().map((m) => ScheduledTask.fromJson(m.cast<String, dynamic>())).toList();
+    return ScheduledTasksPage.fromJson(decoded);
+  }
+
+  Future<List<ScheduledTask>> listScheduledTasks({
+    required String projectId,
+    String? roomName,
+    String? taskId,
+    bool? active,
+    int limit = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listScheduledTasksPage(
+      projectId: projectId,
+      roomName: roomName,
+      taskId: taskId,
+      active: active,
+      limit: limit,
+      offset: offset,
+      filter: filter,
+    );
+    return page.tasks;
   }
 }
 
@@ -3900,6 +4130,31 @@ class OAuthClient {
   };
 }
 
+class OAuthClientsPage {
+  final List<OAuthClient> clients;
+  final int total;
+
+  OAuthClientsPage({required this.clients, required this.total});
+
+  factory OAuthClientsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['clients'] as List<dynamic>? ?? [];
+    return OAuthClientsPage(
+      clients: list.whereType<Map<String, dynamic>>().map(OAuthClient.fromJson).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
+int _parseInt(dynamic value) {
+  return value is int
+      ? value
+      : value is num
+      ? value.toInt()
+      : value is String
+      ? int.tryParse(value) ?? 0
+      : 0;
+}
+
 class Room {
   const Room({required this.name, required this.id, required this.metadata, required this.annotations});
 
@@ -3920,6 +4175,32 @@ class Room {
   Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations};
 }
 
+class RoomsPage {
+  final List<Room> rooms;
+  final int total;
+
+  RoomsPage({required this.rooms, required this.total});
+
+  factory RoomsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['rooms'] as List<dynamic>? ?? [];
+    return RoomsPage(rooms: list.whereType<Map<String, dynamic>>().map(Room.fromJson).toList(), total: _parseInt(json['total']));
+  }
+
+  Map<String, dynamic> toJson() => {'rooms': rooms.map((room) => room.toJson()).toList(), 'total': total};
+}
+
+class ProjectMembersPage {
+  final List<Map<String, dynamic>> users;
+  final int total;
+
+  ProjectMembersPage({required this.users, required this.total});
+
+  factory ProjectMembersPage.fromJson(Map<String, dynamic> json) {
+    final list = json['users'] as List<dynamic>? ?? [];
+    return ProjectMembersPage(users: list.whereType<Map<String, dynamic>>().toList(), total: _parseInt(json['total']));
+  }
+}
+
 class ProjectRoomGrant {
   final Room room; // room name
   final String userId;
@@ -3936,6 +4217,23 @@ class ProjectRoomGrant {
   }
 
   Map<String, dynamic> toJson() => {'room': room.toJson(), 'user_id': userId, 'permissions': permissions};
+}
+
+class RoomGrantsPage {
+  final List<ProjectRoomGrant> roomGrants;
+  final int total;
+
+  RoomGrantsPage({required this.roomGrants, required this.total});
+
+  factory RoomGrantsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['room_grants'] as List<dynamic>? ?? [];
+    return RoomGrantsPage(
+      roomGrants: list.whereType<Map<String, dynamic>>().map(ProjectRoomGrant.fromJson).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'room_grants': roomGrants.map((grant) => grant.toJson()).toList(), 'total': total};
 }
 
 class ProjectRoomGrantCount {
@@ -3994,6 +4292,21 @@ class ProjectUserGrantCount {
     if (lastName != null) 'last_name': lastName,
     'email': email,
   };
+}
+
+class ProjectUserGrantCountsPage {
+  final List<ProjectUserGrantCount> users;
+  final int total;
+
+  ProjectUserGrantCountsPage({required this.users, required this.total});
+
+  factory ProjectUserGrantCountsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['users'] as List<dynamic>? ?? [];
+    return ProjectUserGrantCountsPage(
+      users: list.whereType<Map<String, dynamic>>().map(ProjectUserGrantCount.fromJson).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
 }
 
 /// A simple custom exception to denote HTTP errors.
