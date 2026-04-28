@@ -475,6 +475,88 @@ class ManagedSecret extends ManagedSecretInfo {
   Map<String, dynamic> toJson() => {...super.toJson(), 'data_base64': dataBase64};
 }
 
+class MeshagentRepositoriesPage {
+  final List<ProjectRepository> repositories;
+  final int total;
+
+  MeshagentRepositoriesPage({required this.repositories, required this.total});
+
+  factory MeshagentRepositoriesPage.fromJson(Map<String, dynamic> json) {
+    final list = json['repositories'] as List<dynamic>? ?? [];
+    return MeshagentRepositoriesPage(
+      repositories: list.whereType<Map>().map((m) => ProjectRepository.fromJson(m.cast<String, dynamic>())).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
+class MeshagentSecretsPage {
+  final List<ManagedSecretInfo> secrets;
+  final int total;
+
+  MeshagentSecretsPage({required this.secrets, required this.total});
+
+  factory MeshagentSecretsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['secrets'] as List<dynamic>? ?? [];
+    return MeshagentSecretsPage(
+      secrets: list.whereType<Map>().map((m) => ManagedSecretInfo.fromJson(m.cast<String, dynamic>())).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
+class MeshagentLegacySecretsPage {
+  final List<Map<String, dynamic>> secrets;
+  final int total;
+
+  MeshagentLegacySecretsPage({required this.secrets, required this.total});
+}
+
+class MeshagentServicesPage {
+  final List<ServiceSpec> services;
+  final int total;
+
+  MeshagentServicesPage({required this.services, required this.total});
+
+  factory MeshagentServicesPage.fromJson(Map<String, dynamic> json) {
+    final list = json['services'] as List<dynamic>? ?? [];
+    return MeshagentServicesPage(
+      services: list.whereType<Map>().map((m) => ServiceSpec.fromJson(m.cast<String, dynamic>())).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
+class MeshagentApiKeysPage {
+  final List<Map<String, dynamic>> keys;
+  final int total;
+
+  MeshagentApiKeysPage({required this.keys, required this.total});
+
+  factory MeshagentApiKeysPage.fromJson(Map<String, dynamic> json) {
+    final list = json['keys'] as List<dynamic>? ?? [];
+    return MeshagentApiKeysPage(
+      keys: list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
+class MeshagentWebhooksPage {
+  final List<Map<String, dynamic>> webhooks;
+  final int total;
+
+  MeshagentWebhooksPage({required this.webhooks, required this.total});
+
+  factory MeshagentWebhooksPage.fromJson(Map<String, dynamic> json) {
+    final list = json['webhooks'] as List<dynamic>? ?? [];
+    return MeshagentWebhooksPage(
+      webhooks: list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+}
+
 class ExternalOAuthClientRegistration {
   final String id;
   final String delegatedTo;
@@ -1490,6 +1572,24 @@ class Meshagent {
     return ProjectRepository.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<MeshagentRepositoriesPage> listRepositoriesPage({required String projectId, int count = 100, int offset = 0}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/repositories',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list repositories. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return MeshagentRepositoriesPage.fromJson(data);
+  }
+
   Future<List<ProjectRepository>> listRepositories({required String projectId}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/repositories');
@@ -1504,7 +1604,7 @@ class Meshagent {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data['repositories'] as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().map(ProjectRepository.fromJson).toList();
+    return list.whereType<Map>().map((m) => ProjectRepository.fromJson(m.cast<String, dynamic>())).toList();
   }
 
   Future<List<ProjectRepositoryTag>> listRepositoryTags({required String projectId, required String repositoryId}) async {
@@ -1684,6 +1784,24 @@ class Meshagent {
     return ManagedSecret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<MeshagentSecretsPage> listProjectSecretsPage(String projectId, {int count = 100, int offset = 0}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/secrets',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list project secrets. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return MeshagentSecretsPage.fromJson(data);
+  }
+
   Future<List<ManagedSecretInfo>> listProjectSecrets(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets');
@@ -1698,7 +1816,7 @@ class Meshagent {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final secretsList = data['secrets'] as List<dynamic>? ?? [];
-    return secretsList.whereType<Map<String, dynamic>>().map(ManagedSecretInfo.fromJson).toList();
+    return secretsList.whereType<Map>().map((m) => ManagedSecretInfo.fromJson(m.cast<String, dynamic>())).toList();
   }
 
   Future<void> updateProjectSettings({required String projectId, required Map<String, dynamic> settings}) async {
@@ -1905,6 +2023,16 @@ class Meshagent {
       data: Uint8List.fromList(utf8.encode(jsonEncode(data))),
     );
     return {'id': secretId};
+  }
+
+  Future<MeshagentLegacySecretsPage> listSecretsPage(String projectId, {int count = 100, int offset = 0}) async {
+    final page = await listProjectSecretsPage(projectId, count: count, offset: offset);
+    final secrets = <Map<String, dynamic>>[];
+    for (final secretInfo in page.secrets) {
+      final secret = await getProjectSecret(projectId: projectId, secretId: secretInfo.id);
+      secrets.add(_parseLegacySecretPayload(secret: secret, rawData: secret.data));
+    }
+    return MeshagentLegacySecretsPage(secrets: secrets, total: page.total);
   }
 
   Future<List<Map<String, dynamic>>> listSecrets(String projectId) async {
@@ -2153,6 +2281,22 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
+  Future<MeshagentServicesPage> listServicesPage(String projectId, {int count = 100, int offset = 0}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/services',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list project services keys. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return MeshagentServicesPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<ServiceSpec>> listServices(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
@@ -2164,7 +2308,9 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => ServiceSpec.fromJson(a)).toList();
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['services'] as List<dynamic>? ?? [];
+    return list.whereType<Map>().map((m) => ServiceSpec.fromJson(m.cast<String, dynamic>())).toList();
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
@@ -2308,6 +2454,28 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/services
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
+  Future<MeshagentServicesPage> listRoomServicesPage({
+    required String projectId,
+    required String roomName,
+    int count = 100,
+    int offset = 0,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room services keys. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return MeshagentServicesPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<ServiceSpec>> listRoomServices({required String projectId, required String roomName}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomName = Uri.encodeComponent(roomName);
@@ -2320,7 +2488,9 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["services"] as List).whereType<Map<String, dynamic>>().map((a) => ServiceSpec.fromJson(a)).toList();
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['services'] as List<dynamic>? ?? [];
+    return list.whereType<Map>().map((m) => ServiceSpec.fromJson(m.cast<String, dynamic>())).toList();
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/services/{token_id}
@@ -2879,6 +3049,23 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/api-keys
   /// Returns a JSON dict like: { "tokens": [ { ... }, ... ] }.
+  Future<MeshagentApiKeysPage> listApiKeysPage(String projectId, {int count = 100, int offset = 0}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/api-keys',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list project API keys. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return MeshagentApiKeysPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<Map<String, dynamic>>> listApiKeys(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/api-keys');
@@ -2891,7 +3078,9 @@ class Meshagent {
       );
     }
 
-    return (jsonDecode(response.body)["keys"] as List).whereType<Map<String, dynamic>>().toList();
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['keys'] as List<dynamic>? ?? [];
+    return list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
   // In Meshagent
@@ -3123,6 +3312,22 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}/webhooks
   /// Returns a JSON dict like { "webhooks": [ { ... }, ... ] }.
+  Future<MeshagentWebhooksPage> listWebhooksPage(String projectId, {int count = 100, int offset = 0}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/webhooks',
+    ).replace(queryParameters: {'count': '$count', 'offset': '$offset'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list project webhooks. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return MeshagentWebhooksPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<Map<String, dynamic>>> listWebhooks(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/webhooks');
@@ -3134,7 +3339,9 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-    return (jsonDecode(response.body)["webhooks"] as List).whereType<Map<String, dynamic>>().toList();
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['webhooks'] as List<dynamic>? ?? [];
+    return list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
   /// Corresponds to: DELETE /accounts/projects/{project_id}/webhooks/{webhook_id}
