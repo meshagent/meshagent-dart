@@ -2968,13 +2968,19 @@ class Meshagent {
     return canUseLlmProxy;
   }
 
-  Future<List<Map<String, dynamic>>> getCurrentUserLlmProxyUsage(String projectId, {DateTime? start, DateTime? end}) async {
+  Future<List<Map<String, dynamic>>> getCurrentUserLlmProxyUsage(
+    String projectId, {
+    DateTime? start,
+    DateTime? end,
+    String? interval,
+  }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-proxy/usage');
 
     final queryParameters = <String, String>{
       if (start != null) "start": start.toIso8601String(),
       if (end != null) "end": end.toIso8601String(),
+      "interval": ?interval,
     };
 
     final response = await httpClient.get(uri.replace(queryParameters: queryParameters.isEmpty ? null : queryParameters));
