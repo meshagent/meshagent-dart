@@ -1,3 +1,10 @@
+## [0.39.3]
+- Added `UsageGraph`/`UsageGraphPoint` to the Flutter Shadcn package for interval-based usage visualization (including periodStart-aware hover labeling and reference/average calculations).
+- Updated the Shadcn data grid clipboard behavior to better support single-cell selection (more direct clipboard writes and raw value handling).
+- Dart client now supports paginated “page” models for repositories, project secrets (plus legacy secret paging), services (including room-scoped services), API keys, and webhooks, with `count`/`offset` inputs and `total` outputs.
+- Dart client list parsing is more robust (typed map casting and safer handling of `total`/list fields from API responses).
+- Exported the new usage graph components from the Flutter Shadcn SDK entrypoint.
+
 ## [0.39.2]
 - Updated Dart/Flutter SDK package versions and internal dependency constraints to `0.39.1` (from `0.39.0`) across the `meshagent` Flutter-related packages (e.g. `meshagent_flutter`, `meshagent_flutter_auth`, `meshagent_flutter_shadcn`, `meshagent_super_editor`, `meshagent_flutter_dev`, and related SDK packages).
 
