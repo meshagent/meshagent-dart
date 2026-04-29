@@ -42,6 +42,12 @@ class _TokenProviderClient extends http.BaseClient {
   }
 }
 
+Map<String, dynamic> _createServiceSpecJson(ServiceSpec service) {
+  final payload = service.toJson();
+  payload.remove('id');
+  return payload;
+}
+
 enum ProjectRole { member, developer, admin, none }
 
 class AuthProvider {
@@ -623,27 +629,31 @@ class ScheduledTask {
   ScheduledTask({
     required this.id,
     required this.projectId,
+    required this.roomId,
     required this.roomName,
-    required this.queueName,
-    required this.payload,
+    required this.spec,
+    this.queueName,
+    Map<String, dynamic>? payload,
+    this.container,
     required this.schedule,
     required this.active,
     required this.once,
     required this.annotations,
     this.storageWritePath,
-    this.roomId,
     this.lastRunId,
     this.lastStartTime,
     this.lastEndTime,
     this.lastStatus,
     this.lastReturnMessage,
-  });
+  }) : payload = payload ?? const <String, dynamic>{};
 
   final String id;
   final String projectId;
+  final String roomId;
   final String roomName;
-  final String? roomId;
-  final String queueName;
+  final ScheduledTaskSpec spec;
+  final String? queueName;
+  final ContainerSpec? container;
 
   /// Server-side payload is commonly a JSON-string or opaque string.
   /// Keep it as dynamic if you want to allow either Map or String.
@@ -664,10 +674,12 @@ class ScheduledTask {
   factory ScheduledTask.fromJson(Map<String, dynamic> json) => ScheduledTask(
     id: json['id'] as String,
     projectId: json['project_id'] as String,
+    roomId: json['room_id'] as String,
     roomName: json['room_name'] as String,
-    roomId: json['room_id'] as String?,
-    queueName: json['queue_name'] as String,
-    payload: json['payload'],
+    spec: ScheduledTaskSpec.fromJson((json['spec'] as Map).cast<String, dynamic>()),
+    queueName: json['queue_name'] as String?,
+    payload: (json['payload'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{},
+    container: json['container'] == null ? null : ContainerSpec.fromJson((json['container'] as Map).cast<String, dynamic>()),
     schedule: json['schedule'] as String,
     active: (json['active'] as bool?) ?? true,
     once: (json['once'] as bool?) ?? false,
@@ -684,9 +696,11 @@ class ScheduledTask {
     'id': id,
     'project_id': projectId,
     'room_name': roomName,
-    if (roomId != null) 'room_id': roomId,
-    'queue_name': queueName,
+    'spec': spec.toJson(),
+    'room_id': roomId,
+    if (queueName != null) 'queue_name': queueName,
     'payload': payload,
+    if (container != null) 'container': container!.toJson(),
     'schedule': schedule,
     'active': active,
     'once': once,
@@ -716,74 +730,90 @@ class ScheduledTasksPage {
 }
 
 class _CreateScheduledTaskRequest {
-  _CreateScheduledTaskRequest({
-    this.id,
-    required this.roomName,
-    required this.queueName,
-    required this.payload,
-    required this.schedule,
-    this.active = true,
-    this.once = false,
-    required this.annotations,
-    this.storageWritePath,
-  });
+  _CreateScheduledTaskRequest({required this.spec});
 
-  final String? id;
-  final String roomName;
-  final String queueName;
-  final bool once;
+  final ScheduledTaskSpec spec;
 
-  /// dict or json-string
-  final Map<String, dynamic> payload;
-
-  final Map<String, String> annotations;
-  final String? storageWritePath;
-
-  final String schedule;
-  final bool active;
-
-  Map<String, dynamic> toJson() => {
-    if (id != null) 'id': id,
-    'room_name': roomName,
-    'queue_name': queueName,
-    'payload': payload,
-    'schedule': schedule,
-    'active': active,
-    'once': once,
-    'annotations': annotations,
-    if (storageWritePath != null) 'storage_write_path': storageWritePath,
-  };
+  Map<String, dynamic> toJson() => {'spec': spec.toJson()};
 }
 
 class _UpdateScheduledTaskRequest {
-  _UpdateScheduledTaskRequest({
-    this.roomName,
-    this.queueName,
-    this.payload,
-    this.schedule,
-    this.active,
-    required this.annotations,
-    this.storageWritePath,
+  _UpdateScheduledTaskRequest({required this.spec});
+
+  final ScheduledTaskSpec spec;
+
+  Map<String, dynamic> toJson() => {'spec': spec.toJson()};
+}
+
+class ScheduledTaskRun {
+  ScheduledTaskRun({
+    required this.id,
+    required this.taskId,
+    required this.projectId,
+    required this.roomId,
+    required this.roomName,
+    this.queuedMessageId,
+    required this.target,
+    required this.status,
+    this.error,
+    this.containerId,
+    required this.scheduledTime,
+    this.timeoutAt,
+    this.startedAt,
+    this.leaseExpiresAt,
+    this.attemptCount = 0,
+    this.completedAt,
   });
 
-  final String? roomName;
-  final String? queueName;
-  final Map<String, dynamic>? payload;
-  final String? schedule;
-  final bool? active;
-  final Map<String, String> annotations;
-  final String? storageWritePath;
+  final String id;
+  final String taskId;
+  final String projectId;
+  final String roomId;
+  final String roomName;
+  final String? queuedMessageId;
+  final String target;
+  final String status;
+  final int attemptCount;
+  final String? error;
+  final String? containerId;
+  final DateTime scheduledTime;
+  final DateTime? timeoutAt;
+  final DateTime? startedAt;
+  final DateTime? leaseExpiresAt;
+  final DateTime? completedAt;
 
-  Map<String, dynamic> toJson() {
-    final out = <String, dynamic>{};
-    if (roomName != null) out['room_name'] = roomName;
-    if (queueName != null) out['queue_name'] = queueName;
-    if (payload != null) out['payload'] = payload;
-    if (schedule != null) out['schedule'] = schedule;
-    if (active != null) out['active'] = active;
-    if (storageWritePath != null) out['storage_write_path'] = storageWritePath;
-    out["annotations"] = annotations;
-    return out;
+  factory ScheduledTaskRun.fromJson(Map<String, dynamic> json) => ScheduledTaskRun(
+    id: json['id'] as String,
+    taskId: json['task_id'] as String,
+    projectId: json['project_id'] as String,
+    roomId: json['room_id'] as String,
+    roomName: json['room_name'] as String,
+    queuedMessageId: json['queued_message_id'] as String?,
+    target: json['target'] as String,
+    status: json['status'] as String,
+    attemptCount: _parseInt(json['attempt_count']),
+    error: json['error'] as String?,
+    containerId: json['container_id'] as String?,
+    scheduledTime: DateTime.parse(json['scheduled_time'] as String),
+    timeoutAt: json['timeout_at'] == null ? null : DateTime.parse(json['timeout_at'] as String),
+    startedAt: json['started_at'] == null ? null : DateTime.parse(json['started_at'] as String),
+    leaseExpiresAt: json['lease_expires_at'] == null ? null : DateTime.parse(json['lease_expires_at'] as String),
+    completedAt: json['completed_at'] == null ? null : DateTime.parse(json['completed_at'] as String),
+  );
+}
+
+class ScheduledTaskRunsPage {
+  final List<ScheduledTaskRun> runs;
+  final int total;
+
+  ScheduledTaskRunsPage({required this.runs, required this.total});
+
+  factory ScheduledTaskRunsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['runs'] as List<dynamic>? ?? [];
+    return ScheduledTaskRunsPage(
+      runs: list.whereType<Map>().map((m) => ScheduledTaskRun.fromJson(m.cast<String, dynamic>())).toList(),
+      total: _parseInt(json['total']),
+    );
   }
 }
 
@@ -2175,7 +2205,7 @@ class Meshagent {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/services');
 
-    final response = await httpClient.post(uri, body: jsonEncode(service.toJson()));
+    final response = await httpClient.post(uri, body: jsonEncode(_createServiceSpecJson(service)));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -2339,7 +2369,7 @@ class Meshagent {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomName = Uri.encodeComponent(roomName);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/services');
-    final response = await httpClient.post(uri, body: jsonEncode(service.toJson()));
+    final response = await httpClient.post(uri, body: jsonEncode(_createServiceSpecJson(service)));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -4151,33 +4181,13 @@ class Meshagent {
     }
   }
 
-  /// POST /accounts/projects/{project_id}/scheduled-tasks
+  /// POST /accounts/projects/{project_id}/rooms/{room_name}/scheduled-tasks
   /// Returns { "task_id" }
-  Future<String> createScheduledTask({
-    required String projectId,
-    required String roomName,
-    required String queueName,
-    required dynamic payload,
-    required String schedule,
-    bool active = true,
-    bool once = false,
-    String? taskId,
-    Map<String, String> annotations = const {},
-    String? storageWritePath,
-  }) async {
+  Future<String> createScheduledTask({required String projectId, required String roomName, required ScheduledTaskSpec spec}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks');
-    final body = _CreateScheduledTaskRequest(
-      id: taskId,
-      roomName: roomName,
-      queueName: queueName,
-      payload: payload,
-      schedule: schedule,
-      active: active,
-      once: once,
-      annotations: annotations,
-      storageWritePath: storageWritePath,
-    ).toJson();
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/scheduled-tasks');
+    final body = _CreateScheduledTaskRequest(spec: spec).toJson();
     final resp = await httpClient.post(uri, body: jsonEncode(body));
 
     if (resp.statusCode >= 400) {
@@ -4196,29 +4206,11 @@ class Meshagent {
   }
 
   /// PUT /accounts/projects/{project_id}/scheduled-tasks/{task_id}
-  Future<void> updateScheduledTask({
-    required String projectId,
-    required String taskId,
-    String? roomName,
-    String? queueName,
-    dynamic payload,
-    String? schedule,
-    bool? active,
-    Map<String, String> annotations = const {},
-    String? storageWritePath,
-  }) async {
+  Future<void> updateScheduledTask({required String projectId, required String taskId, required ScheduledTaskSpec spec}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedTaskId = Uri.encodeComponent(taskId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks/$encodedTaskId');
-    final body = _UpdateScheduledTaskRequest(
-      roomName: roomName,
-      queueName: queueName,
-      payload: payload,
-      schedule: schedule,
-      active: active,
-      annotations: annotations,
-      storageWritePath: storageWritePath,
-    ).toJson();
+    final body = _UpdateScheduledTaskRequest(spec: spec).toJson();
 
     final resp = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -4241,11 +4233,11 @@ class Meshagent {
     }
   }
 
-  /// GET /accounts/projects/{project_id}/scheduled-tasks?room_name=&task_id=&active=&limit=&offset=
+  /// GET /accounts/projects/{project_id}/scheduled-tasks?room_id=&task_id=&active=&limit=&offset=
   /// Returns { "tasks": [ ... ] }
   Future<ScheduledTasksPage> listScheduledTasksPage({
     required String projectId,
-    String? roomName,
+    String? roomId,
     String? taskId,
     bool? active,
     int limit = 100,
@@ -4253,7 +4245,7 @@ class Meshagent {
     String? filter,
   }) async {
     final qp = <String, String>{'limit': '$limit', 'offset': '$offset'};
-    if (roomName != null) qp['room_name'] = roomName;
+    if (roomId != null) qp['room_id'] = roomId;
     if (taskId != null) qp['task_id'] = taskId;
     if (active != null) qp['active'] = active ? 'true' : 'false';
     if (filter != null && filter.trim().isNotEmpty) qp['filter'] = filter;
@@ -4279,7 +4271,7 @@ class Meshagent {
 
   Future<List<ScheduledTask>> listScheduledTasks({
     required String projectId,
-    String? roomName,
+    String? roomId,
     String? taskId,
     bool? active,
     int limit = 100,
@@ -4288,7 +4280,7 @@ class Meshagent {
   }) async {
     final page = await listScheduledTasksPage(
       projectId: projectId,
-      roomName: roomName,
+      roomId: roomId,
       taskId: taskId,
       active: active,
       limit: limit,
@@ -4296,6 +4288,43 @@ class Meshagent {
       filter: filter,
     );
     return page.tasks;
+  }
+
+  Future<ScheduledTaskRunsPage> listScheduledTaskRunsPage({
+    required String projectId,
+    required String taskId,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final qp = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedTaskId = Uri.encodeComponent(taskId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/scheduled-tasks/$encodedTaskId/runs').replace(queryParameters: qp);
+
+    final resp = await httpClient.get(uri);
+
+    if (resp.statusCode >= 400) {
+      throw MeshagentException('Failed to list scheduled task runs. Status code: ${resp.statusCode}, body: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final runsRaw = decoded['runs'];
+
+    if (runsRaw is! List) {
+      throw MeshagentException("Invalid scheduled-task-runs payload: expected 'runs' to be a list");
+    }
+
+    return ScheduledTaskRunsPage.fromJson(decoded);
+  }
+
+  Future<List<ScheduledTaskRun>> listScheduledTaskRuns({
+    required String projectId,
+    required String taskId,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final page = await listScheduledTaskRunsPage(projectId: projectId, taskId: taskId, limit: limit, offset: offset);
+    return page.runs;
   }
 }
 

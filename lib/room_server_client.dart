@@ -7190,6 +7190,114 @@ class ContainerSpec {
   }
 }
 
+class ScheduledTaskMetadata {
+  ScheduledTaskMetadata({Map<String, String>? annotations}) : annotations = annotations ?? const <String, String>{};
+
+  final Map<String, String> annotations;
+
+  static ScheduledTaskMetadata fromJson(Map<String, dynamic>? json) {
+    if (json == null) return ScheduledTaskMetadata();
+    return ScheduledTaskMetadata(annotations: (json['annotations'] as Map?)?.cast<String, String>() ?? const <String, String>{});
+  }
+
+  Map<String, dynamic> toJson() => {'annotations': annotations};
+}
+
+class ScheduledTaskQueueSpec {
+  ScheduledTaskQueueSpec({required this.name, Map<String, dynamic>? payload, this.storageWritePath})
+    : payload = payload ?? const <String, dynamic>{};
+
+  final String name;
+  final Map<String, dynamic> payload;
+  final String? storageWritePath;
+
+  static ScheduledTaskQueueSpec fromJson(Map<String, dynamic> json) {
+    return ScheduledTaskQueueSpec(
+      name: json['name'] as String,
+      payload: (json['payload'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{},
+      storageWritePath: json['storage_write_path'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'payload': payload, if (storageWritePath != null) 'storage_write_path': storageWritePath};
+}
+
+class ScheduledTaskSpec {
+  ScheduledTaskSpec({
+    this.version = 'v1',
+    this.kind = 'ScheduledTask',
+    ScheduledTaskMetadata? metadata,
+    required this.schedule,
+    this.active = true,
+    this.once = false,
+    this.queue,
+    this.container,
+  }) : metadata = metadata ?? ScheduledTaskMetadata() {
+    final hasQueue = queue != null;
+    final hasContainer = container != null;
+    if (hasQueue == hasContainer) {
+      throw ArgumentError('ScheduledTaskSpec requires exactly one of queue or container');
+    }
+  }
+
+  final String version;
+  final String kind;
+  final ScheduledTaskMetadata metadata;
+  final String schedule;
+  final bool active;
+  final bool once;
+  final ScheduledTaskQueueSpec? queue;
+  final ContainerSpec? container;
+
+  factory ScheduledTaskSpec.fromYaml(String yaml) {
+    return ScheduledTaskSpec.fromJson(jsonDecode(jsonEncode(loadYaml(yaml))));
+  }
+
+  static ScheduledTaskSpec fromJson(Map<String, dynamic> json) {
+    return ScheduledTaskSpec(
+      version: json['version'] as String? ?? 'v1',
+      kind: json['kind'] as String? ?? 'ScheduledTask',
+      metadata: ScheduledTaskMetadata.fromJson((json['metadata'] as Map?)?.cast<String, dynamic>()),
+      schedule: json['schedule'] as String,
+      active: json['active'] as bool? ?? true,
+      once: json['once'] as bool? ?? false,
+      queue: json['queue'] == null ? null : ScheduledTaskQueueSpec.fromJson((json['queue'] as Map).cast<String, dynamic>()),
+      container: json['container'] == null ? null : ContainerSpec.fromJson((json['container'] as Map).cast<String, dynamic>()),
+    );
+  }
+
+  ScheduledTaskSpec copyWith({
+    ScheduledTaskMetadata? metadata,
+    String? schedule,
+    bool? active,
+    bool? once,
+    ScheduledTaskQueueSpec? queue,
+    ContainerSpec? container,
+  }) {
+    return ScheduledTaskSpec(
+      version: version,
+      kind: kind,
+      metadata: metadata ?? this.metadata,
+      schedule: schedule ?? this.schedule,
+      active: active ?? this.active,
+      once: once ?? this.once,
+      queue: container != null ? null : queue ?? this.queue,
+      container: queue != null ? null : container ?? this.container,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'version': version,
+    'kind': kind,
+    'metadata': metadata.toJson(),
+    'schedule': schedule,
+    'active': active,
+    'once': once,
+    if (queue != null) 'queue': queue!.toJson(),
+    if (container != null) 'container': container!.toJson(),
+  };
+}
+
 class ExternalServiceSpec {
   ExternalServiceSpec({required this.url});
 
