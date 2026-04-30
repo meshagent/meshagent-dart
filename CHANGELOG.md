@@ -1,3 +1,11 @@
+## [0.39.4]
+- Breaking: Dart scheduled-task client models and requests now use `ScheduledTaskSpec`-based structures (queue vs container targeting) instead of separate payload/queue/schedule fields.
+- Added Dart scheduled task run models and run-page support so consumers can list scheduled-task executions with status, attempt count, and timestamp fields.
+- Updated Dart scheduled-task serialization to align with the server contract (including required `roomId` handling).
+- Code editor integration updated to the new `code_forge` / `code_forge_web`-based editor widgets, including platform-specific selection.
+- Terminal UI updated with a shared themed terminal view wrapper for consistent font/cursor/padding behavior.
+- Dependency updates in the Dart SDK packages: `shadcn_ui` bumped to `^0.54.0`, `web` bumped to `^1.1.1`, `code_forge` added as `^9.9.0`, `code_forge_web` added as `^2.4.0`, and `re_editor` removed.
+
 ## [0.39.3]
 - Added `UsageGraph`/`UsageGraphPoint` to the Flutter Shadcn package for interval-based usage visualization (including periodStart-aware hover labeling and reference/average calculations).
 - Updated the Shadcn data grid clipboard behavior to better support single-cell selection (more direct clipboard writes and raw value handling).
