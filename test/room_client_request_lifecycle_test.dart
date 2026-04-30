@@ -171,6 +171,16 @@ Future<void> _sendRoomReady(Protocol protocol) async {
   );
 }
 
+Future<void> _waitUntil(bool Function() predicate) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 1));
+  while (!predicate()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw TimeoutException('condition was not met before timeout');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 class _IdleProtocolChannel extends ProtocolChannel {
   @override
   void dispose() {}
@@ -255,6 +265,38 @@ void main() {
       pair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
 
       final startFuture = room.start();
+      await _sendRoomReady(pair.serverProtocol);
+      await startFuture;
+
+      expect(protocolFactoryCalls, 2);
+      expect(room.isConnected, isTrue);
+    } finally {
+      room.dispose();
+      await pair.dispose();
+    }
+  });
+
+  test('start retries retryable websocket close status', () async {
+    final pair = _ProtocolPair();
+    var protocolFactoryCalls = 0;
+    final room = RoomClient(
+      protocolFactory: () {
+        protocolFactoryCalls++;
+        if (protocolFactoryCalls == 1) {
+          return Protocol(
+            channel: _CloseWithStatusProtocolChannel(closeCode: _retryableCloseStatusCode, reason: 'try_again_later'),
+          );
+        }
+        return pair.clientProtocolFactory();
+      },
+      reconnectTimeout: const Duration(milliseconds: 500),
+    );
+
+    try {
+      pair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+
+      final startFuture = room.start();
+      await _waitUntil(() => protocolFactoryCalls >= 2);
       await _sendRoomReady(pair.serverProtocol);
       await startFuture;
 

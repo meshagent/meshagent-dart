@@ -75,6 +75,13 @@ String? _nonRetryableConnectFailureReason(Object error) {
   return null;
 }
 
+bool _isRetryableStartupClose({required ProtocolCloseKind kind, required String? reason}) {
+  if (kind == ProtocolCloseKind.error) {
+    return true;
+  }
+  return (reason ?? '').toLowerCase().contains('1013');
+}
+
 RoomServerException _roomClosedBeforeReadyError(Protocol protocol) {
   final channel = protocol.channel;
   if (channel is WebSocketProtocolChannel) {
@@ -646,7 +653,8 @@ class RoomClient extends ChangeEmitter {
 
   final ProtocolFactory _protocolFactory;
   final Duration? _reconnectTimeout;
-  final Duration _reconnectRetryInterval = const Duration(milliseconds: 250);
+  final Duration _reconnectRetryBaseDelay = const Duration(milliseconds: 500);
+  final Duration _reconnectRetryMaxDelay = const Duration(seconds: 30);
   late Protocol _protocolInstance;
   late final RoomProtocolProxy protocol;
   late final QueuesClient queues;
@@ -835,7 +843,7 @@ class RoomClient extends ChangeEmitter {
       try {
         await _openProtocol(initial: true);
       } on _ProtocolStartupFailure catch (error) {
-        if (error.kind != ProtocolCloseKind.error || _reconnectTimeout == Duration.zero) {
+        if (!_isRetryableStartupClose(kind: error.kind, reason: error.reason) || _reconnectTimeout == Duration.zero) {
           _setStartupTerminalState(closeKind: error.kind, closeReason: error.reason, protocol: _protocolInstance);
           throw _startupException(closeKind: error.kind, closeReason: error.reason, protocol: _protocolInstance);
         }
@@ -859,7 +867,7 @@ class RoomClient extends ChangeEmitter {
         }
 
         final closeKind = _protocolInstance.closeKind;
-        if (closeKind != null && closeKind != ProtocolCloseKind.error) {
+        if (closeKind != null && !_isRetryableStartupClose(kind: closeKind, reason: _protocolInstance.closeReason)) {
           _setStartupTerminalState(closeKind: closeKind, closeReason: _protocolInstance.closeReason, protocol: _protocolInstance);
           throw _startupException(closeKind: closeKind, closeReason: _protocolInstance.closeReason, protocol: _protocolInstance);
         }
@@ -939,6 +947,17 @@ class RoomClient extends ChangeEmitter {
       return Duration.zero;
     }
     return remaining;
+  }
+
+  Duration _reconnectRetryDelay({required int retryCount}) {
+    var delay = _reconnectRetryBaseDelay;
+    for (var i = 0; i < retryCount; i++) {
+      if (delay >= _reconnectRetryMaxDelay) {
+        return _reconnectRetryMaxDelay;
+      }
+      delay *= 2;
+    }
+    return delay > _reconnectRetryMaxDelay ? _reconnectRetryMaxDelay : delay;
   }
 
   Future<void> _attemptInitialProtocolStartup({required Protocol protocol, required Duration? remaining}) async {
@@ -1048,11 +1067,13 @@ class RoomClient extends ChangeEmitter {
     }
 
     var firstAttempt = true;
+    var retryCount = 0;
     while (!_closing) {
       if (firstAttempt) {
         firstAttempt = false;
         if (_reconnectTimeout == null) {
-          await Future<void>.delayed(_reconnectRetryInterval);
+          await Future<void>.delayed(_reconnectRetryDelay(retryCount: retryCount));
+          retryCount++;
         }
       } else {
         final remaining = _remainingReconnectTimeout(deadline);
@@ -1061,13 +1082,15 @@ class RoomClient extends ChangeEmitter {
         }
 
         if (remaining == null) {
-          await Future<void>.delayed(_reconnectRetryInterval);
+          await Future<void>.delayed(_reconnectRetryDelay(retryCount: retryCount));
         } else {
-          final delay = remaining.compareTo(_reconnectRetryInterval) < 0 ? remaining : _reconnectRetryInterval;
+          final backoffDelay = _reconnectRetryDelay(retryCount: retryCount);
+          final delay = remaining.compareTo(backoffDelay) < 0 ? remaining : backoffDelay;
           if (delay > Duration.zero) {
             await Future<void>.delayed(delay);
           }
         }
+        retryCount++;
       }
 
       final remaining = _remainingReconnectTimeout(deadline);
@@ -1096,7 +1119,7 @@ class RoomClient extends ChangeEmitter {
       } on _ProtocolStartupFailure catch (error) {
         recordFailureReason(error.reason);
         await _closeProtocol(nextProtocol);
-        if (error.kind != ProtocolCloseKind.error) {
+        if (!_isRetryableStartupClose(kind: error.kind, reason: error.reason)) {
           return _ProtocolRetryResult(connected: false, closeKind: error.kind, closeReason: error.reason);
         }
       } catch (error, stackTrace) {
