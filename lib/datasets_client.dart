@@ -770,6 +770,22 @@ class DatasetsClient {
     await _invoke("drop_columns", {"table": table, "columns": columns, "namespace": namespace, "branch": branch});
   }
 
+  Future<void> updateColumnMetadata({
+    required String table,
+    required String column,
+    required Map<String, String> metadata,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    await _invoke("update_column_metadata", {
+      "table": table,
+      "column": column,
+      "metadata": _metadataEntries(metadata),
+      "namespace": namespace,
+      "branch": branch,
+    });
+  }
+
   Future<void> dropIndex({required String table, required String name, List<String>? namespace, String? branch}) async {
     await _invoke("drop_index", {"table": table, "name": name, "namespace": namespace, "branch": branch});
   }

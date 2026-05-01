@@ -648,6 +648,13 @@ void main() {
     );
     await harness.room.datasets.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
     await harness.room.datasets.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
+    await harness.room.datasets.updateColumnMetadata(
+      table: 'records',
+      column: 'image',
+      metadata: {'content-type': 'image/*'},
+      namespace: ['team'],
+      branch: 'exp',
+    );
     final optimizeResult = await harness.room.datasets.optimize(table: 'records', namespace: ['team'], branch: 'exp');
     expect(optimizeResult.optimizedIndices, isTrue);
     final stats = await harness.room.datasets.stats('records', namespace: ['team'], branch: 'exp', version: 7);
@@ -745,6 +752,15 @@ void main() {
       'namespace': ['team'],
       'branch': 'exp',
       'version': 7,
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'update_column_metadata').input, {
+      'table': 'records',
+      'column': 'image',
+      'metadata': [
+        {'key': 'content-type', 'value': 'image/*'},
+      ],
+      'namespace': ['team'],
+      'branch': 'exp',
     });
     expect(harness.server.requests.firstWhere((request) => request.tool == 'optimize').input, {
       'table': 'records',

@@ -37,6 +37,11 @@ String _websocketConnectFailureMessage(int statusCode) {
   final statusText = switch (statusCode) {
     403 => 'Forbidden',
     404 => 'Not Found',
+    408 => 'Request Timeout',
+    429 => 'Too Many Requests',
+    502 => 'Bad Gateway',
+    503 => 'Service Unavailable',
+    504 => 'Gateway Timeout',
     _ => null,
   };
   if (statusText == null) {
@@ -45,13 +50,21 @@ String _websocketConnectFailureMessage(int statusCode) {
   return 'websocket connect failed with status $statusCode: $statusText';
 }
 
+bool _isRetryableConnectStatusCode(int statusCode) {
+  return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+}
+
 RoomServerException _wrapRoomConnectionError(Object? error) {
   if (error is RoomServerException) {
     return error;
   }
   final connectStatusCode = websocket_connect_status.websocketConnectStatusCode(error);
-  if (connectStatusCode == 403 || connectStatusCode == 404) {
-    return RoomServerException(_websocketConnectFailureMessage(connectStatusCode!), statusCode: connectStatusCode);
+  if (connectStatusCode != null) {
+    return RoomServerException(
+      _websocketConnectFailureMessage(connectStatusCode),
+      statusCode: connectStatusCode,
+      retryable: _isRetryableConnectStatusCode(connectStatusCode),
+    );
   }
   if (error is ProtocolCloseException) {
     final reason = error.reason;
@@ -623,12 +636,22 @@ class RoomClient extends ChangeEmitter {
   RoomClient({
     required ProtocolFactory protocolFactory,
     Duration? reconnectTimeout,
+    Duration reconnectRetryBaseDelay = const Duration(milliseconds: 500),
+    Duration reconnectRetryMaxDelay = const Duration(seconds: 30),
     OAuthTokenRequestHandler? oauthTokenRequestHandler,
     SecretRequestHandler? secretRequestHandler,
   }) : _protocolFactory = protocolFactory,
-       _reconnectTimeout = reconnectTimeout {
+       _reconnectTimeout = reconnectTimeout,
+       _reconnectRetryBaseDelay = reconnectRetryBaseDelay,
+       _reconnectRetryMaxDelay = reconnectRetryMaxDelay {
     if (reconnectTimeout != null && reconnectTimeout.isNegative) {
       throw ArgumentError.value(reconnectTimeout, 'reconnectTimeout', 'must be null or non-negative');
+    }
+    if (reconnectRetryBaseDelay <= Duration.zero) {
+      throw ArgumentError.value(reconnectRetryBaseDelay, 'reconnectRetryBaseDelay', 'must be positive');
+    }
+    if (reconnectRetryMaxDelay <= Duration.zero) {
+      throw ArgumentError.value(reconnectRetryMaxDelay, 'reconnectRetryMaxDelay', 'must be positive');
     }
     _protocolInstance = _protocolFactory();
     unawaited(_ready.future.catchError((Object _) {}));
@@ -653,8 +676,8 @@ class RoomClient extends ChangeEmitter {
 
   final ProtocolFactory _protocolFactory;
   final Duration? _reconnectTimeout;
-  final Duration _reconnectRetryBaseDelay = const Duration(milliseconds: 500);
-  final Duration _reconnectRetryMaxDelay = const Duration(seconds: 30);
+  final Duration _reconnectRetryBaseDelay;
+  final Duration _reconnectRetryMaxDelay;
   late Protocol _protocolInstance;
   late final RoomProtocolProxy protocol;
   late final QueuesClient queues;
