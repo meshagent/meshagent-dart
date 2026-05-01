@@ -1,3 +1,6 @@
+## [0.39.5]
+- Extended table status to track `loadedByteCount` and include formatted byte counts in the loading/secondary status labels
+
 ## [0.39.4]
 - Breaking: Dart scheduled-task client models and requests now use `ScheduledTaskSpec`-based structures (queue vs container targeting) instead of separate payload/queue/schedule fields.
 - Added Dart scheduled task run models and run-page support so consumers can list scheduled-task executions with status, attempt count, and timestamp fields.
