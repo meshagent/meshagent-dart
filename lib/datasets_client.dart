@@ -1312,7 +1312,7 @@ class DatasetOptimizeConfig {
   const DatasetOptimizeConfig({
     this.compactFiles = true,
     this.optimizeIndices = true,
-    this.cleanupOldVersions = true,
+    this.cleanupOldVersions = false,
     this.targetRowsPerFragment,
     this.maxRowsPerGroup,
     this.maxBytesPerFile,
