@@ -601,6 +601,69 @@ void main() {
     await harness.dispose();
   });
 
+  test('datasets client imports and exports room storage files', () async {
+    final harness = await _startDatasetsHarness();
+
+    await harness.room.datasets.importFromStorage(
+      table: 'records',
+      path: 'imports/records.parquet',
+      mode: DatasetImportMode.replace,
+      format: DatasetStorageFormat.parquet,
+      namespace: ['team'],
+      branch: 'exp',
+    );
+    await harness.room.datasets.importFromStorage(
+      table: 'records',
+      path: 'imports/updates.csv',
+      mode: DatasetImportMode.merge,
+      format: DatasetStorageFormat.csv,
+      on: 'id',
+      batchSize: 512,
+    );
+    await harness.room.datasets.exportToStorage(
+      table: 'records',
+      path: 'exports/records.xlsx',
+      format: DatasetStorageFormat.excel,
+      namespace: ['team'],
+      branch: 'exp',
+      version: 3,
+    );
+
+    expect(harness.server.requests.where((request) => request.tool == 'import_storage').map((request) => request.input).toList(), [
+      {
+        'table': 'records',
+        'path': 'imports/records.parquet',
+        'mode': 'replace',
+        'format': 'parquet',
+        'on': null,
+        'sheet': null,
+        'namespace': ['team'],
+        'branch': 'exp',
+      },
+      {
+        'table': 'records',
+        'path': 'imports/updates.csv',
+        'mode': 'merge',
+        'format': 'csv',
+        'on': 'id',
+        'sheet': null,
+        'batch_size': 512,
+        'namespace': null,
+        'branch': null,
+      },
+    ]);
+    expect(harness.server.requests.where((request) => request.tool == 'export_storage').map((request) => request.input).single, {
+      'table': 'records',
+      'path': 'exports/records.xlsx',
+      'format': 'excel',
+      'namespace': ['team'],
+      'branch': 'exp',
+      'version': 3,
+    });
+
+    await harness.dispose();
+  });
+
   test('datasets inspect, search, and sql decode streamed row chunks', () async {
     final harness = await _startDatasetsHarness();
 

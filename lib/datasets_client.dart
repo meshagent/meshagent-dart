@@ -24,6 +24,44 @@ extension CreateModeValue on CreateMode {
   }
 }
 
+enum DatasetStorageFormat { auto, json, arrow, csv, tsv, parquet, excel }
+
+extension DatasetStorageFormatValue on DatasetStorageFormat {
+  String get value {
+    switch (this) {
+      case DatasetStorageFormat.auto:
+        return "auto";
+      case DatasetStorageFormat.json:
+        return "json";
+      case DatasetStorageFormat.arrow:
+        return "arrow";
+      case DatasetStorageFormat.csv:
+        return "csv";
+      case DatasetStorageFormat.tsv:
+        return "tsv";
+      case DatasetStorageFormat.parquet:
+        return "parquet";
+      case DatasetStorageFormat.excel:
+        return "excel";
+    }
+  }
+}
+
+enum DatasetImportMode { create, replace, merge }
+
+extension DatasetImportModeValue on DatasetImportMode {
+  String get value {
+    switch (this) {
+      case DatasetImportMode.create:
+        return "create";
+      case DatasetImportMode.replace:
+        return "replace";
+      case DatasetImportMode.merge:
+        return "merge";
+    }
+  }
+}
+
 class TableRef {
   TableRef({required this.name, this.namespace, this.alias, this.branch, this.version});
 
@@ -737,6 +775,51 @@ class DatasetsClient {
 
   Future<void> dropTable({required String name, bool ignoreMissing = false, List<String>? namespace, String? branch}) async {
     await _invoke("drop_table", {"name": name, "ignore_missing": ignoreMissing, "namespace": namespace, "branch": branch});
+  }
+
+  Future<void> importFromStorage({
+    required String table,
+    required String path,
+    DatasetImportMode mode = DatasetImportMode.create,
+    DatasetStorageFormat format = DatasetStorageFormat.auto,
+    String? on,
+    String? sheet,
+    int? batchSize,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final input = {
+      "table": table,
+      "path": path,
+      "mode": mode.value,
+      "format": format.value,
+      "on": on,
+      "sheet": sheet,
+      "namespace": namespace,
+      "branch": branch,
+    };
+    if (batchSize != null) {
+      input["batch_size"] = batchSize;
+    }
+    await _invoke("import_storage", input);
+  }
+
+  Future<void> exportToStorage({
+    required String table,
+    required String path,
+    required DatasetStorageFormat format,
+    List<String>? namespace,
+    String? branch,
+    int? version,
+  }) async {
+    await _invoke("export_storage", {
+      "table": table,
+      "path": path,
+      "format": format.value,
+      "namespace": namespace,
+      "branch": branch,
+      "version": version,
+    });
   }
 
   Future<void> addColumnWithExpression({
