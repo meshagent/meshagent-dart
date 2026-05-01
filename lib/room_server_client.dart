@@ -76,7 +76,7 @@ String? _nonRetryableConnectFailureReason(Object error) {
 }
 
 bool _isRetryableStartupClose({required ProtocolCloseKind kind, required String? reason}) {
-  if (kind == ProtocolCloseKind.error) {
+  if (kind == ProtocolCloseKind.error || kind == ProtocolCloseKind.server) {
     return true;
   }
   return (reason ?? '').toLowerCase().contains('1013');
@@ -1188,7 +1188,9 @@ class RoomClient extends ChangeEmitter {
         return;
       }
 
-      if (closeKind != ProtocolCloseKind.error) {
+      final shouldReconnect = closeKind == ProtocolCloseKind.error || closeKind == ProtocolCloseKind.server;
+
+      if (!shouldReconnect) {
         _setTerminalState(state: state);
       }
 
@@ -1199,7 +1201,7 @@ class RoomClient extends ChangeEmitter {
       await _failPendingWork(state: state);
       await _closeProtocol(protocol);
 
-      if (closeKind == ProtocolCloseKind.error) {
+      if (shouldReconnect) {
         final normalizedReason = _normalizeCloseReason(closeReason);
         if (_reconnectTimeout == Duration.zero) {
           if (normalizedReason == null) {

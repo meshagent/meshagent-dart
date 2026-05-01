@@ -534,6 +534,54 @@ void main() {
     await pair.dispose();
   });
 
+  test('server normal close attempts reconnect when client is not closing', () async {
+    final firstPair = _ProtocolPair();
+    final secondPair = _ProtocolPair();
+    var protocolFactoryCalls = 0;
+
+    final room = RoomClient(
+      protocolFactory: () {
+        protocolFactoryCalls++;
+        if (protocolFactoryCalls == 1) {
+          return firstPair.clientProtocolFactory();
+        }
+        return secondPair.clientProtocolFactory();
+      },
+      reconnectTimeout: const Duration(milliseconds: 500),
+    );
+
+    final events = <RoomStatusEvent>[];
+    room.listen((event) {
+      if (event is RoomStatusEvent) {
+        events.add(event);
+      }
+    });
+
+    try {
+      firstPair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+
+      final startFuture = room.start();
+      await _sendRoomReady(firstPair.serverProtocol);
+      await startFuture;
+
+      await firstPair.closeServerToClient();
+      await _waitUntil(() => protocolFactoryCalls == 2);
+
+      secondPair.serverProtocol.start(onMessage: (protocol, messageId, type, data) async {});
+      await _sendRoomReady(secondPair.serverProtocol);
+
+      await _waitUntil(() => events.map((event) => event.status).contains('reconnected'));
+
+      expect(room.isConnected, isTrue);
+      expect(room.isClosed, isFalse);
+      expect(protocolFactoryCalls, 2);
+    } finally {
+      room.dispose();
+      await firstPair.dispose();
+      await secondPair.dispose();
+    }
+  });
+
   test('sendRequest succeeds when message id exceeds 16-bit range', () async {
     final pair = _ProtocolPair();
     pair.serverProtocol.start(

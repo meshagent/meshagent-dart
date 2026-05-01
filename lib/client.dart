@@ -2819,6 +2819,7 @@ class Meshagent {
     bool? isDeveloper,
     bool? canCreateRooms,
     bool? canUseLlmProxy,
+    Uri? inviteRedirectUrl,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -2829,6 +2830,7 @@ class Meshagent {
       "is_developer": ?isDeveloper,
       "can_create_rooms": ?canCreateRooms,
       "can_use_llm_proxy": ?canUseLlmProxy,
+      "invite_redirect_url": ?inviteRedirectUrl?.toString(),
     };
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
@@ -3431,10 +3433,16 @@ class Meshagent {
     required String roomId,
     required String email,
     required ApiScope permissions,
+    Uri? inviteRedirectUrl,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/room-grants');
-    final body = {'room_id': roomId, 'email': email, 'permissions': permissions.toJson()};
+    final body = {
+      'room_id': roomId,
+      'email': email,
+      'permissions': permissions.toJson(),
+      'invite_redirect_url': ?inviteRedirectUrl?.toString(),
+    };
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode >= 400) {
