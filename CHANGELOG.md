@@ -1,3 +1,8 @@
+## [0.39.7]
+- Added `getSysadminUsage` to the Dart SDK client to fetch sysadmin usage reports with filters (start/end, interval, report, project/provider/model/usage type/client, and annotations).
+- Added a Dart test validating request query parameters and the parsed response shape.
+- Updated the Dart SDK package dependency alignment (including `meshagent_dart_arrow`) to the new SDK version.
+
 ## [0.39.6]
 - `FileDropArea` now supports an optional `multiple` parameter to stop after the first dropped file when set to `false`.
 - Table cell alignment rendering no longer treats boolean values as a special-case alignment path.
