@@ -2785,6 +2785,8 @@ class Meshagent {
     DateTime? start,
     DateTime? end,
     String? interval,
+    String? report,
+    String? projectId,
     String? provider,
     String? model,
     String? usageType,
@@ -2796,6 +2798,8 @@ class Meshagent {
       if (start != null) "start": start.toIso8601String(),
       if (end != null) "end": end.toIso8601String(),
       "interval": ?interval,
+      "report": ?report,
+      if (projectId != null && projectId.trim().isNotEmpty) "project_id": projectId.trim(),
       if (provider != null && provider.trim().isNotEmpty) "provider": provider.trim(),
       if (model != null && model.trim().isNotEmpty) "model": model.trim(),
       if (usageType != null && usageType.trim().isNotEmpty) "usage_type": usageType.trim(),
@@ -2804,7 +2808,7 @@ class Meshagent {
     };
     final response = await httpClient.get(uri.replace(queryParameters: queryParams));
     if (response.statusCode == 403) {
-      throw ForbiddenException('User is not a sysadmin. Status code: ${response.statusCode}, body: ${response.body}');
+      throw ForbiddenException('You do not have access. Status code: ${response.statusCode}, body: ${response.body}');
     }
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get sysadmin usage. Status code: ${response.statusCode}, body: ${response.body}');
