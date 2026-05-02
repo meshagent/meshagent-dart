@@ -1,3 +1,8 @@
+## [0.39.6]
+- `FileDropArea` now supports an optional `multiple` parameter to stop after the first dropped file when set to `false`.
+- Table cell alignment rendering no longer treats boolean values as a special-case alignment path.
+- File browser selection behavior was updated (clears previous selection before adding a new one, and centers the layout vertically).
+
 ## [0.39.5]
 - Extended table status to track `loadedByteCount` and include formatted byte counts in the loading/secondary status labels
 
