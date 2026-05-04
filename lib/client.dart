@@ -2781,47 +2781,6 @@ class Meshagent {
     return results;
   }
 
-  Future<List<Map<String, dynamic>>> getSysadminUsage({
-    DateTime? start,
-    DateTime? end,
-    String? interval,
-    String? report,
-    String? projectId,
-    String? provider,
-    String? model,
-    String? usageType,
-    String? client,
-    Map<String, String>? annotations,
-  }) async {
-    final uri = Uri.parse('$baseUrl/accounts/sysadmin/usage');
-    final queryParams = <String, String>{
-      if (start != null) "start": start.toIso8601String(),
-      if (end != null) "end": end.toIso8601String(),
-      "interval": ?interval,
-      "report": ?report,
-      if (projectId != null && projectId.trim().isNotEmpty) "project_id": projectId.trim(),
-      if (provider != null && provider.trim().isNotEmpty) "provider": provider.trim(),
-      if (model != null && model.trim().isNotEmpty) "model": model.trim(),
-      if (usageType != null && usageType.trim().isNotEmpty) "usage_type": usageType.trim(),
-      if (client != null && client.trim().isNotEmpty) "client": client.trim(),
-      if (annotations != null && annotations.isNotEmpty) "annotations": jsonEncode(annotations),
-    };
-    final response = await httpClient.get(uri.replace(queryParameters: queryParams));
-    if (response.statusCode == 403) {
-      throw ForbiddenException('You do not have access. Status code: ${response.statusCode}, body: ${response.body}');
-    }
-    if (response.statusCode >= 400) {
-      throw MeshagentException('Failed to get sysadmin usage. Status code: ${response.statusCode}, body: ${response.body}');
-    }
-
-    List<Map<String, dynamic>> results = [];
-    for (final map in (jsonDecode(response.body) as Map<String, dynamic>)["usage"]) {
-      results.add(map);
-    }
-
-    return results;
-  }
-
   /// Corresponds to: POST /accounts/projects/:project_id/users/:user_id
   /// Body: { "is_admin" }
   /// Returns JSON like { "ok": true } on success.
