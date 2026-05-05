@@ -132,6 +132,34 @@ typedef DatasetRows = List<DatasetRecord>;
 typedef DatasetRowChunks = Stream<DatasetRows>;
 typedef DatasetArrowBatches = Stream<ArrowRecordBatch>;
 
+enum DatasetTableWatchPhase { initial, delta }
+
+class DatasetTableWatchEvent {
+  const DatasetTableWatchEvent({
+    required this.kind,
+    required this.phase,
+    this.batch,
+    this.changeType,
+    this.version,
+    this.beginVersion,
+    this.endVersion,
+    this.transactions,
+    this.deletePredicate,
+    this.transaction,
+  });
+
+  final String kind;
+  final DatasetTableWatchPhase phase;
+  final ArrowRecordBatch? batch;
+  final String? changeType;
+  final int? version;
+  final int? beginVersion;
+  final int? endVersion;
+  final List<Map<String, Object?>>? transactions;
+  final String? deletePredicate;
+  final Map<String, Object?>? transaction;
+}
+
 const _arrowIpcStreamMimeType = "application/vnd.apache.arrow.stream";
 
 ArrowTable _tableFromBatches(List<ArrowRecordBatch> batches) {
@@ -630,6 +658,69 @@ class DatasetsClient {
         }
         yield ArrowRecordBatch(chunk.data);
         input.requestNext();
+      }
+    } finally {
+      input.close();
+    }
+  }
+
+  Stream<DatasetTableWatchEvent> watchTable({
+    required String table,
+    List<String>? namespace,
+    String? branch,
+    double pollIntervalSeconds = 0.5,
+  }) async* {
+    final input = _DatasetArrowReadInputStream(
+      start: {"kind": "start", "table": table, "namespace": namespace, "branch": branch, "poll_interval_seconds": pollIntervalSeconds},
+    );
+    final output = await _invokeStream("watch_table", input.inputStream());
+    input.requestNext();
+    try {
+      await for (final chunk in output) {
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent) {
+          if (chunk.method == "close") {
+            return;
+          }
+          throw RoomServerException("unexpected return type from datasets.watch_table call");
+        }
+        if (chunk is BinaryContent && chunk.headers["kind"] == "data") {
+          final batch = ArrowRecordBatch(chunk.data);
+          yield DatasetTableWatchEvent(
+            kind: chunk.headers["watch_event"] ?? "data",
+            phase: _datasetWatchPhase(chunk.headers["phase"]),
+            batch: batch,
+            changeType: chunk.headers["change_type"],
+            version: _intHeader(chunk.headers["version"]),
+            beginVersion: _intHeader(chunk.headers["begin_version"]),
+            endVersion: _intHeader(chunk.headers["end_version"]),
+            transactions: chunk.headers["watch_event"] == "transactions" ? _transactionsFromWatchBatch(batch) : null,
+          );
+          input.requestNext();
+          continue;
+        }
+        if (chunk is JsonContent) {
+          final json = chunk.json;
+          final rawTransactions = json["transactions"];
+          final rawTransaction = json["transaction"];
+          yield DatasetTableWatchEvent(
+            kind: json["kind"]?.toString() ?? "event",
+            phase: _datasetWatchPhase(json["phase"]),
+            version: _intValue(json["version"]),
+            beginVersion: _intValue(json["begin_version"]),
+            endVersion: _intValue(json["end_version"]),
+            transactions: rawTransactions is List
+                ? rawTransactions.whereType<Map>().map((value) => Map<String, Object?>.from(value)).toList(growable: false)
+                : null,
+            deletePredicate: json["predicate"]?.toString(),
+            transaction: rawTransaction is Map ? Map<String, Object?>.from(rawTransaction) : null,
+          );
+          input.requestNext();
+          continue;
+        }
+        throw RoomServerException("unexpected return type from datasets.watch_table call");
       }
     } finally {
       input.close();
@@ -1723,6 +1814,43 @@ DatasetRows decodeRecords(DatasetRows records) {
     }
   }
   return records;
+}
+
+DatasetTableWatchPhase _datasetWatchPhase(Object? value) {
+  return value?.toString() == "delta" ? DatasetTableWatchPhase.delta : DatasetTableWatchPhase.initial;
+}
+
+List<Map<String, Object?>> _transactionsFromWatchBatch(ArrowRecordBatch batch) {
+  final transactions = <Map<String, Object?>>[];
+  for (final row in batch.toRows()) {
+    final transactionJson = row["transaction_json"];
+    if (transactionJson is String && transactionJson.isNotEmpty) {
+      final decoded = jsonDecode(transactionJson);
+      if (decoded is Map) {
+        transactions.add(Map<String, Object?>.from(decoded));
+        continue;
+      }
+    }
+    transactions.add(Map<String, Object?>.from(row));
+  }
+  return transactions;
+}
+
+int? _intHeader(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  return int.tryParse(value.toString());
+}
+
+int? _intValue(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value == null) {
+    return null;
+  }
+  return int.tryParse(value.toString());
 }
 
 Object? _encodeRecordValue(Object? value) {
