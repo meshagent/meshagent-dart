@@ -868,6 +868,10 @@ class DatasetsClient {
     await _invoke("drop_table", {"name": name, "ignore_missing": ignoreMissing, "namespace": namespace, "branch": branch});
   }
 
+  Future<void> renameTable({required String name, required String newName, List<String>? namespace, String? branch}) async {
+    await _invoke("rename_table", {"name": name, "new_name": newName, "namespace": namespace, "branch": branch});
+  }
+
   Future<void> importFromStorage({
     required String table,
     required String path,

@@ -711,6 +711,7 @@ void main() {
     );
     await harness.room.datasets.restore(table: 'records', version: 2, namespace: ['team'], branch: 'exp');
     await harness.room.datasets.dropIndex(table: 'records', name: 'idx_records_id', namespace: ['team'], branch: 'exp');
+    await harness.room.datasets.renameTable(name: 'records', newName: 'renamed_records', namespace: ['team'], branch: 'exp');
     await harness.room.datasets.updateColumnMetadata(
       table: 'records',
       column: 'image',
@@ -807,6 +808,12 @@ void main() {
     expect(harness.server.requests.firstWhere((request) => request.tool == 'create_index').input, {
       'table': 'records',
       'config': {'column': 'embedding', 'index_type': 'IVF_PQ', 'num_partitions': 32, 'num_sub_vectors': 8},
+      'namespace': ['team'],
+      'branch': 'exp',
+    });
+    expect(harness.server.requests.firstWhere((request) => request.tool == 'rename_table').input, {
+      'name': 'records',
+      'new_name': 'renamed_records',
       'namespace': ['team'],
       'branch': 'exp',
     });
