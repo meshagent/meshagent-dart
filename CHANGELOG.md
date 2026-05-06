@@ -1,3 +1,6 @@
+## [0.39.8]
+- Added `renameTable` to `DatasetsClient`, invoking the server `rename_table` operation with `name`, `newName`, optional `namespace`, and optional `branch`
+
 ## [0.39.7]
 - Added `getSysadminUsage` to the Dart SDK client to fetch sysadmin usage reports with filters (start/end, interval, report, project/provider/model/usage type/client, and annotations).
 - Added a Dart test validating request query parameters and the parsed response shape.
