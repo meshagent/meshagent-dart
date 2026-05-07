@@ -1,3 +1,10 @@
+## [0.39.9]
+- Updated Dart SDK chat components to omit context rendering when no context is available.
+- Added dataset table rename support to Dart dataset/chat flows.
+- Improved dataset path restoration support in Dart dataset chat threads.
+- Added dataset thread storage support to Dart SDK chat/dataset wiring.
+- Enhanced Dart SDK usage graph/reporting UI for hour-level usage breakdown and additional usage reports.
+
 ## [0.39.8]
 - Added `renameTable` to `DatasetsClient`, invoking the server `rename_table` operation with `name`, `newName`, optional `namespace`, and optional `branch`
 
