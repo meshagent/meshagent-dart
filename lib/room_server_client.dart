@@ -4643,6 +4643,7 @@ class StorageClient extends ChangeEmitter {
     '.tsx': 'text/tsx',
     '.txt': 'text/plain',
     '.wasm': 'application/wasm',
+    '.wav': 'audio/wav',
     '.webp': 'image/webp',
     '.xml': 'application/xml',
     '.yaml': 'application/yaml',
