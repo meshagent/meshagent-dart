@@ -7,6 +7,8 @@ import 'package:meshagent/version.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'src/websocket_channel_connect.dart' if (dart.library.io) 'src/websocket_channel_connect_io.dart';
+
 class ProtocolMessage {
   ProtocolMessage({required this.id, required this.data, required this.type}) : sent = Completer<void>();
 
@@ -98,7 +100,7 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
 
-    webSocket = WebSocketChannel.connect(url.replace(queryParameters: {'token': jwt, 'v': version}));
+    webSocket = connectWebSocketChannel(url.replace(queryParameters: {'token': jwt, 'v': version}));
     sub = webSocket!.stream.listen(
       _onData,
       onDone: () {
