@@ -625,7 +625,7 @@ void main() {
 
     expect(
       await harness.room.containers.build(
-        tag: 'example:latest',
+        tags: const ['example:latest'],
         mountPath: '/context',
         contextPath: '/workspace',
         chunks: buildChunks(),
@@ -687,6 +687,7 @@ void main() {
 
     final buildRequest = harness.server.requests.firstWhere((entry) => entry.tool == 'build');
     final buildInput = buildRequest.input;
+    expect(buildInput['tags'], ['example:latest']);
     expect(buildInput['mount_path'], '/context');
     expect(buildInput['context_path'], '/workspace');
     expect(buildInput['dockerfile_path'], '/workspace/Dockerfile');

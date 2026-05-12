@@ -2125,7 +2125,7 @@ List<Map<String, dynamic>> _containerCredentials(List<DockerSecret> values) {
 
 class _BuildInputStream {
   _BuildInputStream({
-    required this.tag,
+    required this.tags,
     required this.mountPath,
     required this.contextPath,
     required this.chunks,
@@ -2137,7 +2137,7 @@ class _BuildInputStream {
     this.size,
   });
 
-  final String tag;
+  final List<String> tags;
   final String mountPath;
   final String contextPath;
   final Stream<Uint8List> chunks;
@@ -2153,7 +2153,7 @@ class _BuildInputStream {
       data: Uint8List(0),
       headers: {
         'kind': 'start',
-        'tag': tag,
+        'tags': tags,
         'mount_path': mountPath,
         'context_path': contextPath,
         'dockerfile_path': dockerfilePath,
@@ -2524,7 +2524,8 @@ class ContainersClient extends ChangeEmitter {
   }
 
   Future<String> build({
-    required String tag,
+    List<String>? tags,
+    @Deprecated('Use tags instead.') String? tag,
     required String mountPath,
     required String contextPath,
     required Stream<Uint8List> chunks,
@@ -2535,8 +2536,12 @@ class ContainersClient extends ChangeEmitter {
     String? builderName,
     int? size,
   }) async {
+    final resolvedTags = tags ?? (tag == null ? const <String>[] : <String>[tag]);
+    if (resolvedTags.isEmpty) {
+      throw ArgumentError.value(resolvedTags, 'tags', 'must not be empty');
+    }
     final input = _BuildInputStream(
-      tag: tag,
+      tags: resolvedTags,
       mountPath: mountPath,
       contextPath: contextPath,
       chunks: chunks,
