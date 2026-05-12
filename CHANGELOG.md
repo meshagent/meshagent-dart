@@ -1,3 +1,6 @@
+## [0.40.2]
+- Adjusted chat input trailing controls so they render directly when no footer is present, preserving the expected layout without the extra expansion wrapper.
+
 ## [0.40.1]
 - Stability
 
