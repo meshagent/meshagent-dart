@@ -1,3 +1,6 @@
+## [0.40.1]
+- Stability
+
 ## [0.40.0]
 - Added a platform-specific websocket connector so the Dart SDK uses native I/O websocket handling where available.
 - Extended the Dart protocol and room-server client to cover the updated realtime flow, including audio/WAV content support.
