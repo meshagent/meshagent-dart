@@ -1,3 +1,8 @@
+## [0.40.0]
+- Added a platform-specific websocket connector so the Dart SDK uses native I/O websocket handling where available.
+- Extended the Dart protocol and room-server client to cover the updated realtime flow, including audio/WAV content support.
+- Refreshed Dart Arrow helpers and protocol tests to match the revised thread and event schema.
+
 ## [0.39.9]
 - Updated Dart SDK chat components to omit context rendering when no context is available.
 - Added dataset table rename support to Dart dataset/chat flows.
