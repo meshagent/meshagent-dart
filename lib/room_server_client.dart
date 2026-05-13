@@ -6215,7 +6215,7 @@ class TokenValue {
     );
   }
 
-  Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson()};
+  Map<String, dynamic> toJson() => {'identity': identity, 'api': api?.toJson(), if (role != null) 'role': role};
 }
 
 class SecretValue {

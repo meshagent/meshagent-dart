@@ -2,6 +2,16 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('token value preserves role through json', () {
+    final token = TokenValue(identity: 'TravelAssistant', role: 'agent');
+
+    final payload = token.toJson();
+    final restored = TokenValue.fromJson(payload);
+
+    expect(payload['role'], 'agent');
+    expect(restored.role, 'agent');
+  });
+
   test('service spec channels roundtrip through toJson/fromJson', () {
     final service = ServiceSpec(
       metadata: ServiceMetadata(name: 'channel-service'),
