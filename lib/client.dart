@@ -48,7 +48,74 @@ Map<String, dynamic> _createServiceSpecJson(ServiceSpec service) {
   return payload;
 }
 
+Object? _jsonWithoutNulls(Object? value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value is Map) {
+    final output = <String, dynamic>{};
+    for (final entry in value.entries) {
+      final key = entry.key;
+      if (key is! String) {
+        continue;
+      }
+      final normalized = _jsonWithoutNulls(entry.value);
+      if (normalized != null) {
+        output[key] = normalized;
+      }
+    }
+    return output;
+  }
+
+  if (value is Iterable) {
+    return value.map(_jsonWithoutNulls).where((item) => item != null).toList();
+  }
+
+  return value;
+}
+
+Map<String, dynamic> _jsonMapWithoutNulls(Map<String, dynamic> value) {
+  return (_jsonWithoutNulls(value) as Map).cast<String, dynamic>();
+}
+
 enum ProjectRole { member, developer, admin, none }
+
+class ProjectRoleInfo {
+  ProjectRoleInfo({
+    required this.role,
+    required this.canCreateRooms,
+    required this.canCreateAgents,
+    required this.canUseLlmProxy,
+    required this.isAdmin,
+    required this.isDeveloper,
+  });
+
+  final ProjectRole role;
+  final bool canCreateRooms;
+  final bool canCreateAgents;
+  final bool canUseLlmProxy;
+  final bool isAdmin;
+  final bool isDeveloper;
+
+  factory ProjectRoleInfo.fromJson(Map<String, dynamic> json) {
+    final role = switch (json['role']) {
+      'admin' => ProjectRole.admin,
+      'developer' => ProjectRole.developer,
+      'member' => ProjectRole.member,
+      _ => ProjectRole.none,
+    };
+
+    return ProjectRoleInfo(
+      role: role,
+      canCreateRooms: json['can_create_rooms'] == true,
+      canCreateAgents: json['can_create_agents'] == true,
+      canUseLlmProxy: json['can_use_llm_proxy'] == true,
+      isAdmin: json['is_admin'] == true,
+      isDeveloper: json['is_developer'] == true,
+    );
+  }
+}
 
 class AuthProvider {
   AuthProvider({required this.id, required this.svgLogo, required this.alt, required this.label});
@@ -83,24 +150,68 @@ class RoomConnectionInfo {
   }
 }
 
+class AgentConnectionInfo {
+  AgentConnectionInfo({required this.jwt, required this.agentName, required this.projectId, required this.agentUrl});
+  String jwt;
+  String agentName;
+  String projectId;
+  Uri agentUrl;
+
+  static AgentConnectionInfo fromJson(Map<String, dynamic> json) {
+    return AgentConnectionInfo(
+      jwt: json["jwt"],
+      agentName: json["agent_name"],
+      projectId: json["project_id"],
+      agentUrl: Uri.parse(json["agent_url"]),
+    );
+  }
+}
+
 class RoomSession {
   final String id;
+  final String? roomId;
   final String roomName;
   final DateTime createdAt;
   final bool isActive;
   final Map<String, num>? participants;
+  final String kind;
+  final String? agentId;
+  final String? agentName;
 
-  RoomSession({required this.id, required this.roomName, required this.createdAt, required this.isActive, required this.participants});
+  RoomSession({
+    required this.id,
+    required this.roomId,
+    required this.roomName,
+    required this.createdAt,
+    required this.isActive,
+    required this.participants,
+    this.kind = 'room',
+    this.agentId,
+    this.agentName,
+  });
 
   factory RoomSession.fromJson(Map<String, dynamic> json) => RoomSession(
     id: json["id"],
+    roomId: json['room_id'] as String?,
     roomName: json['room_name'] as String,
     createdAt: DateTime.parse(json['created_at'] as String),
     isActive: json['is_active'] as bool? ?? false,
     participants: json["participants"] == null ? null : {for (final k in (json["participants"] as Map).keys) k: json["participants"][k]},
+    kind: json['kind'] as String? ?? 'room',
+    agentId: json['agent_id'] as String?,
+    agentName: json['agent_name'] as String?,
   );
 
-  Map<String, dynamic> toJson() => {'id': id, 'room_name': roomName, 'started_at': createdAt.toIso8601String(), 'is_active': isActive};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'room_id': roomId,
+    'room_name': roomName,
+    'started_at': createdAt.toIso8601String(),
+    'is_active': isActive,
+    'kind': kind,
+    if (agentId != null) 'agent_id': agentId,
+    if (agentName != null) 'agent_name': agentName,
+  };
 }
 
 class Balance {
@@ -449,23 +560,31 @@ class ManagedSecretInfo {
   final String type;
   final String name;
   final String? delegatedTo;
+  final String? agentId;
 
-  ManagedSecretInfo({required this.id, required this.type, required this.name, this.delegatedTo});
+  ManagedSecretInfo({required this.id, required this.type, required this.name, this.delegatedTo, this.agentId});
 
   factory ManagedSecretInfo.fromJson(Map<String, dynamic> json) => ManagedSecretInfo(
     id: json['id'] as String,
     type: json['type'] as String,
     name: json['name'] as String,
     delegatedTo: json['delegated_to'] as String? ?? json['delegatedTo'] as String?,
+    agentId: json['agent_id'] as String? ?? json['agentId'] as String?,
   );
 
-  Map<String, dynamic> toJson() => {'id': id, 'type': type, 'name': name, if (delegatedTo != null) 'delegated_to': delegatedTo};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type,
+    'name': name,
+    if (delegatedTo != null) 'delegated_to': delegatedTo,
+    if (agentId != null) 'agent_id': agentId,
+  };
 }
 
 class ManagedSecret extends ManagedSecretInfo {
   final String dataBase64;
 
-  ManagedSecret({required super.id, required super.type, required super.name, super.delegatedTo, required this.dataBase64});
+  ManagedSecret({required super.id, required super.type, required super.name, super.delegatedTo, super.agentId, required this.dataBase64});
 
   Uint8List get data => base64Decode(dataBase64);
 
@@ -474,6 +593,7 @@ class ManagedSecret extends ManagedSecretInfo {
     type: json['type'] as String,
     name: json['name'] as String,
     delegatedTo: json['delegated_to'] as String? ?? json['delegatedTo'] as String?,
+    agentId: json['agent_id'] as String? ?? json['agentId'] as String?,
     dataBase64: json['data_base64'] as String? ?? json['dataBase64'] as String,
   );
 
@@ -2040,6 +2160,136 @@ class Meshagent {
     }
   }
 
+  Future<String> createAgentSecret({
+    required String projectId,
+    required String agentId,
+    required Uint8List data,
+    String? secretId,
+    String? name,
+    String? type,
+    String? delegatedTo,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets');
+    final body = <String, dynamic>{
+      'data_base64': base64Encode(_normalizeSecretBytes(data)),
+      'secret_id': ?secretId,
+      'name': ?name,
+      'type': ?type,
+      'delegated_to': ?delegatedTo,
+    };
+
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create agent secret. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
+  }
+
+  Future<void> updateAgentSecret({
+    required String projectId,
+    required String agentId,
+    required String secretId,
+    required Uint8List data,
+    String? name,
+    String? type,
+    String? delegatedTo,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId');
+    final body = <String, dynamic>{
+      'data_base64': base64Encode(_normalizeSecretBytes(data)),
+      'name': ?name,
+      'type': ?type,
+      'delegated_to': ?delegatedTo,
+    };
+
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update agent secret. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<ManagedSecret> getAgentSecret({
+    required String projectId,
+    required String agentId,
+    required String secretId,
+    String? delegatedTo,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final query = <String, String>{};
+    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get agent secret. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ManagedSecret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<ManagedSecretInfo>> listAgentSecrets({required String projectId, required String agentId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent secrets. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final secretsList = data['secrets'] as List<dynamic>? ?? [];
+    return secretsList.whereType<Map<String, dynamic>>().map(ManagedSecretInfo.fromJson).toList();
+  }
+
+  Future<void> deleteAgentSecret({
+    required String projectId,
+    required String agentId,
+    required String secretId,
+    String? delegatedTo,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final query = <String, String>{};
+    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete agent secret. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> createSecret({
     required String projectId,
     required String name,
@@ -2648,6 +2898,7 @@ class Meshagent {
     bool? isAdmin,
     bool? isDeveloper,
     bool? canCreateRooms,
+    bool? canCreateAgents,
     bool? canUseLlmProxy,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
@@ -2659,6 +2910,7 @@ class Meshagent {
       "is_admin": ?isAdmin,
       "is_developer": ?isDeveloper,
       "can_create_rooms": ?canCreateRooms,
+      "can_create_agents": ?canCreateAgents,
       "can_use_llm_proxy": ?canUseLlmProxy,
     };
 
@@ -2790,6 +3042,7 @@ class Meshagent {
     required bool isAdmin,
     required bool isDeveloper,
     required bool canCreateRooms,
+    required bool canCreateAgents,
     required bool canUseLlmProxy,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
@@ -2799,6 +3052,7 @@ class Meshagent {
       'is_admin': isAdmin,
       "is_developer": isDeveloper,
       "can_create_rooms": canCreateRooms,
+      "can_create_agents": canCreateAgents,
       "can_use_llm_proxy": canUseLlmProxy,
     };
 
@@ -2818,6 +3072,7 @@ class Meshagent {
     bool? isAdmin,
     bool? isDeveloper,
     bool? canCreateRooms,
+    bool? canCreateAgents,
     bool? canUseLlmProxy,
     Uri? inviteRedirectUrl,
   }) async {
@@ -2829,6 +3084,7 @@ class Meshagent {
       "is_admin": ?isAdmin,
       "is_developer": ?isDeveloper,
       "can_create_rooms": ?canCreateRooms,
+      "can_create_agents": ?canCreateAgents,
       "can_use_llm_proxy": ?canUseLlmProxy,
       "invite_redirect_url": ?inviteRedirectUrl?.toString(),
     };
@@ -2944,7 +3200,7 @@ class Meshagent {
 
   /// Corresponds to: GET /accounts/projects/{project_id}
   /// Returns a role
-  Future<ProjectRole> getProjectRole(String projectId) async {
+  Future<ProjectRoleInfo> getProjectRole(String projectId) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
     final response = await httpClient.get(uri);
@@ -2956,14 +3212,8 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException('Failed to get project role. Status code: ${response.statusCode}, body: ${response.body}');
     }
-    final role = (jsonDecode(response.body) as Map<String, dynamic>)["role"];
 
-    return switch (role) {
-      "admin" => ProjectRole.admin,
-      "developer" => ProjectRole.developer,
-      "member" => ProjectRole.member,
-      _ => ProjectRole.none,
-    };
+    return ProjectRoleInfo.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<bool> canCreateRooms(String projectId) async {
@@ -2981,6 +3231,23 @@ class Meshagent {
     final canCreateRooms = (jsonDecode(response.body) as Map<String, dynamic>)["can_create_rooms"] ?? false;
 
     return canCreateRooms;
+  }
+
+  Future<bool> canCreateAgents(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/role');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 403) {
+      throw ForbiddenException('User does not have access to this project. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to check agent creation permission. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final canCreateAgents = (jsonDecode(response.body) as Map<String, dynamic>)["can_create_agents"] ?? false;
+
+    return canCreateAgents;
   }
 
   Future<bool> canUseLlmProxy(String projectId) async {
@@ -3160,6 +3427,40 @@ class Meshagent {
     return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
   }
 
+  Future<List<RoomSession>> listActiveAgentSessions(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/sessions/active');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list active agent sessions. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['sessions'] as List<dynamic>? ?? [];
+
+    return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
+  }
+
+  Future<List<RoomSession>> listRecentAgentSessions(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/sessions');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list recent agent sessions. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['sessions'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(RoomSession.fromJson).toList();
+  }
+
   Future<String> getCreditsCheckoutUrl(String projectId, String successUrl, String cancelUrl, double quantity) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/credits');
@@ -3205,6 +3506,26 @@ class Meshagent {
       );
     }
     return jsonDecode(response.body);
+  }
+
+  Future<Map<String, num>> getSessionParticipantCounts(String projectId, String sessionId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSessionId = Uri.encodeComponent(sessionId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId/participants');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get session participant counts. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final participants = data['participants'] as Map<String, dynamic>? ?? {};
+    return {
+      for (final entry in participants.entries)
+        if (entry.value is num) entry.key: entry.value as num,
+    };
   }
 
   /// Corresponds to: POST /accounts/projects/{project_id}/sessions/{session_id}/terminate
@@ -3800,6 +4121,410 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+  }
+
+  Future<ManagedAgent> createAgent({
+    required String projectId,
+    required Map<String, dynamic> configuration,
+    bool ifNotExists = false,
+    Map<String, ManagedAgentGrant>? permissions,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents');
+    final body = {
+      'configuration': _jsonMapWithoutNulls(configuration),
+      'if_not_exists': ifNotExists,
+      if (permissions != null) 'permissions': permissions.map((key, value) => MapEntry(key, value.toJson())),
+    };
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode == 409) {
+      throw NameInUseException("The agent name is already in use");
+    } else if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ManagedAgent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<ManagedAgent> getAgent({required String projectId, required String name}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentName');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('agent not found');
+    }
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return ManagedAgent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<AgentsPage> listAgentsPage({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'agent_name',
+    String? filter,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final queryParameters = {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy};
+    if (filter != null) {
+      queryParameters['filter'] = filter;
+    }
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents').replace(queryParameters: queryParameters);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agents. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return AgentsPage.fromJson(data);
+  }
+
+  Future<List<ManagedAgent>> listAgents({
+    required String projectId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'agent_name',
+    String? filter,
+  }) async {
+    final page = await listAgentsPage(projectId: projectId, limit: limit, offset: offset, orderBy: orderBy, filter: filter);
+    return page.agents;
+  }
+
+  Future<void> updateAgent({required String projectId, required String agentId, required Map<String, dynamic> configuration}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId');
+    final response = await httpClient.put(uri, body: jsonEncode({'configuration': _jsonMapWithoutNulls(configuration)}));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> deleteAgent({required String projectId, required String agentId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> createAgentGrant({
+    required String projectId,
+    required String agentId,
+    required String userId,
+    ManagedAgentGrant permissions = const ManagedAgentGrant(),
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-grants');
+    final body = {'agent_id': agentId, 'user_id': userId, 'permissions': permissions.toJson()};
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create agent grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> createAgentGrantByEmail({
+    required String projectId,
+    required String agentId,
+    required String email,
+    ManagedAgentGrant permissions = const ManagedAgentGrant(),
+    Uri? inviteRedirectUrl,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-grants');
+    final body = {
+      'agent_id': agentId,
+      'email': email,
+      'permissions': permissions.toJson(),
+      'invite_redirect_url': ?inviteRedirectUrl?.toString(),
+    };
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create agent grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> updateAgentGrant({
+    required String projectId,
+    required String agentId,
+    required String userId,
+    ManagedAgentGrant permissions = const ManagedAgentGrant(),
+    String? grantId,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final gid = Uri.encodeComponent(grantId ?? 'unused');
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-grants/$gid');
+    final body = {'agent_id': agentId, 'user_id': userId, 'permissions': permissions.toJson()};
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update agent grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> deleteAgentGrant({required String projectId, required String agentId, required String userId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-grants/$encodedAgentId/$encodedUserId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete agent grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> createAgentRoomGrant({
+    required String projectId,
+    required String agentId,
+    required String roomId,
+    AgentRoomGrant? permissions,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-room-grants');
+    final effectivePermissions = permissions ?? AgentRoomGrant.fromApiScope(ApiScope.agentDefault());
+    final body = {'agent_id': agentId, 'room_id': roomId, 'permissions': effectivePermissions.toJson()};
+    final response = await httpClient.post(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create agent room grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> updateAgentRoomGrant({
+    required String projectId,
+    required String agentId,
+    required String roomId,
+    AgentRoomGrant? permissions,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-room-grants/$encodedAgentId');
+    final body = {'agent_id': agentId, 'room_id': roomId, 'permissions': (permissions ?? AgentRoomGrant()).toJson()};
+    final response = await httpClient.put(uri, body: jsonEncode(body));
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to update agent room grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<void> deleteAgentRoomGrant({required String projectId, required String agentId, required String roomId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentId = Uri.encodeComponent(agentId);
+    final encodedRoomId = Uri.encodeComponent(roomId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agent-room-grants/$encodedAgentId/$encodedRoomId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete agent room grant. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<List<ProjectAgentRoomGrant>> listAgentRoomGrantsByAgent({
+    required String projectId,
+    required String agentName,
+    int limit = 50,
+    int offset = 0,
+    String orderBy = 'room_name',
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(agentName);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agent-room-grants/by-agent/$encodedAgentName',
+    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent room grants by agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['agent_room_grants'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectAgentRoomGrant.fromJson).toList();
+  }
+
+  Future<List<ProjectAgentRoomGrant>> listAgentRoomGrantsByRoom({
+    required String projectId,
+    required String roomName,
+    int limit = 50,
+    int offset = 0,
+    String orderBy = 'agent_name',
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agent-room-grants/by-room/$encodedRoomName',
+    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent room grants by room. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['agent_room_grants'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectAgentRoomGrant.fromJson).toList();
+  }
+
+  Future<List<ProjectAgentGrant>> listAgentGrantsByAgent({
+    required String projectId,
+    required String agentName,
+    int limit = 50,
+    int offset = 0,
+    String orderBy = 'user_id',
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(agentName);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agent-grants/by-agent/$encodedAgentName',
+    ).replace(queryParameters: {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent grants by agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['agent_grants'] as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().map(ProjectAgentGrant.fromJson).toList();
+  }
+
+  Future<ProjectMembersPage> listAgentMembersByAgent({
+    required String projectId,
+    required String agentName,
+    int limit = 50,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(agentName);
+    final queryParameters = {'limit': '$limit', 'offset': '$offset'};
+    if (filter != null) {
+      queryParameters['filter'] = filter;
+    }
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/members/by-agent/$encodedAgentName',
+    ).replace(queryParameters: queryParameters);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent members. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectMembersPage.fromJson(data);
+  }
+
+  Future<AgentGrantsPage> listAgentGrantsByUserPage({
+    required String projectId,
+    required String userId,
+    int limit = 100,
+    int offset = 0,
+    String orderBy = 'agent_name',
+    String? filter,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedUserId = Uri.encodeComponent(userId);
+    final queryParameters = {'limit': '$limit', 'offset': '$offset', 'order_by': orderBy};
+    if (filter != null) {
+      queryParameters['filter'] = filter;
+    }
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/agent-grants/by-user/$encodedUserId',
+    ).replace(queryParameters: queryParameters);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent grants by user. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return AgentGrantsPage.fromJson(data);
+  }
+
+  Future<AgentConnectionInfo> connectAgent({required String projectId, required String agentName}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(agentName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentName/connect');
+    final response = await httpClient.post(uri, body: jsonEncode({}));
+
+    if (response.statusCode >= 400) {
+      if (response.statusCode == 404) {
+        throw NotFoundException('Agent not found');
+      }
+
+      throw MeshagentException(
+        'Failed to connect agent. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return AgentConnectionInfo.fromJson(jsonDecode(response.body));
   }
 
   /// POST /accounts/projects/{project_id}/rooms/{room_name}/connect
@@ -4439,6 +5164,34 @@ class RoomsPage {
   Map<String, dynamic> toJson() => {'rooms': rooms.map((room) => room.toJson()).toList(), 'total': total};
 }
 
+class ManagedAgent {
+  const ManagedAgent({required this.name, required this.id, required this.configuration});
+
+  final String name;
+  final String id;
+  final Map<String, dynamic> configuration;
+
+  static ManagedAgent fromJson(Map<String, dynamic> json) {
+    return ManagedAgent(id: json["id"], name: json["name"], configuration: (json["configuration"] as Map?)?.cast<String, dynamic>() ?? {});
+  }
+
+  Map<String, dynamic> toJson() => {"name": name, "id": id, "configuration": configuration};
+}
+
+class AgentsPage {
+  final List<ManagedAgent> agents;
+  final int total;
+
+  AgentsPage({required this.agents, required this.total});
+
+  factory AgentsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['agents'] as List<dynamic>? ?? [];
+    return AgentsPage(agents: list.whereType<Map<String, dynamic>>().map(ManagedAgent.fromJson).toList(), total: _parseInt(json['total']));
+  }
+
+  Map<String, dynamic> toJson() => {'agents': agents.map((agent) => agent.toJson()).toList(), 'total': total};
+}
+
 class ProjectMembersPage {
   final List<Map<String, dynamic>> users;
   final int total;
@@ -4449,6 +5202,136 @@ class ProjectMembersPage {
     final list = json['users'] as List<dynamic>? ?? [];
     return ProjectMembersPage(users: list.whereType<Map<String, dynamic>>().toList(), total: _parseInt(json['total']));
   }
+}
+
+class ManagedAgentGrant {
+  const ManagedAgentGrant({this.admin = false});
+
+  final bool admin;
+
+  factory ManagedAgentGrant.fromJson(Map<String, dynamic> json) {
+    return ManagedAgentGrant(admin: json['admin'] == true);
+  }
+
+  Map<String, dynamic> toJson() => {'admin': admin};
+}
+
+class ProjectAgentGrant {
+  final ManagedAgent agent;
+  final String userId;
+  final ManagedAgentGrant permissions;
+
+  ProjectAgentGrant({required this.agent, required this.userId, required this.permissions});
+
+  factory ProjectAgentGrant.fromJson(Map<String, dynamic> json) {
+    return ProjectAgentGrant(
+      agent: ManagedAgent.fromJson(json['agent']),
+      userId: json['user_id'] as String,
+      permissions: ManagedAgentGrant.fromJson((json['permissions'] as Map?)?.cast<String, dynamic>() ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'agent': agent.toJson(), 'user_id': userId, 'permissions': permissions.toJson()};
+}
+
+class AgentGrantsPage {
+  final List<ProjectAgentGrant> agentGrants;
+  final int total;
+
+  AgentGrantsPage({required this.agentGrants, required this.total});
+
+  factory AgentGrantsPage.fromJson(Map<String, dynamic> json) {
+    final list = json['agent_grants'] as List<dynamic>? ?? [];
+    return AgentGrantsPage(
+      agentGrants: list.whereType<Map<String, dynamic>>().map(ProjectAgentGrant.fromJson).toList(),
+      total: _parseInt(json['total']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'agent_grants': agentGrants.map((grant) => grant.toJson()).toList(), 'total': total};
+}
+
+class AgentRoomGrant extends ApiScope {
+  AgentRoomGrant({
+    super.livekit,
+    super.queues,
+    super.messaging,
+    super.dataset,
+    super.memory,
+    super.sync,
+    super.storage,
+    super.containers,
+    super.developer,
+    super.agents,
+    super.llm,
+    super.admin,
+    super.secrets,
+    super.tunnels,
+    super.services,
+  });
+
+  factory AgentRoomGrant.fromApiScope(ApiScope scope) {
+    return AgentRoomGrant(
+      livekit: scope.livekit,
+      queues: scope.queues,
+      messaging: scope.messaging,
+      dataset: scope.dataset,
+      memory: scope.memory,
+      sync: scope.sync,
+      storage: scope.storage,
+      containers: scope.containers,
+      developer: scope.developer,
+      agents: scope.agents,
+      llm: scope.llm,
+      admin: scope.admin,
+      secrets: scope.secrets,
+      tunnels: scope.tunnels,
+      services: scope.services,
+    );
+  }
+
+  factory AgentRoomGrant.fromJson(Map<String, dynamic> json) {
+    return AgentRoomGrant.fromApiScope(ApiScope.fromJson(json));
+  }
+}
+
+class ProjectAgentRoomGrant {
+  final ManagedAgent agent;
+  final Room room;
+  final AgentRoomGrant permissions;
+
+  ProjectAgentRoomGrant({required this.agent, required this.room, required this.permissions});
+
+  factory ProjectAgentRoomGrant.fromJson(Map<String, dynamic> json) {
+    return ProjectAgentRoomGrant(
+      agent: ManagedAgent.fromJson(json['agent']),
+      room: Room.fromJson(json['room']),
+      permissions: AgentRoomGrant.fromJson((json['permissions'] as Map?)?.cast<String, dynamic>() ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'agent': agent.toJson(), 'room': room.toJson(), 'permissions': permissions.toJson()};
+}
+
+class ProjectAgentGrantCount {
+  final ManagedAgent agent;
+  final int count;
+
+  ProjectAgentGrantCount({required this.agent, required this.count});
+
+  factory ProjectAgentGrantCount.fromJson(Map<String, dynamic> json) {
+    final dynamic c = json['count'];
+    final int parsedCount = c is int
+        ? c
+        : c is num
+        ? c.toInt()
+        : c is String
+        ? int.tryParse(c) ?? 0
+        : 0;
+    return ProjectAgentGrantCount(agent: ManagedAgent.fromJson(json['agent']), count: parsedCount);
+  }
+
+  Map<String, dynamic> toJson() => {'agent': agent.toJson(), 'count': count};
 }
 
 class ProjectRoomGrant {
