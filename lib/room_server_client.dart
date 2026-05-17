@@ -6734,20 +6734,21 @@ class AgentTextContent extends AgentInputContent {
 }
 
 class AgentFileContent extends AgentInputContent {
-  const AgentFileContent({required this.url});
+  const AgentFileContent({required this.url, this.name});
 
   final String url;
+  final String? name;
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'file', 'url': url};
+  Map<String, dynamic> toJson() => {'type': 'file', 'url': url, if (name != null) 'name': name};
 
   static AgentFileContent fromJson(Map<String, dynamic> json) {
-    return AgentFileContent(url: json['url'] as String);
+    return AgentFileContent(url: json['url'] as String, name: json['name'] as String?);
   }
 
   @override
   AgentFileContent formatWith(Map<String, String> values) {
-    return AgentFileContent(url: url.formatWith(values));
+    return AgentFileContent(url: url.formatWith(values), name: name?.formatWith(values));
   }
 }
 
