@@ -1457,14 +1457,7 @@ class RoomClient extends ChangeEmitter {
     return _sendProtocolNowait(type: type, data: packMessage(request, data), label: label, expectResponse: expectResponse);
   }
 
-  void invokeNowait({
-    required String toolkit,
-    required String tool,
-    Content? input,
-    String? participantId,
-    String? onBehalfOfId,
-    Map<String, dynamic>? callerContext,
-  }) {
+  void invokeNowait({required String toolkit, required String tool, Content? input, String? participantId, String? onBehalfOfId}) {
     final resolvedInput = input ?? EmptyContent();
     final packedInput = unpackMessage(resolvedInput.pack());
     final request = <String, dynamic>{
@@ -1472,7 +1465,6 @@ class RoomClient extends ChangeEmitter {
       'tool': tool,
       'participant_id': participantId,
       'on_behalf_of_id': onBehalfOfId,
-      'caller_context': callerContext,
       'tool_call_id': _uuid.v4(),
       'arguments': packedInput.header,
     };
@@ -1583,7 +1575,6 @@ class RoomClient extends ChangeEmitter {
     required ToolInput input,
     String? participantId,
     String? onBehalfOfId,
-    Map<String, dynamic>? callerContext,
   }) async {
     final toolCallId = _uuid.v4();
     final controller = StreamController<Content>(
@@ -1598,7 +1589,6 @@ class RoomClient extends ChangeEmitter {
       "tool": tool,
       "participant_id": participantId,
       "on_behalf_of_id": onBehalfOfId,
-      "caller_context": callerContext,
       "tool_call_id": toolCallId,
     };
 
@@ -4513,19 +4503,11 @@ class ToolContentSpec {
 }
 
 class ToolkitDescription {
-  ToolkitDescription({
-    required this.title,
-    required this.name,
-    required this.description,
-    required this.tools,
-    this.thumbnailUrl,
-    this.participantId,
-  });
+  ToolkitDescription({required this.title, required this.name, required this.description, required this.tools, this.participantId});
 
   final String? title;
   final String name;
   final String? description;
-  final String? thumbnailUrl;
   final String? participantId;
 
   late final Map<String, ToolDescription> _byName = Map<String, ToolDescription>.fromEntries(tools.map((e) => MapEntry(e.name, e)));
@@ -4541,7 +4523,6 @@ class ToolkitDescription {
       "name": name,
       "description": description,
       "title": title,
-      "thumbnail_url": thumbnailUrl,
       if (participantId != null) "participant_id": participantId,
       "tools": tools
           .map(
@@ -4551,9 +4532,7 @@ class ToolkitDescription {
               "description": tool.description,
               "input_spec": tool.inputSpec?.toJson(),
               "output_spec": tool.outputSpec?.toJson(),
-              "thumbnail_url": tool.thumbnailUrl,
               "defs": tool.defs,
-              "pricing": tool.pricing,
             },
           )
           .toList(),
@@ -4565,7 +4544,6 @@ class ToolkitDescription {
       title: json["title"],
       name: name ?? json["name"],
       description: json["description"],
-      thumbnailUrl: json["thumbnail_url"],
       participantId: json["participant_id"],
       tools: [
         if (json["tools"] is List)
@@ -4576,8 +4554,6 @@ class ToolkitDescription {
               description: tool["description"],
               inputSpec: ToolContentSpec.fromJson(tool["input_spec"]),
               outputSpec: ToolContentSpec.fromJson(tool["output_spec"]),
-              thumbnailUrl: tool["thumbnail_url"],
-              pricing: tool["pricing"],
               defs: tool["defs"],
             );
           }),
@@ -4587,11 +4563,9 @@ class ToolkitDescription {
             return ToolDescription(
               title: tool["title"],
               name: toolName,
-              pricing: tool["pricing"],
               description: tool["description"],
               inputSpec: ToolContentSpec.fromJson(tool["input_spec"]),
               outputSpec: ToolContentSpec.fromJson(tool["output_spec"]),
-              thumbnailUrl: tool["thumbnail_url"],
               defs: tool["defs"],
             );
           }),
@@ -4608,15 +4582,11 @@ class ToolDescription {
     this.inputSpec,
     this.outputSpec,
     required this.defs,
-    required this.pricing,
-    this.thumbnailUrl,
   });
 
-  final String? pricing;
   final String title;
   final String name;
   final String description;
-  final String? thumbnailUrl;
   final ToolContentSpec? inputSpec;
   final ToolContentSpec? outputSpec;
   final Map<String, dynamic>? defs;
@@ -4694,7 +4664,7 @@ class StorageClient extends ChangeEmitter {
     return RoomServerException("unexpected return type from storage.$operation");
   }
 
-  Future<Content> _invoke(String operation, dynamic input, {Map<String, dynamic>? callerContext}) async {
+  Future<Content> _invoke(String operation, dynamic input) async {
     final ToolInput toolInput;
     if (input is Content) {
       toolInput = ToolContentInput(input);
@@ -4704,7 +4674,7 @@ class StorageClient extends ChangeEmitter {
       throw RoomServerException("storage.$operation input must be Content or Map<String, dynamic>");
     }
 
-    final output = await room.invoke(toolkit: "storage", tool: operation, input: toolInput, callerContext: callerContext);
+    final output = await room.invoke(toolkit: "storage", tool: operation, input: toolInput);
     if (output is! ToolContentOutput) {
       throw _unexpectedResponseError(operation);
     }

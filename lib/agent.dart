@@ -23,21 +23,17 @@ abstract class BaseTool {
     this.inputSpec,
     this.outputSpec,
     this.outputSchema,
-    this.thumbnailUrl,
     this.defs,
-    this.pricing,
   });
 
   final String name;
   final String? description;
   final String? title;
-  final String? thumbnailUrl;
   final Map<String, dynamic> inputSchema;
   final ToolContentSpec? inputSpec;
   final ToolContentSpec? outputSpec;
   final Map<String, dynamic>? outputSchema;
   final Map<String, dynamic>? defs;
-  final String? pricing;
 }
 
 abstract class FunctionTool extends BaseTool {
@@ -48,9 +44,7 @@ abstract class FunctionTool extends BaseTool {
     required super.inputSchema,
     super.outputSpec,
     super.outputSchema,
-    super.thumbnailUrl,
     super.defs,
-    super.pricing,
   });
 
   Future<Content> execute(ToolContext context, Map<String, dynamic> arguments);
@@ -69,9 +63,7 @@ abstract class ContentTool extends BaseTool {
     super.inputSpec,
     super.outputSpec,
     super.outputSchema,
-    super.thumbnailUrl,
     super.defs,
-    super.pricing,
   });
 
   Future<ToolCallOutput> execute(ToolContext context, ToolInput input);
@@ -82,7 +74,6 @@ abstract class Toolkit {
     required this.name,
     this.title,
     this.description,
-    this.thumbnailUrl,
     required this.tools,
     this.rules = const [],
     this.validationMode = ValidationMode.full,
@@ -91,7 +82,6 @@ abstract class Toolkit {
   final String name;
   final String? title;
   final String? description;
-  final String? thumbnailUrl;
   final List<BaseTool> tools;
   final List<String> rules;
   final ValidationMode validationMode;
@@ -113,9 +103,7 @@ abstract class Toolkit {
         "title": tool.title,
         "input_spec": _resolveInputSpec(tool)?.toJson(),
         "output_spec": _resolveOutputSpec(tool)?.toJson(),
-        "thumbnail_url": tool.thumbnailUrl,
         "defs": tool.defs,
-        "pricing": tool.pricing,
       };
     }
     return json;
@@ -314,11 +302,15 @@ abstract class Toolkit {
 }
 
 class ToolContext {
-  const ToolContext({required this.room, this.caller, this.onBehalfOf, this.callerContext});
+  const ToolContext({this.caller, this.onBehalfOf});
 
   final Participant? caller;
   final Participant? onBehalfOf;
-  final Map<String, dynamic>? callerContext;
+}
+
+class RoomToolContext extends ToolContext {
+  const RoomToolContext({required this.room, super.caller, super.onBehalfOf});
+
   final RoomClient room;
 }
 
@@ -403,7 +395,6 @@ class _RemoteToolkitWrapper {
       "description": toolkit.description,
       "tools": toolkit.getTools(),
       "public": public,
-      "thumbnail_url": toolkit.thumbnailUrl,
     });
     _registrationId = (response as JsonContent).json["id"];
   }
@@ -501,7 +492,6 @@ class _RemoteToolkitWrapper {
     final toolCallId = (message["tool_call_id"] as String?) ?? "$messageId";
     final callerId = message["caller_id"] as String?;
     final onBehalfOfId = message["on_behalf_of_id"] as String?;
-    final callerContext = message["caller_context"] is Map ? (message["caller_context"] as Map).cast<String, dynamic>() : null;
 
     Content? inputChunk;
     var requestStream = false;
@@ -534,7 +524,7 @@ class _RemoteToolkitWrapper {
 
     final caller = _resolveParticipant(callerId);
     final onBehalfOf = _resolveParticipant(onBehalfOfId);
-    final context = ToolContext(room: room, caller: caller, onBehalfOf: onBehalfOf, callerContext: callerContext);
+    final context = RoomToolContext(room: room, caller: caller, onBehalfOf: onBehalfOf);
 
     BaseTool tool;
     try {

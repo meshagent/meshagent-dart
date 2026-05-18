@@ -7,7 +7,6 @@ void main() {
       'name': 'sample_toolkit',
       'description': 'A sample toolkit',
       'title': 'Sample Toolkit',
-      'thumbnail_url': 'https://example.com/toolkit.png',
       'tools': [
         {
           'name': 'tool_a',
@@ -28,9 +27,7 @@ void main() {
               },
             },
           },
-          'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
-          'pricing': 'free',
         },
         {
           'name': 'tool_b',
@@ -61,7 +58,6 @@ void main() {
       'name': 'sample_toolkit',
       'description': 'A sample toolkit',
       'title': 'Sample Toolkit',
-      'thumbnail_url': 'https://example.com/toolkit.png',
       'tools': [
         {
           'name': 'tool_a',
@@ -82,9 +78,7 @@ void main() {
               },
             },
           },
-          'thumbnail_url': 'https://example.com/tool_a.png',
           'defs': {'ref': '#/definitions/tool_a'},
-          'pricing': 'free',
         },
         {
           'name': 'tool_b',
@@ -102,9 +96,7 @@ void main() {
             'types': ['file'],
             'stream': false,
           },
-          'thumbnail_url': null,
           'defs': null,
-          'pricing': null,
         },
       ],
     });

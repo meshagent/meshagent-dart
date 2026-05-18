@@ -54,15 +54,7 @@ class AgentsClient extends ChangeEmitter {
     required ToolInput input,
     String? participantId,
     String? onBehalfOfId,
-    Map<String, dynamic>? callerContext,
   }) async {
-    return room.invoke(
-      toolkit: toolkit,
-      tool: tool,
-      input: input,
-      participantId: participantId,
-      onBehalfOfId: onBehalfOfId,
-      callerContext: callerContext,
-    );
+    return room.invoke(toolkit: toolkit, tool: tool, input: input, participantId: participantId, onBehalfOfId: onBehalfOfId);
   }
 }
