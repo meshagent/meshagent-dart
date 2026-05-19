@@ -1626,7 +1626,7 @@ class RoomClient extends ChangeEmitter {
             }),
           );
         }
-        return ToolStreamOutput(controller.stream);
+        return ToolStreamOutput(controller.stream, inputClosed: inputTask);
       }
 
       if (inputTask != null) {

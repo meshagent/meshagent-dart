@@ -14,9 +14,10 @@ class ToolContentOutput extends ToolCallOutput {
 }
 
 class ToolStreamOutput extends ToolCallOutput {
-  const ToolStreamOutput(this.stream);
+  const ToolStreamOutput(this.stream, {this.inputClosed});
 
   final Stream<Content> stream;
+  final Future<void>? inputClosed;
 }
 
 sealed class ToolInput {

@@ -557,18 +557,18 @@ class DatasetsClient {
     throw RoomServerException("unexpected return type from datasets.$operation call");
   }
 
-  Future<Stream<Content>> _invokeStream(String operation, Stream<Content> input) async {
+  Future<ToolStreamOutput> _invokeStream(String operation, Stream<Content> input) async {
     final output = await room.invoke(toolkit: "dataset", tool: operation, input: ToolStreamInput(input));
     if (output is! ToolStreamOutput) {
       throw RoomServerException("unexpected return type from datasets.$operation call");
     }
-    return output.stream;
+    return output;
   }
 
   Future<void> _drainWriteStream(String operation, _DatasetWriteInputStream input) async {
     final output = await _invokeStream(operation, input.inputStream());
     try {
-      await for (final chunk in output) {
+      await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
           throw RoomServerException(chunk.text, code: chunk.code);
         }
@@ -585,13 +585,14 @@ class DatasetsClient {
       }
     } finally {
       input.close();
+      await output.inputClosed;
     }
   }
 
   Future<void> _drainArrowWriteStream(String operation, _DatasetArrowWriteInputStream input) async {
     final output = await _invokeStream(operation, input.inputStream());
     try {
-      await for (final chunk in output) {
+      await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
           throw RoomServerException(chunk.text, code: chunk.code);
         }
@@ -608,6 +609,7 @@ class DatasetsClient {
       }
     } finally {
       input.close();
+      await output.inputClosed;
     }
   }
 
@@ -617,7 +619,7 @@ class DatasetsClient {
     final output = await _invokeStream(operation, input.inputStream());
     input.requestNext();
     try {
-      await for (final chunk in output) {
+      await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
           throw RoomServerException(chunk.text, code: chunk.code);
         }
@@ -635,6 +637,7 @@ class DatasetsClient {
       }
     } finally {
       input.close();
+      await output.inputClosed;
     }
   }
 
@@ -643,7 +646,7 @@ class DatasetsClient {
     final output = await _invokeStream(operation, input.inputStream());
     input.requestNext();
     try {
-      await for (final chunk in output) {
+      await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
           throw RoomServerException(chunk.text, code: chunk.code);
         }
@@ -661,6 +664,7 @@ class DatasetsClient {
       }
     } finally {
       input.close();
+      await output.inputClosed;
     }
   }
 
@@ -676,7 +680,7 @@ class DatasetsClient {
     final output = await _invokeStream("watch_table", input.inputStream());
     input.requestNext();
     try {
-      await for (final chunk in output) {
+      await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
           throw RoomServerException(chunk.text, code: chunk.code);
         }
@@ -724,6 +728,7 @@ class DatasetsClient {
       }
     } finally {
       input.close();
+      await output.inputClosed;
     }
   }
 
