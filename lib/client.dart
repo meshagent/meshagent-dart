@@ -295,20 +295,121 @@ class MailboxesPage {
 
 class Route {
   final String domain;
-  final String roomName;
-  final String port;
+  final RouteSpec spec;
+
+  Route({required this.domain, required this.spec});
+
+  factory Route.fromJson(Map<String, dynamic> json) {
+    final specJson = (json['spec'] as Map?)?.cast<String, dynamic>() ?? json;
+    final spec = RouteSpec.fromJson(specJson);
+    return Route(domain: json['domain'] as String? ?? spec.domain, spec: spec);
+  }
+
+  String get roomName => spec.backend.room?.name ?? '';
+  String get agentName => spec.backend.agent?.name ?? '';
+  String get port => spec.paths.isEmpty ? '' : spec.paths.first.targetPort.toString();
+  Map<String, String> get annotations => spec.metadata.annotations;
+
+  Map<String, dynamic> toJson() => {'domain': domain, 'spec': spec.toJson()};
+}
+
+class RouteMetadata {
+  final String name;
   final Map<String, String> annotations;
 
-  Route({required this.domain, required this.roomName, required this.port, required this.annotations});
+  RouteMetadata({required this.name, this.annotations = const {}});
 
-  factory Route.fromJson(Map<String, dynamic> json) => Route(
-    domain: json['domain'] as String,
-    roomName: json['room_name'] as String,
-    port: json['port'] as String,
-    annotations: ((json["annotations"] as Map?) ?? {}).cast<String, String>(),
+  factory RouteMetadata.fromJson(Map<String, dynamic> json) =>
+      RouteMetadata(name: json['name'] as String, annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>());
+
+  Map<String, dynamic> toJson() => {'name': name, 'annotations': annotations};
+}
+
+class RouteBackendTarget {
+  final String name;
+
+  RouteBackendTarget({required this.name});
+
+  factory RouteBackendTarget.fromJson(Map<String, dynamic> json) => RouteBackendTarget(name: json['name'] as String);
+
+  Map<String, dynamic> toJson() => {'name': name};
+}
+
+class RouteBackend {
+  final RouteBackendTarget? room;
+  final RouteBackendTarget? agent;
+
+  RouteBackend({this.room, this.agent});
+
+  factory RouteBackend.fromJson(Map<String, dynamic> json) => RouteBackend(
+    room: json['room'] is Map ? RouteBackendTarget.fromJson((json['room'] as Map).cast<String, dynamic>()) : null,
+    agent: json['agent'] is Map ? RouteBackendTarget.fromJson((json['agent'] as Map).cast<String, dynamic>()) : null,
   );
 
-  Map<String, dynamic> toJson() => {'domain': domain, 'room_name': roomName, 'port': port, 'annotations': annotations};
+  Map<String, dynamic> toJson() => {if (room != null) 'room': room!.toJson(), if (agent != null) 'agent': agent!.toJson()};
+}
+
+class RoutePath {
+  final String path;
+  final String pathType;
+  final Object targetPort;
+
+  RoutePath({this.path = '/', this.pathType = 'prefix', required this.targetPort});
+
+  factory RoutePath.fromJson(Map<String, dynamic> json) => RoutePath(
+    path: json['path'] as String? ?? '/',
+    pathType: json['pathType'] as String? ?? 'prefix',
+    targetPort: json['targetPort'] as Object,
+  );
+
+  Map<String, dynamic> toJson() => {'path': path, 'pathType': pathType, 'targetPort': targetPort};
+}
+
+class RouteSpec {
+  final String version;
+  final String kind;
+  final RouteMetadata metadata;
+  final String domain;
+  final RouteBackend backend;
+  final List<RoutePath> paths;
+
+  RouteSpec({
+    this.version = 'v1',
+    this.kind = 'Route',
+    required this.metadata,
+    required this.domain,
+    required this.backend,
+    this.paths = const [],
+  });
+
+  factory RouteSpec.fromJson(Map<String, dynamic> json) {
+    if (!json.containsKey('backend') && json.containsKey('room_name')) {
+      return RouteSpec(
+        metadata: RouteMetadata(name: json['domain'] as String, annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>()),
+        domain: json['domain'] as String,
+        backend: RouteBackend(room: RouteBackendTarget(name: json['room_name'] as String)),
+        paths: [RoutePath(targetPort: json['port'] as Object)],
+      );
+    }
+    final pathList = json['paths'] as List<dynamic>? ?? [];
+    return RouteSpec(
+      version: json['version'] as String? ?? 'v1',
+      kind: json['kind'] as String? ?? 'Route',
+      metadata: RouteMetadata.fromJson((json['metadata'] as Map).cast<String, dynamic>()),
+      domain: json['domain'] as String,
+      backend: RouteBackend.fromJson((json['backend'] as Map).cast<String, dynamic>()),
+      paths: pathList.whereType<Map>().map((item) => RoutePath.fromJson(item.cast<String, dynamic>())).toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'version': version,
+    'kind': kind,
+    'metadata': metadata.toJson(),
+    'domain': domain,
+    'backend': backend.toJson(),
+    'paths': paths.map((path) => path.toJson()).toList(),
+  };
 }
 
 class RoutesPage {
@@ -1125,14 +1226,21 @@ class Meshagent {
   /// Returns {} on success.
   Future<void> createRoute({
     required String projectId,
-    required String domain,
-    required String roomName,
-    required String port,
+    RouteSpec? spec,
+    String? domain,
+    String? roomName,
+    String? port,
     Map<String, String> annotations = const {},
   }) async {
+    spec ??= RouteSpec(
+      metadata: RouteMetadata(name: domain!, annotations: annotations),
+      domain: domain,
+      backend: RouteBackend(room: RouteBackendTarget(name: roomName!)),
+      paths: [RoutePath(targetPort: port!)],
+    );
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes');
-    final body = {'domain': domain, 'room_name': roomName, 'port': port, 'annotations': annotations};
+    final body = {'spec': spec.toJson()};
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
@@ -1150,14 +1258,21 @@ class Meshagent {
   Future<void> updateRoute({
     required String projectId,
     required String domain,
-    required String roomName,
-    required String port,
+    RouteSpec? spec,
+    String? roomName,
+    String? port,
     Map<String, String> annotations = const {},
   }) async {
+    spec ??= RouteSpec(
+      metadata: RouteMetadata(name: domain, annotations: annotations),
+      domain: domain,
+      backend: RouteBackend(room: RouteBackendTarget(name: roomName!)),
+      paths: [RoutePath(targetPort: port!)],
+    );
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedDomain = Uri.encodeComponent(domain);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/routes/$encodedDomain');
-    final body = {'room_name': roomName, 'port': port, 'annotations': annotations};
+    final body = {'spec': spec.toJson()};
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -1252,6 +1367,44 @@ class Meshagent {
     String? filter,
   }) async {
     final page = await listRoomRoutesPage(projectId: projectId, roomName: roomName, count: count, offset: offset, filter: filter);
+    return page.routes;
+  }
+
+  /// GET /accounts/projects/{project_id}/agents/{agent_name}/routes
+  Future<RoutesPage> listAgentRoutesPage({
+    required String projectId,
+    required String agentName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAgentName = Uri.encodeComponent(agentName);
+
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentName/routes').replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list agent domains. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return RoutesPage.fromJson(data);
+  }
+
+  Future<List<Route>> listAgentRoutes({
+    required String projectId,
+    required String agentName,
+    int count = 100,
+    int offset = 0,
+    String? filter,
+  }) async {
+    final page = await listAgentRoutesPage(projectId: projectId, agentName: agentName, count: count, offset: offset, filter: filter);
     return page.routes;
   }
 
