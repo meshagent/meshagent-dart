@@ -1,3 +1,6 @@
+## [0.41.1]
+- Dart feed subscription models and create/update methods now carry an optional `filenameDatetimeFormat` through the client.
+
 ## [0.41.0]
 - Route APIs now use `RouteSpec`, support room or agent backends, and still parse legacy route payloads.
 - Managed-agent chat/session APIs now support thread listing, thread lifecycle events, and attachment names.
