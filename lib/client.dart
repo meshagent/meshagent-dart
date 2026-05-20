@@ -491,6 +491,7 @@ class FeedSubscription {
   final String room;
   final String? roomId;
   final String path;
+  final String? filenameDatetimeFormat;
   final DateTime createdAt;
   final Map<String, String> annotations;
 
@@ -501,6 +502,7 @@ class FeedSubscription {
     required this.room,
     required this.roomId,
     required this.path,
+    required this.filenameDatetimeFormat,
     required this.createdAt,
     required this.annotations,
   });
@@ -512,6 +514,7 @@ class FeedSubscription {
     room: json['room'] as String,
     roomId: json['room_id'] as String?,
     path: json['path'] as String,
+    filenameDatetimeFormat: json['filename_datetime_format'] as String?,
     createdAt: DateTime.parse(json['created_at'] as String),
     annotations: ((json['annotations'] as Map?) ?? {}).cast<String, String>(),
   );
@@ -523,6 +526,7 @@ class FeedSubscription {
     'room': room,
     if (roomId != null) 'room_id': roomId,
     'path': path,
+    if (filenameDatetimeFormat != null) 'filename_datetime_format': filenameDatetimeFormat,
     'created_at': createdAt.toIso8601String(),
     'annotations': annotations,
   };
@@ -1607,12 +1611,16 @@ class Meshagent {
     required String feedId,
     required String room,
     required String path,
+    String? filenameDatetimeFormat,
     Map<String, String> annotations = const {},
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedFeedId = Uri.encodeComponent(feedId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions');
-    final body = {'room': room, 'path': path, 'annotations': annotations};
+    final body = <String, Object>{'room': room, 'path': path, 'annotations': annotations};
+    if (filenameDatetimeFormat != null) {
+      body['filename_datetime_format'] = filenameDatetimeFormat;
+    }
 
     final response = await httpClient.post(uri, body: jsonEncode(body));
     if (response.statusCode >= 400) {
@@ -1630,13 +1638,17 @@ class Meshagent {
     required String projectId,
     required String feedId,
     required String subscriptionId,
+    String? filenameDatetimeFormat,
     Map<String, String> annotations = const {},
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedFeedId = Uri.encodeComponent(feedId);
     final encodedSubscriptionId = Uri.encodeComponent(subscriptionId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/feeds/$encodedFeedId/subscriptions/$encodedSubscriptionId');
-    final body = {'annotations': annotations};
+    final body = <String, Object>{'annotations': annotations};
+    if (filenameDatetimeFormat != null) {
+      body['filename_datetime_format'] = filenameDatetimeFormat;
+    }
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
     if (response.statusCode >= 400) {
