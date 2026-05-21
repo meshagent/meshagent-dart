@@ -1,3 +1,6 @@
+## [0.41.2]
+- The Dart backend-agent sample now exposes a hosted local toolkit with `ping`, `status`, and `echo`, verifies the toolkit through room tool calls, and persists a small proof payload once validation succeeds.
+
 ## [0.41.1]
 - Dart feed subscription models and create/update methods now carry an optional `filenameDatetimeFormat` through the client.
 
