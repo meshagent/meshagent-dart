@@ -102,6 +102,7 @@ class _InMemoryStorageServer {
   int lastUploadChunkCount = 0;
   Map<String, dynamic>? lastUploadStartHeaders;
   bool? lastDeleteRecursive;
+  Map<String, dynamic>? lastDownloadUrlRequest;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     if (type == 'room.tool_call_request_chunk') {
@@ -172,6 +173,7 @@ class _InMemoryStorageServer {
         return;
       case 'download_url':
         final path = _jsonPath(input);
+        lastDownloadUrlRequest = _jsonPayload(input);
         await protocol.send('__response__', JsonContent(json: {'url': 'https://example.test/download/$path'}).pack(), id: messageId);
         return;
       case 'list':
@@ -547,6 +549,11 @@ void main() {
 
     final url = await harness.room.storage.downloadUrl('downloads/report.bin');
     expect(url, 'https://example.test/download/downloads/report.bin');
+    expect(harness.server.lastDownloadUrlRequest, {'path': 'downloads/report.bin', 'download': false});
+
+    final downloadUrl = await harness.room.storage.downloadUrl('downloads/report.bin', download: true);
+    expect(downloadUrl, 'https://example.test/download/downloads/report.bin');
+    expect(harness.server.lastDownloadUrlRequest, {'path': 'downloads/report.bin', 'download': true});
 
     await harness.dispose();
   });

@@ -4906,8 +4906,8 @@ class StorageClient extends ChangeEmitter {
     return FileContent(data: bytes.takeBytes(), name: name, mimeType: mimeType);
   }
 
-  Future<String> downloadUrl(String path) async {
-    final response = await _invoke("download_url", {"path": path});
+  Future<String> downloadUrl(String path, {bool download = false}) async {
+    final response = await _invoke("download_url", {"path": path, "download": download});
     if (response is! JsonContent) {
       throw _unexpectedResponseError("download_url");
     }
