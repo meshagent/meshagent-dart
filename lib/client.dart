@@ -3479,6 +3479,19 @@ class Meshagent {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Corresponds to: GET /accounts/projects/by-key/{project_key}
+  /// Returns the project JSON on success.
+  Future<Map<String, dynamic>> getProjectByKey(String projectKey) async {
+    final encodedProjectKey = Uri.encodeComponent(projectKey);
+    final uri = Uri.parse('$baseUrl/accounts/projects/by-key/$encodedProjectKey');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get project by key. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Corresponds to: POST /accounts/projects/{project_id}/api-keys
   /// Body: { "name": "", "description": "" }
   /// Returns an Api Key.
@@ -4214,7 +4227,13 @@ class Meshagent {
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms');
-    final body = {'name': name, 'if_not_exists': ifNotExists, 'metadata': metadata, 'annotations': annotations, 'permissions': permissions};
+    final body = _jsonMapWithoutNulls({
+      'name': name,
+      'if_not_exists': ifNotExists,
+      'metadata': metadata,
+      'annotations': annotations,
+      'permissions': permissions?.map((key, value) => MapEntry(key, value.toJson())),
+    });
     final response = await httpClient.post(uri, body: jsonEncode(body));
 
     if (response.statusCode == 409) {
@@ -5514,7 +5533,7 @@ class ProjectRoomGrant {
     );
   }
 
-  Map<String, dynamic> toJson() => {'room': room.toJson(), 'user_id': userId, 'permissions': permissions};
+  Map<String, dynamic> toJson() => {'room': room.toJson(), 'user_id': userId, 'permissions': permissions.toJson()};
 }
 
 class RoomGrantsPage {
