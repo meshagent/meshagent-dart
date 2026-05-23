@@ -1,3 +1,6 @@
+## [0.41.6]
+- Extended the Dart storage client `downloadUrl` API with an optional `download` flag for inline versus attachment links.
+
 ## [0.41.5]
 - Stability
 
