@@ -278,7 +278,9 @@ class _FakeContainersServer {
                     'id': 'container-1',
                     'image': 'demo:latest',
                     'name': 'demo',
-                    'ports': [80],
+                    'ports': [
+                      {'container_port': 80, 'host_port': 8080},
+                    ],
                     'started_by': {'id': 'p1', 'name': 'user'},
                     'state': 'RUNNING',
                     'private': false,
@@ -494,7 +496,8 @@ void main() {
     expect(inspection.contentSize, 235);
     final containers = await harness.room.containers.list();
     expect(containers.single.id, 'container-1');
-    expect(containers.single.ports, [80]);
+    expect(containers.single.ports.single.containerPort, 80);
+    expect(containers.single.ports.single.hostPort, 8080);
     expect(await harness.room.containers.waitForExit(containerId: 'container-1'), 0);
 
     final exec = harness.room.containers.exec(containerId: 'container-1', command: 'echo hi');
