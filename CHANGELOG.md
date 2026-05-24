@@ -1,3 +1,6 @@
+## [0.42.1]
+- Stability
+
 ## [0.42.0]
 - Added project lookup by key.
 - Container and room APIs now model ports as structured `containerPort`/`hostPort` pairs, which is a breaking response-shape change for container listings.
