@@ -2415,6 +2415,7 @@ class ContainersClient extends ChangeEmitter {
     List<DockerSecret> credentials = const [],
     String? name,
     ContainerMountSpec? mounts,
+    String? template,
     bool? writableRootFs,
     bool? private,
   }) async {
@@ -2436,6 +2437,7 @@ class ContainersClient extends ChangeEmitter {
             'credentials': _containerCredentials(credentials),
             'name': name,
             'mounts': mounts?.toJson(),
+            'template': template,
             'writable_root_fs': writableRootFs,
             'private': private,
           },
@@ -2824,6 +2826,17 @@ class ParticipantInfo {
   final String name;
 }
 
+class RoomContainerPort {
+  RoomContainerPort({required this.containerPort, required this.hostPort});
+
+  final int containerPort;
+  final int hostPort;
+
+  static RoomContainerPort fromJson(Map<String, dynamic> json) {
+    return RoomContainerPort(containerPort: json["container_port"], hostPort: json["host_port"]);
+  }
+}
+
 class RoomContainer {
   RoomContainer({
     required this.id,
@@ -2838,7 +2851,7 @@ class RoomContainer {
   final String id;
   final String image;
   final String? name;
-  final List<int> ports;
+  final List<RoomContainerPort> ports;
   final ParticipantInfo startedBy;
   final String state;
   final bool private;
@@ -2849,7 +2862,7 @@ class RoomContainer {
       id: json["id"],
       image: json["image"],
       name: json["name"],
-      ports: ((json["ports"] as List?) ?? const []).map((item) => item as int).toList(),
+      ports: ((json["ports"] as List?) ?? const []).map((item) => RoomContainerPort.fromJson(item as Map<String, dynamic>)).toList(),
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],
@@ -6066,6 +6079,7 @@ class EndpointSpec {
 
 class PortSpec {
   final PortNum num;
+  final int? hostPort;
   final String? type; // "http" | "tcp"
   final List<EndpointSpec> endpoints;
   final String? liveness;
@@ -6073,12 +6087,21 @@ class PortSpec {
   final bool? public;
   final Map<String, String>? annotations;
 
-  PortSpec({required this.num, this.type, this.published, this.public, List<EndpointSpec>? endpoints, this.liveness, this.annotations})
-    : endpoints = endpoints ?? [];
+  PortSpec({
+    required this.num,
+    this.hostPort,
+    this.type,
+    this.published,
+    this.public,
+    List<EndpointSpec>? endpoints,
+    this.liveness,
+    this.annotations,
+  }) : endpoints = endpoints ?? [];
 
   factory PortSpec.fromJson(Map<String, dynamic> json) {
     return PortSpec(
       num: PortNum.fromJson(json['num']),
+      hostPort: json['host_port'] as int?,
       type: json['type'] as String?,
       endpoints: (json['endpoints'] as List<dynamic>? ?? []).map((e) => EndpointSpec.fromJson(e as Map<String, dynamic>)).toList(),
       liveness: json['liveness'] as String?,
@@ -6091,6 +6114,7 @@ class PortSpec {
   Map<String, dynamic> toJson() => {
     'num': num.toJson(),
 
+    if (hostPort != null) 'host_port': hostPort,
     if (type != null) 'type': type,
     if (endpoints.isNotEmpty) 'endpoints': endpoints.map((e) => e.toJson()).toList(),
     if (liveness != null) 'liveness': liveness,
@@ -6101,6 +6125,7 @@ class PortSpec {
 
   PortSpec copyWith({
     PortNum? num,
+    int? hostPort,
     String? type,
     List<EndpointSpec>? endpoints,
     String? liveness,
@@ -6110,6 +6135,7 @@ class PortSpec {
   }) {
     return PortSpec(
       num: num ?? this.num,
+      hostPort: hostPort ?? this.hostPort,
       type: type ?? this.type,
       endpoints: endpoints ?? List<EndpointSpec>.from(this.endpoints),
       liveness: liveness ?? this.liveness,

@@ -187,7 +187,7 @@ List<MCPHeader>? _headersFromEndpointSpec(Map<String, String>? headers) {
 
 String? _roomServiceMcpServerUrl({required ServiceSpec service, required PortSpec port, required EndpointSpec endpoint}) {
   final endpointPath = endpoint.path.startsWith('/') ? endpoint.path : '/${endpoint.path}';
-  final portValue = port.num.value;
+  final portValue = port.hostPort ?? port.num.value;
 
   if (service.external == null) {
     if (portValue == null) {
