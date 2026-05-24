@@ -352,17 +352,19 @@ class RouteBackend {
 class RoutePath {
   final String path;
   final String pathType;
+  final bool stripPrefix;
   final Object targetPort;
 
-  RoutePath({this.path = '/', this.pathType = 'prefix', required this.targetPort});
+  RoutePath({this.path = '/', this.pathType = 'prefix', this.stripPrefix = false, required this.targetPort});
 
   factory RoutePath.fromJson(Map<String, dynamic> json) => RoutePath(
     path: json['path'] as String? ?? '/',
     pathType: json['pathType'] as String? ?? 'prefix',
+    stripPrefix: json['stripPrefix'] as bool? ?? false,
     targetPort: json['targetPort'] as Object,
   );
 
-  Map<String, dynamic> toJson() => {'path': path, 'pathType': pathType, 'targetPort': targetPort};
+  Map<String, dynamic> toJson() => {'path': path, 'pathType': pathType, 'stripPrefix': stripPrefix, 'targetPort': targetPort};
 }
 
 class RouteSpec {
