@@ -2591,7 +2591,7 @@ class ContainersClient extends ChangeEmitter {
     );
   }
 
-  Future<int> waitForExit({required String containerId}) async {
+  Future<ContainerExitStatus> waitForExitStatus({required String containerId}) async {
     final output = await room.invoke(
       toolkit: 'containers',
       tool: 'wait_for_exit',
@@ -2604,7 +2604,12 @@ class ContainersClient extends ChangeEmitter {
     if (exitCode is! int) {
       throw _unexpectedResponseError(operation: 'wait_for_exit');
     }
-    return exitCode;
+    return ContainerExitStatus.fromJson((output.content as JsonContent).json);
+  }
+
+  Future<int> waitForExit({required String containerId}) async {
+    final status = await waitForExitStatus(containerId: containerId);
+    return status.exitCode;
   }
 
   Future<void> deleteContainer({required String containerId}) async {
@@ -2837,36 +2842,83 @@ class RoomContainerPort {
   }
 }
 
+class RoomContainerStats {
+  RoomContainerStats({this.cpuUsageNanoCores, this.memoryUsageBytes, this.memoryWorkingSetBytes, this.timestampNs});
+
+  final int? cpuUsageNanoCores;
+  final int? memoryUsageBytes;
+  final int? memoryWorkingSetBytes;
+  final int? timestampNs;
+
+  static RoomContainerStats fromJson(Map<String, dynamic> json) {
+    return RoomContainerStats(
+      cpuUsageNanoCores: json["cpu_usage_nano_cores"],
+      memoryUsageBytes: json["memory_usage_bytes"],
+      memoryWorkingSetBytes: json["memory_working_set_bytes"],
+      timestampNs: json["timestamp_ns"],
+    );
+  }
+}
+
 class RoomContainer {
   RoomContainer({
     required this.id,
     required this.image,
+    this.imageId,
     this.name,
     this.ports = const [],
     required this.startedBy,
     required this.state,
     required this.private,
     required this.serviceId,
+    this.stats,
+    this.exitStatus,
   });
   final String id;
   final String image;
+  final String? imageId;
   final String? name;
   final List<RoomContainerPort> ports;
   final ParticipantInfo startedBy;
   final String state;
   final bool private;
   final String? serviceId;
+  final RoomContainerStats? stats;
+  final ContainerExitStatus? exitStatus;
 
   static RoomContainer fromJson(Map<String, dynamic> json) {
+    final statsJson = json["stats"];
+    final exitStatusJson = json["exit_status"];
     return RoomContainer(
       id: json["id"],
       image: json["image"],
+      imageId: json["image_id"],
       name: json["name"],
       ports: ((json["ports"] as List?) ?? const []).map((item) => RoomContainerPort.fromJson(item as Map<String, dynamic>)).toList(),
       startedBy: ParticipantInfo(id: json["started_by"]["id"], name: json["started_by"]["name"]),
       state: json["state"],
       private: json["private"],
       serviceId: json["service_id"],
+      stats: statsJson is Map<String, dynamic> ? RoomContainerStats.fromJson(statsJson) : null,
+      exitStatus: exitStatusJson is Map<String, dynamic> ? ContainerExitStatus.fromJson(exitStatusJson) : null,
+    );
+  }
+}
+
+class ContainerExitStatus {
+  ContainerExitStatus({required this.exitCode, this.reason, this.message, this.oomKilled});
+
+  final int exitCode;
+  final String? reason;
+  final String? message;
+  final bool? oomKilled;
+
+  static ContainerExitStatus fromJson(Map<String, dynamic> json) {
+    return ContainerExitStatus(
+      exitCode: json["exit_code"],
+      reason: json["reason"],
+      message: json["message"],
+      oomKilled: json["oom_killed"],
     );
   }
 }

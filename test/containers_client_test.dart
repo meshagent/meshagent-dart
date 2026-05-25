@@ -277,6 +277,7 @@ class _FakeContainersServer {
                   {
                     'id': 'container-1',
                     'image': 'demo:latest',
+                    'image_id': 'sha256:demo',
                     'name': 'demo',
                     'ports': [
                       {'container_port': 80, 'host_port': 8080},
@@ -285,6 +286,13 @@ class _FakeContainersServer {
                     'state': 'RUNNING',
                     'private': false,
                     'service_id': null,
+                    'stats': {
+                      'cpu_usage_nano_cores': 125000000,
+                      'memory_usage_bytes': 67108864,
+                      'memory_working_set_bytes': 33554432,
+                      'timestamp_ns': 1700000000,
+                    },
+                    'exit_status': {'exit_code': 0, 'reason': 'Completed', 'message': 'container exited', 'oom_killed': false},
                   },
                 ],
               },
@@ -293,7 +301,11 @@ class _FakeContainersServer {
           );
           return;
         case 'wait_for_exit':
-          await protocol.send('__response__', JsonContent(json: {'exit_code': 0}).pack(), id: messageId);
+          await protocol.send(
+            '__response__',
+            JsonContent(json: {'exit_code': 0, 'reason': 'Completed', 'message': 'container exited', 'oom_killed': false}).pack(),
+            id: messageId,
+          );
           return;
         default:
           throw StateError('unsupported containers operation: $tool');
@@ -496,9 +508,21 @@ void main() {
     expect(inspection.contentSize, 235);
     final containers = await harness.room.containers.list();
     expect(containers.single.id, 'container-1');
+    expect(containers.single.imageId, 'sha256:demo');
     expect(containers.single.ports.single.containerPort, 80);
     expect(containers.single.ports.single.hostPort, 8080);
+    expect(containers.single.stats?.cpuUsageNanoCores, 125000000);
+    expect(containers.single.stats?.memoryUsageBytes, 67108864);
+    expect(containers.single.stats?.memoryWorkingSetBytes, 33554432);
+    expect(containers.single.stats?.timestampNs, 1700000000);
+    expect(containers.single.exitStatus?.exitCode, 0);
+    expect(containers.single.exitStatus?.reason, 'Completed');
     expect(await harness.room.containers.waitForExit(containerId: 'container-1'), 0);
+    final exitStatus = await harness.room.containers.waitForExitStatus(containerId: 'container-1');
+    expect(exitStatus.exitCode, 0);
+    expect(exitStatus.reason, 'Completed');
+    expect(exitStatus.message, 'container exited');
+    expect(exitStatus.oomKilled, isFalse);
 
     final exec = harness.room.containers.exec(containerId: 'container-1', command: 'echo hi');
     await exec.write(Uint8List.fromList('ping'.codeUnits));
@@ -529,6 +553,7 @@ void main() {
       'inspect_image',
       'list_containers',
       'wait_for_exit',
+      'wait_for_exit',
       'logs',
     ]);
 
@@ -544,7 +569,7 @@ void main() {
     expect(runServiceInput['env'], [
       {'key': 'A', 'value': '1'},
     ]);
-    final logsInput = harness.server.requests[7].input;
+    final logsInput = harness.server.requests[8].input;
     expect(logsInput['kind'], 'start');
     expect(logsInput['container_id'], 'container-1');
     expect(logsInput['follow'], false);
