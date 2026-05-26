@@ -1,3 +1,8 @@
+## [0.42.2]
+- Added container and build model fields for image IDs, runtime stats, exit status details, and published build image metadata.
+- Added `waitForExitStatus` alongside `waitForExit`, preserving the existing exit-code convenience while exposing richer exit information.
+- Updated container list parsing to consume the new metadata fields in responses without breaking existing callers.
+
 ## [0.42.1]
 - Stability
 
