@@ -3,6 +3,13 @@ import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('withIAP creates a room client without a protocol token', () {
+    final room = RoomClient.withIAP();
+
+    expect(room.protocol.url, Uri.parse('./.well-known/meshagent/room/connect'));
+    expect(room.protocol.token, isNull);
+  });
+
   test('apiGrant is available when room client uses a raw websocket protocol', () {
     final token = ParticipantToken(name: 'user', projectId: 'project');
     token.addRoomGrant('room');

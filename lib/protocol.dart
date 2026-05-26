@@ -89,7 +89,7 @@ class StreamProtocolChannel extends ProtocolChannel {
 class WebSocketProtocolChannel extends ProtocolChannel {
   WebSocketProtocolChannel({required this.url, required this.jwt});
 
-  final String jwt;
+  final String? jwt;
   final Uri url;
 
   WebSocketChannel? webSocket;
@@ -100,7 +100,7 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
 
-    webSocket = connectWebSocketChannel(url.replace(queryParameters: {'token': jwt, 'v': version}));
+    webSocket = connectWebSocketChannel(url.replace(queryParameters: {'v': version}), token: jwt);
     sub = webSocket!.stream.listen(
       _onData,
       onDone: () {
@@ -435,15 +435,17 @@ class Protocol<T extends ProtocolChannel> {
 }
 
 class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
-  WebSocketClientProtocol({required Uri url, required String token})
+  WebSocketClientProtocol({required Uri url, required String? token})
     : _url = url,
       _token = token,
       super(
         channel: WebSocketProtocolChannel(url: url, jwt: token),
       );
 
+  WebSocketClientProtocol.withIAP({Uri? url}) : this(url: url ?? Uri.parse('./.well-known/meshagent/room/connect'), token: null);
+
   final Uri _url;
-  final String _token;
+  final String? _token;
 
   @override
   Uri get url {
@@ -451,11 +453,15 @@ class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
   }
 
   @override
-  String get token {
+  String? get token {
     return _token;
   }
 
-  static ProtocolFactory createFactory({required Uri url, required String token}) {
+  static ProtocolFactory createFactory({required Uri url, required String? token}) {
     return () => WebSocketClientProtocol(url: url, token: token);
+  }
+
+  static ProtocolFactory createFactoryWithIAP({Uri? url}) {
+    return () => WebSocketClientProtocol.withIAP(url: url);
   }
 }

@@ -674,6 +674,22 @@ class RoomClient extends ChangeEmitter {
     secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
   }
 
+  RoomClient.withIAP({
+    Uri? url,
+    Duration? reconnectTimeout,
+    Duration reconnectRetryBaseDelay = const Duration(milliseconds: 500),
+    Duration reconnectRetryMaxDelay = const Duration(seconds: 30),
+    OAuthTokenRequestHandler? oauthTokenRequestHandler,
+    SecretRequestHandler? secretRequestHandler,
+  }) : this(
+         protocolFactory: WebSocketClientProtocol.createFactoryWithIAP(url: url),
+         reconnectTimeout: reconnectTimeout,
+         reconnectRetryBaseDelay: reconnectRetryBaseDelay,
+         reconnectRetryMaxDelay: reconnectRetryMaxDelay,
+         oauthTokenRequestHandler: oauthTokenRequestHandler,
+         secretRequestHandler: secretRequestHandler,
+       );
+
   final ProtocolFactory _protocolFactory;
   final Duration? _reconnectTimeout;
   final Duration _reconnectRetryBaseDelay;
