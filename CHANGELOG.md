@@ -1,3 +1,8 @@
+## [0.43.0]
+- Room websocket clients now support IAP connections through `withIAP()` helpers, nullable tokens, and the new auth flow that avoids query-string token handling.
+- Agent and chat payloads now carry backend metadata through thread starts, turn starts, model changes, and realtime audio commits.
+- The shared Dart UI/tooling packages now understand backend-aware model lists, unified diff previews, and Codex diff tool calls, and the desktop updater exports reusable dialog and scope helpers.
+
 ## [0.42.2]
 - Added container and build model fields for image IDs, runtime stats, exit status details, and published build image metadata.
 - Added `waitForExitStatus` alongside `waitForExit`, preserving the existing exit-code convenience while exposing richer exit information.
