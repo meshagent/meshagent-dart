@@ -1,3 +1,6 @@
+## [0.43.3]
+- Stability
+
 ## [0.43.2]
 - Added optional backend fields throughout `meshagent-agents-dart` messages and chat session methods, enabling multi-backend conversations and model changes.
 - Added IAP-aware websocket helpers in `meshagent-api`, including `WebSocketClientProtocol.withIAP()` and Authorization-header based room connections instead of token query parameters.
