@@ -1,3 +1,8 @@
+## [0.43.1]
+- Added IAP room websocket support to the Dart agent chat client.
+- Reworked the Flutter chat and thread components to load thread lists through `MessagingChatClient` and `AgentThreadStorageRepository` instead of direct document mutation.
+- Added the desktop update bridge APIs used by Flutter apps for update checks on macOS and Windows.
+
 ## [0.43.0]
 - Room websocket clients now support IAP connections through `withIAP()` helpers, nullable tokens, and the new auth flow that avoids query-string token handling.
 - Agent and chat payloads now carry backend metadata through thread starts, turn starts, model changes, and realtime audio commits.
