@@ -1,3 +1,9 @@
+## [0.43.4]
+- `AgentMessage` now serializes `created_at` and restores it from incoming payloads so Dart agents keep message timestamps across round trips.
+- `AgentMessageEvent` now carries its own timestamp, supports listeners, and keeps merged payloads aligned with the original event time.
+- `MessagingChatClient` now routes participantless thread lifecycle updates and preserves room message timestamps when turning messages into session events.
+- UI helpers now support an injectable reference time for relative labels, show seconds for recent timestamps, and expose more resilient dataset row timestamp resolution.
+
 ## [0.43.3]
 - Stability
 
