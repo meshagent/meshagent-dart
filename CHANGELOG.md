@@ -1,3 +1,6 @@
+## [0.44.1]
+- Stability
+
 ## [0.44.0]
 - Added thread watch/unwatch messages plus multiple thread-storage support to the Dart agent client API.
 - Chat session state now preserves created timestamps and resets replay state correctly when reopening threads, improving message ordering and pending-input handling.
