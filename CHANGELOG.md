@@ -1,3 +1,8 @@
+## [0.44.2]
+- Messaging chat clients now track agent participant presence and room status more accurately, distinguish first connect from reconnect, and reopen open thread sessions after reconnect.
+- Thread storage repositories now resubscribe and refresh thread lists after a reconnect, restoring watched-thread state automatically.
+- Agent connection status is no longer fanned out into open thread sessions, preventing duplicate status messages from appearing in reopened chats.
+
 ## [0.44.1]
 - Stability
 
