@@ -1,3 +1,8 @@
+## [0.44.0]
+- Added thread watch/unwatch messages plus multiple thread-storage support to the Dart agent client API.
+- Chat session state now preserves created timestamps and resets replay state correctly when reopening threads, improving message ordering and pending-input handling.
+- Updated agent message modeling to carry richer thread metadata for live assistant, mail, and storage-aware workflows.
+
 ## [0.43.4]
 - `AgentMessage` now serializes `created_at` and restores it from incoming payloads so Dart agents keep message timestamps across round trips.
 - `AgentMessageEvent` now carries its own timestamp, supports listeners, and keeps merged payloads aligned with the original event time.
