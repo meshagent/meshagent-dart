@@ -1,3 +1,6 @@
+## [0.44.5]
+- Chat thread attachments and pending attachment previews now use stable widget identities, preserving image and file preview state across rebuilds and tab changes.
+
 ## [0.44.4]
 - `AgentMessage` now carries arbitrary metadata and round-trips it through JSON parsing and serialization, preserving provider-specific payloads such as encrypted reasoning content.
 

@@ -3679,6 +3679,9 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/sessions/$encodedSessionId');
     final response = await httpClient.get(uri);
 
+    if (response.statusCode == 404) {
+      throw NotFoundException('session not live: $sessionId');
+    }
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to get session. '
