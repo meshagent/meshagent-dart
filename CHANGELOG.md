@@ -1,3 +1,6 @@
+## [0.44.4]
+- `AgentMessage` now carries arbitrary metadata and round-trips it through JSON parsing and serialization, preserving provider-specific payloads such as encrypted reasoning content.
+
 ## [0.44.3]
 - Fixed animated status counters in the Flutter chat UI so large byte and count jumps render correctly without runaway digit growth.
 
