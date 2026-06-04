@@ -1,3 +1,6 @@
+## [0.44.6]
+- Updated `code_forge` to 9.10.0 and `code_forge_web` to 2.10.0, and removed the git override so the Flutter package now resolves `code_forge_web` from pub.dev.
+
 ## [0.44.5]
 - Chat thread attachments and pending attachment previews now use stable widget identities, preserving image and file preview state across rebuilds and tab changes.
 
