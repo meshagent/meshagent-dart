@@ -1,3 +1,19 @@
+## [0.44.11]
+- Stability
+
+## [0.44.10]
+- Stability
+
+## [0.44.9]
+START SUMMARY OF NODEJS API CHANGES END SUMMARY OF NODEJS API CHANGES
+START SUMMARY OF PYTHON API CHANGES END SUMMARY OF PYTHON API CHANGES
+
+## [0.44.8]
+- Stability
+
+## [0.44.7]
+- Stability
+
 ## [0.44.6]
 - Updated `code_forge` to 9.10.0 and `code_forge_web` to 2.10.0, and removed the git override so the Flutter package now resolves `code_forge_web` from pub.dev.
 
