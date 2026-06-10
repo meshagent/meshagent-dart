@@ -97,6 +97,30 @@ void main() {
     ]);
   });
 
+  test('listProjectSecretsPage sends the selected view query', () async {
+    final requests = <_RecordedRequest>[];
+    final client = MockClient((request) async {
+      requests.add(_RecordedRequest(method: request.method, uri: request.url));
+      return http.Response(
+        jsonEncode({
+          'secrets': [
+            {'id': 'secret-1', 'name': 'registry', 'type': 'docker', 'delegated_to': null},
+          ],
+          'total': 1,
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final page = await meshagent.listProjectSecretsPage('proj_123', view: 'my', count: 25, offset: 50);
+
+    expect(page.secrets.single.id, 'secret-1');
+    expect(requests.map((request) => '${request.method} ${request.uri}'), [
+      'GET http://example.test/accounts/projects/proj_123/secrets?count=25&offset=50&view=my',
+    ]);
+  });
+
   test('room secret and external oauth methods pass query parameters', () async {
     final requests = <_RecordedRequest>[];
     final client = MockClient((request) async {

@@ -5,6 +5,9 @@ const List<String> fullOAuthScopes = <String>[
   'create_users',
   'create_rooms',
   'create_agents',
+  'create_mailboxes',
+  'create_routes',
+  'create_scheduled_tasks',
   'managed_agents',
   'llm_proxy',
   'admin',
@@ -18,5 +21,6 @@ const List<String> fullOAuthScopes = <String>[
 
 const String fullOAuthScope =
     'profile project/* room/* create_users create_rooms create_agents '
-    'managed_agents llm_proxy admin developer connect_room delete_room '
-    'update_room delete_agent update_agent';
+    'create_mailboxes create_routes create_scheduled_tasks managed_agents '
+    'llm_proxy admin developer connect_room delete_room update_room '
+    'delete_agent update_agent';
