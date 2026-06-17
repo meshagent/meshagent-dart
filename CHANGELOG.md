@@ -1,3 +1,9 @@
+## [0.44.12]
+- Added shared profile and session support for native auth flows, including profile switching and environment-aware API URL overrides.
+- Added realtime audio output and refreshed voice session state, controls, and waveform rendering behavior.
+- Improved meeting layout responsiveness and right-sidebar behavior.
+- Powerboards config handling now sources the mail domain from runtime configuration instead of a fixed value.
+
 ## [0.44.11]
 - Stability
 
