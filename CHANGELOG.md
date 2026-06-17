@@ -1,3 +1,9 @@
+## [0.44.13]
+- Added `ChatThreadCustomInputBuilder` and `ChatThreadInputConfig` so callers can replace the default composer while still reusing thread state, attachment handling, audio hooks, and menu wiring.
+- Added `ThreadTypographyOverride` and helper APIs to customize thread fonts, spacing, colors, link styling, code blocks, inline code, markdown headings, and attachment/error surfaces.
+- Extended chat bubble and message widgets with border color and typography override support for finer-grained rendering control.
+- Exported the new typography and composer primitives through the SDK surface.
+
 ## [0.44.12]
 - Added shared profile and session support for native auth flows, including profile switching and environment-aware API URL overrides.
 - Added realtime audio output and refreshed voice session state, controls, and waveform rendering behavior.
