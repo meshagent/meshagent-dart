@@ -638,8 +638,6 @@ class RoomClient extends ChangeEmitter {
     Duration? reconnectTimeout,
     Duration reconnectRetryBaseDelay = const Duration(milliseconds: 500),
     Duration reconnectRetryMaxDelay = const Duration(seconds: 30),
-    OAuthTokenRequestHandler? oauthTokenRequestHandler,
-    SecretRequestHandler? secretRequestHandler,
   }) : _protocolFactory = protocolFactory,
        _reconnectTimeout = reconnectTimeout,
        _reconnectRetryBaseDelay = reconnectRetryBaseDelay,
@@ -668,10 +666,10 @@ class RoomClient extends ChangeEmitter {
     agents = AgentsClient(room: this);
     queues = QueuesClient(room: this);
     datasets = DatasetsClient(room: this);
+    sqlite = SqliteClient(room: this);
     memory = MemoryClient(room: this);
     containers = ContainersClient(room: this);
     services = ServicesClient(room: this);
-    secrets = SecretsClient(room: this, oauthTokenRequestHandler: oauthTokenRequestHandler, secretRequestHandler: secretRequestHandler);
   }
 
   RoomClient.withIAP({
@@ -679,15 +677,11 @@ class RoomClient extends ChangeEmitter {
     Duration? reconnectTimeout,
     Duration reconnectRetryBaseDelay = const Duration(milliseconds: 500),
     Duration reconnectRetryMaxDelay = const Duration(seconds: 30),
-    OAuthTokenRequestHandler? oauthTokenRequestHandler,
-    SecretRequestHandler? secretRequestHandler,
   }) : this(
          protocolFactory: WebSocketClientProtocol.createFactoryWithIAP(url: url),
          reconnectTimeout: reconnectTimeout,
          reconnectRetryBaseDelay: reconnectRetryBaseDelay,
          reconnectRetryMaxDelay: reconnectRetryMaxDelay,
-         oauthTokenRequestHandler: oauthTokenRequestHandler,
-         secretRequestHandler: secretRequestHandler,
        );
 
   final ProtocolFactory _protocolFactory;
@@ -703,10 +697,10 @@ class RoomClient extends ChangeEmitter {
   late final MessagingClient messaging;
   late final AgentsClient agents;
   late final DatasetsClient datasets;
+  late final SqliteClient sqlite;
   late final MemoryClient memory;
   late final ContainersClient containers;
   late final ServicesClient services;
-  late final SecretsClient secrets;
 
   final _ready = Completer<void>();
   final _roomClosed = Completer<void>();
@@ -1618,7 +1612,6 @@ class RoomClient extends ChangeEmitter {
     } else if (input is ToolStreamInput) {
       final openChunk = unpackMessage(ControlContent(method: "open").pack());
       request["arguments"] = openChunk.header;
-      inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
     } else {
       await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
       throw RoomServerException("invokeTool input must be ToolContentInput or ToolStreamInput");
@@ -1631,7 +1624,8 @@ class RoomClient extends ChangeEmitter {
       );
 
       if (response is ControlContent && response.method == "open") {
-        if (inputTask != null) {
+        if (input is ToolStreamInput) {
+          inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
           unawaited(
             inputTask.catchError((Object error, StackTrace stackTrace) async {
               final wrapped = error is RoomServerException ? error : RoomServerException("request stream failed: $error");
@@ -1645,9 +1639,6 @@ class RoomClient extends ChangeEmitter {
         return ToolStreamOutput(controller.stream, inputClosed: inputTask);
       }
 
-      if (inputTask != null) {
-        await inputTask;
-      }
       await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
       return ToolContentOutput(response);
     } catch (error, stackTrace) {
@@ -4759,6 +4750,10 @@ class StorageClient extends ChangeEmitter {
     if (output is! ToolContentOutput) {
       throw _unexpectedResponseError(operation);
     }
+    if (output.content is ErrorContent) {
+      final error = output.content as ErrorContent;
+      throw RoomServerException(error.text, code: error.code);
+    }
     return output.content;
   }
 
@@ -6034,6 +6029,7 @@ class MCPEndpointSpec {
   final String? requireApproval; // "always" | "never"
   final OAuthClientConfig? oauth;
   final String? openaiConnectorId;
+  final String? useProxySecret;
 
   MCPEndpointSpec({
     required this.label,
@@ -6043,6 +6039,7 @@ class MCPEndpointSpec {
     this.requireApproval,
     this.oauth,
     this.openaiConnectorId,
+    this.useProxySecret,
   });
 
   MCPEndpointSpec copyWith({
@@ -6053,6 +6050,7 @@ class MCPEndpointSpec {
     String? requireApproval,
     OAuthClientConfig? oauth,
     String? openaiConnectorId,
+    String? useProxySecret,
   }) {
     return MCPEndpointSpec(
       label: label ?? this.label,
@@ -6062,6 +6060,7 @@ class MCPEndpointSpec {
       requireApproval: requireApproval ?? this.requireApproval,
       oauth: oauth ?? this.oauth,
       openaiConnectorId: openaiConnectorId ?? this.openaiConnectorId,
+      useProxySecret: useProxySecret ?? this.useProxySecret,
     );
   }
 
@@ -6076,6 +6075,7 @@ class MCPEndpointSpec {
       requireApproval: json['require_approval'] as String?,
       oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson(json['oauth']),
       openaiConnectorId: json['openai_connector_id'] as String?,
+      useProxySecret: json['use_proxy_secret'] as String?,
     );
   }
 
@@ -6087,6 +6087,7 @@ class MCPEndpointSpec {
     if (requireApproval != null) 'require_approval': requireApproval,
     if (oauth != null) 'oauth': oauth!.toJson(),
     if (openaiConnectorId != null) 'openai_connector_id': openaiConnectorId,
+    if (useProxySecret != null) 'use_proxy_secret': useProxySecret,
   };
 }
 
@@ -6283,16 +6284,19 @@ class TokenValue {
 }
 
 class SecretValue {
-  final String identity;
   final String id;
 
-  const SecretValue({required this.identity, required this.id});
+  const SecretValue({required this.id});
 
   factory SecretValue.fromJson(Map<String, dynamic> json) {
-    return SecretValue(identity: json['identity'] as String, id: json['id'] as String);
+    final extraKeys = json.keys.where((key) => key != 'id').toList();
+    if (extraKeys.isNotEmpty) {
+      throw FormatException('unsupported SecretValue fields: ${extraKeys.join(', ')}');
+    }
+    return SecretValue(id: json['id'] as String);
   }
 
-  Map<String, dynamic> toJson() => {'identity': identity, 'id': id};
+  Map<String, dynamic> toJson() => {'id': id};
 }
 
 class EnvironmentVariable {
@@ -6376,18 +6380,16 @@ Map<String, dynamic> _jsonObject(dynamic value) {
 /// Wrapper for all storage mounts on a template.
 class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
-  final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
   final List<ConfigMountSpec>? configs;
 
-  ServiceTemplateContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs, this.configs});
+  ServiceTemplateContainerMountSpec({this.room, this.images, this.files, this.emptyDirs, this.configs});
 
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
-      project: (json['project'] as List<dynamic>?)?.map((e) => ProjectStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       files: (json['files'] as List<dynamic>?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
@@ -6397,7 +6399,6 @@ class ServiceTemplateContainerMountSpec {
 
   Map<String, dynamic> toJson() => {
     if (room != null) 'room': room!.map((e) => e.toJson()).toList(),
-    if (project != null) 'project': project!.map((e) => e.toJson()).toList(),
     if (images != null) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
@@ -6442,18 +6443,70 @@ class TemplateEnvironmentVariable {
   final String name;
   final String? value;
   final TokenValue? token;
+  final SecretValue? secret;
 
-  TemplateEnvironmentVariable({required this.name, this.value, this.token});
+  TemplateEnvironmentVariable({required this.name, this.value, this.token, this.secret});
 
   factory TemplateEnvironmentVariable.fromJson(Map<String, dynamic> json) {
     return TemplateEnvironmentVariable(
       name: json['name'] as String,
       value: json['value'] as String?,
       token: json['token'] == null ? null : TokenValue.fromJson(json['token']),
+      secret: json['secret'] == null ? null : SecretValue.fromJson(json['secret']),
     );
   }
 
-  Map<String, dynamic> toJson() => {'name': name, if (value != null) 'value': value, if (token != null) 'token': token?.toJson()};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (value != null) 'value': value,
+    if (token != null) 'token': token?.toJson(),
+    if (secret != null) 'secret': secret?.toJson(),
+  };
+}
+
+class ServiceRunAs {
+  ServiceRunAs({required this.email, List<String>? scopes}) : scopes = UnmodifiableListView(_normalizeScopes(scopes));
+
+  static const List<String> defaultScopes = ['secrets:proxy'];
+
+  final String email;
+  final List<String> scopes;
+
+  static List<String> _normalizeScopes(List<String>? scopes) {
+    final values = scopes ?? defaultScopes;
+    final seen = <String>{};
+    final normalized = <String>[];
+    for (final scope in values) {
+      final value = scope.trim();
+      if (value.isEmpty || !seen.add(value)) {
+        continue;
+      }
+      normalized.add(value);
+    }
+    return normalized;
+  }
+
+  static ServiceRunAs? fromJson(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is Map) {
+      final json = Map<String, dynamic>.from(value);
+      final rawEmail = json['email'];
+      if (rawEmail is! String) {
+        throw const FormatException('container.run_as.email is required');
+      }
+      final email = rawEmail.trim().toLowerCase();
+      if (email.isEmpty) {
+        throw const FormatException('container.run_as.email is required');
+      }
+      final rawScopes = json['scopes'];
+      return ServiceRunAs(email: email, scopes: rawScopes == null ? null : (rawScopes as List).map((entry) => entry as String).toList());
+    }
+    throw const FormatException('container.run_as must be an object');
+  }
+
+  Map<String, dynamic> toJson() => {'email': email, 'scopes': scopes};
 }
 
 class ContainerTemplateSpec {
@@ -6461,6 +6514,7 @@ class ContainerTemplateSpec {
     this.environment,
     this.private,
     this.image,
+    this.runAs,
     this.command,
     this.workingDir,
     this.storage,
@@ -6469,6 +6523,7 @@ class ContainerTemplateSpec {
   });
 
   final String? image;
+  final ServiceRunAs? runAs;
   final String? command;
   final String? workingDir;
   final List<TemplateEnvironmentVariable>? environment;
@@ -6485,6 +6540,7 @@ class ContainerTemplateSpec {
       onDemand: json['on_demand'],
       writableRootFs: json['writable_root_fs'],
       image: json['image'] as String?,
+      runAs: ServiceRunAs.fromJson(json['run_as']),
       command: json['command'] as String?,
       workingDir: json['working_dir'] as String?,
       storage: json['storage'] == null ? null : ServiceTemplateContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>),
@@ -6496,6 +6552,7 @@ class ContainerTemplateSpec {
     return {
       if (environment != null) 'environment': environment!.map((e) => e.toJson()).toList(),
       if (image != null) 'image': image,
+      if (runAs != null) 'run_as': runAs!.toJson(),
       if (command != null) 'command': command,
       if (workingDir != null) 'working_dir': workingDir,
       if (storage != null) 'storage': storage!.toJson(),
@@ -6510,7 +6567,7 @@ class ContainerTemplateSpec {
     final env = <EnvironmentVariable>[];
     if (environment != null) {
       for (final e in environment!) {
-        env.add(EnvironmentVariable(name: e.name, value: e.value?.formatWith(values), token: e.token));
+        env.add(EnvironmentVariable(name: e.name, value: e.value?.formatWith(values), token: e.token, secret: e.secret));
       }
     }
 
@@ -6523,6 +6580,7 @@ class ContainerTemplateSpec {
       command: command?.formatWith(values),
       workingDir: workingDir?.formatWith(values),
       image: img,
+      runAs: runAs,
       environment: env,
       onDemand: onDemand,
       writableRootFs: writableRootFs,
@@ -6531,7 +6589,6 @@ class ContainerTemplateSpec {
           ? null
           : ContainerMountSpec(
               room: storage!.room,
-              project: storage!.project,
               images: storage!.images,
               files: storage!.files,
               emptyDirs: storage!.emptyDirs,
@@ -7054,28 +7111,6 @@ enum ApiKeyRole { admin }
 
 enum PortType { mcpSse, meshagentCallable, http, tcp }
 
-class ProjectStorageMountSpec {
-  final String path;
-  final String? subpath;
-  final bool readOnly;
-
-  const ProjectStorageMountSpec({required this.path, this.subpath, this.readOnly = true});
-
-  Map<String, dynamic> toJson() => {'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly};
-
-  static ProjectStorageMountSpec fromJson(Map<String, dynamic> json) {
-    return ProjectStorageMountSpec(
-      path: json['path'] as String,
-      subpath: json['subpath'] as String?,
-      readOnly: (json['read_only'] as bool?) ?? true,
-    );
-  }
-
-  ProjectStorageMountSpec copyWith({String? path, String? subpath, bool? readOnly}) {
-    return ProjectStorageMountSpec(path: path ?? this.path, subpath: subpath ?? this.subpath, readOnly: readOnly ?? this.readOnly);
-  }
-}
-
 class ImageStorageMountSpec {
   final String image;
   final String path;
@@ -7148,17 +7183,15 @@ class EmptyDirMountSpec {
 
 class ContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
-  final List<ProjectStorageMountSpec>? project;
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
   final List<ConfigMountSpec>? configs;
 
-  const ContainerMountSpec({this.room, this.project, this.images, this.files, this.emptyDirs, this.configs});
+  const ContainerMountSpec({this.room, this.images, this.files, this.emptyDirs, this.configs});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
-    if (project != null && project!.isNotEmpty) 'project': project!.map((e) => e.toJson()).toList(),
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null && files!.isNotEmpty) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null && emptyDirs!.isNotEmpty) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
@@ -7169,7 +7202,6 @@ class ContainerMountSpec {
     if (json == null) return null;
     return ContainerMountSpec(
       room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
-      project: (json['project'] as List?)?.map((e) => ProjectStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
@@ -7257,35 +7289,38 @@ class ContainerSpec {
     this.command,
     this.workingDir,
     required this.image,
+    this.runAs,
     List<EnvironmentVariable>? environment,
-    List<String>? secrets,
-    this.pullSecret,
     this.storage,
     this.onDemand,
     this.writableRootFs,
     this.private,
-  }) : environment = environment ?? [],
-       secrets = secrets ?? [];
+  }) : environment = environment ?? [];
 
   final String? command;
   final String? workingDir;
   final String image;
+  final ServiceRunAs? runAs;
   final List<EnvironmentVariable> environment;
-  final List<String> secrets;
-  final String? pullSecret;
   final ContainerMountSpec? storage;
   final bool? onDemand;
   final bool? writableRootFs;
   final bool? private;
 
   static ContainerSpec fromJson(Map<String, dynamic> json) {
+    final runAs = ServiceRunAs.fromJson(json['run_as']);
+    final environment = json['environment'] == null
+        ? null
+        : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList();
+    if (runAs == null && environment != null && environment.any((env) => env.secret != null)) {
+      throw const FormatException('container.run_as is required when using SecretValue');
+    }
     return ContainerSpec(
       command: json['command'] as String?,
       workingDir: json['working_dir'] as String?,
       image: json['image'] as String,
-      environment: json['environment'] == null ? null : (json['environment'] as List).map((e) => EnvironmentVariable.fromJson(e)).toList(),
-      secrets: (json['secrets'] as List?)?.whereType<String>().toList() ?? const <String>[],
-      pullSecret: json['pull_secret'] as String?,
+      runAs: runAs,
+      environment: environment,
       storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
       onDemand: json["on_demand"],
       writableRootFs: json["writable_root_fs"],
@@ -7298,9 +7333,8 @@ class ContainerSpec {
       if (command != null) 'command': command,
       if (workingDir != null) 'working_dir': workingDir,
       'image': image,
+      if (runAs != null) 'run_as': runAs!.toJson(),
       if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
-      if (secrets.isNotEmpty) 'secrets': secrets,
-      if (pullSecret != null) 'pull_secret': pullSecret,
       if (storage != null) 'storage': storage!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
       if (writableRootFs != null) "writable_root_fs": writableRootFs,
@@ -7506,373 +7540,5 @@ class ServiceSpec {
       container: external != null ? null : container ?? this.container,
       external: container != null ? null : external ?? this.external,
     );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SecretsClient  (mirrors the Python version you shared)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class OAuthCredentials {
-  OAuthCredentials({required this.accessToken, this.refreshToken, this.expiration, this.scopes});
-
-  final String accessToken;
-  final String? refreshToken;
-  final DateTime? expiration;
-  final List<String>? scopes;
-
-  factory OAuthCredentials.fromJson(Map<String, dynamic> json) {
-    return OAuthCredentials(
-      accessToken: json['access_token'] as String,
-      refreshToken: json['refresh_token'] as String?,
-      expiration: json['expiration'] == null ? null : DateTime.parse(json['expiration'] as String),
-      scopes: (json['scopes'] as List?)?.whereType<String>().toList(),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'access_token': accessToken,
-    if (refreshToken != null) 'refresh_token': refreshToken,
-    if (expiration != null) 'expiration': expiration!.toUtc().toIso8601String(),
-    if (scopes != null) 'scopes': scopes,
-  };
-}
-
-class OAuthTokenRequest {
-  OAuthTokenRequest({
-    required this.clientId,
-    required this.requestId,
-    required this.authorizationEndpoint,
-    required this.tokenEndpoint,
-    this.scopes,
-    this.challenge,
-  });
-
-  final String? challenge;
-  final String? clientId;
-  final String requestId;
-  final String authorizationEndpoint;
-  final String tokenEndpoint;
-  final List<String>? scopes;
-}
-
-/// Optional: if you want a typedef for clarity
-typedef OAuthTokenRequestHandler = FutureOr<void> Function(OAuthTokenRequest request);
-
-class SecretRequest {
-  SecretRequest({required this.requestId, required this.url, required this.type, this.delegateTo});
-
-  final String requestId;
-  final String url;
-  final String type;
-  final String? delegateTo;
-}
-
-typedef SecretRequestHandler = FutureOr<void> Function(SecretRequest request);
-
-class SecretInfo {
-  const SecretInfo({required this.id, required this.type, required this.name, this.delegatedTo});
-
-  final String id;
-  final String type;
-  final String name;
-  final String? delegatedTo;
-
-  factory SecretInfo.fromJson(Map<String, dynamic> json) {
-    return SecretInfo(
-      id: json['id'] as String,
-      type: json['type'] as String,
-      name: json['name'] as String,
-      delegatedTo: json['delegated_to'] as String?,
-    );
-  }
-}
-
-class SecretsClient extends ChangeEmitter {
-  SecretsClient({required this.room, this.oauthTokenRequestHandler, this.secretRequestHandler}) {
-    // Server -> client: another participant (or the server) requests us to obtain an OAuth token.
-    room.protocol.addHandler("secrets.request_oauth_token", _handleClientOAuthTokenRequest);
-
-    // Server -> client: another participant (or the server) requests a secret.
-    room.protocol.addHandler("secrets.request_secret", _handleClientSecretRequest);
-  }
-
-  final RoomClient room;
-
-  final OAuthTokenRequestHandler? oauthTokenRequestHandler;
-  final SecretRequestHandler? secretRequestHandler;
-
-  RoomServerException _unexpectedResponseError(String operation) {
-    return RoomServerException("unexpected return type from secrets.$operation");
-  }
-
-  Future<Content> _invoke(String operation, dynamic input) async {
-    final ToolInput toolInput;
-    if (input is Content) {
-      toolInput = ToolContentInput(input);
-    } else if (input is Map) {
-      toolInput = ToolContentInput(JsonContent(json: Map<String, dynamic>.from(input)));
-    } else {
-      throw RoomServerException("secrets invoke input must be Content or JSON");
-    }
-    final output = await room.invoke(toolkit: "secrets", tool: operation, input: toolInput);
-    if (output is! ToolContentOutput) {
-      throw _unexpectedResponseError(operation);
-    }
-    return output.content;
-  }
-
-  // Server sent us a request asking the local user/client to authorize and supply a token.
-  Future<void> _handleClientOAuthTokenRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    if (!identical(protocol, room._protocolInstance)) {
-      return;
-    }
-    final header = unpackMessage(bytes).header;
-
-    // Expected shape (matches Python):
-    // {
-    //   "request_id": "...",
-    //   "request": {
-    //      "authorization_endpoint": "...",
-    //      "token_endpoint": "...",
-    //      "participant_id": "...",
-    //      "scopes": ["..."],
-    //      "timeout": 300
-    //   }
-    // }
-    final String requestId = header["request_id"] as String;
-    final req = header["request"]["oauth"] as Map<String, dynamic>;
-    final String? clientId = req["client_id"] as String?;
-
-    if (oauthTokenRequestHandler == null) {
-      // Mirror Python behavior (raise if no handler).
-      throw RoomServerException("No oauth token handler registered");
-    }
-
-    final authReq = OAuthTokenRequest(
-      clientId: clientId,
-      requestId: requestId,
-      authorizationEndpoint: req["authorization_endpoint"] as String,
-      tokenEndpoint: req["token_endpoint"] as String,
-      scopes: (req["scopes"] as List?)?.whereType<String>().toList(),
-      challenge: header["challenge"] as String?,
-    );
-
-    // Fire and forget, just like the Python version creates a task.
-    // Your handler should eventually call `provideOAuthToken(...)`.
-    unawaited(
-      Future.sync(() => oauthTokenRequestHandler!(authReq)).catchError((Object error, StackTrace stackTrace) {
-        Logger.root.warning("OAuth token request handler threw", error, stackTrace);
-      }),
-    );
-  }
-
-  Future<void> _handleClientSecretRequest(Protocol protocol, int messageId, String type, Uint8List bytes) async {
-    if (!identical(protocol, room._protocolInstance)) {
-      return;
-    }
-    final header = unpackMessage(bytes).header;
-
-    final String requestId = header["request_id"] as String;
-    final req = header["request"] as Map<String, dynamic>;
-
-    if (secretRequestHandler == null) {
-      throw RoomServerException("No secret handler registered");
-    }
-
-    final secretReq = SecretRequest(
-      requestId: requestId,
-      url: req["url"] as String,
-      type: req["type"] as String,
-      delegateTo: req["delegate_to"] as String?,
-    );
-
-    unawaited(
-      Future.sync(() => secretRequestHandler!(secretReq)).catchError((Object error, StackTrace stackTrace) {
-        Logger.root.warning("Secret request handler threw", error, stackTrace);
-      }),
-    );
-  }
-
-  /// Client -> server: Provide the OAuth token in response to a prior inbound request.
-  Future<void> provideOAuthAuthorization({required String requestId, required String code}) async {
-    await _invoke("provide_oauth_authorization", {"request_id": requestId, "code": code, "error": null});
-  }
-
-  /// Client -> server: reject an OAuth token request in response to a prior inbound request.
-  Future<void> rejectOAuthAuthorization({required String requestId, required String error}) async {
-    await _invoke("provide_oauth_authorization", {"request_id": requestId, "code": null, "error": error});
-  }
-
-  Future<void> provideSecret({required String requestId, required Uint8List data}) async {
-    await _invoke("provide_secret", BinaryContent(data: data, headers: {"request_id": requestId, "error": null}));
-  }
-
-  Future<void> rejectSecret({required String requestId, required String error}) async {
-    await _invoke("provide_secret", BinaryContent(data: Uint8List(0), headers: {"request_id": requestId, "error": error}));
-  }
-
-  Future<Uint8List> requestSecret({
-    required String fromParticipantId,
-    required String url,
-    required String type,
-    int timeout = 60 * 5,
-    String? delegateTo,
-  }) async {
-    final req = <String, dynamic>{
-      "url": url,
-      "type": type,
-      "participant_id": fromParticipantId,
-      "timeout": timeout,
-      "delegate_to": delegateTo,
-    };
-
-    final res = await _invoke("request_secret", req);
-    if (res is FileContent) {
-      return res.data;
-    }
-    throw _unexpectedResponseError("request_secret");
-  }
-
-  Future<FileContent?> getSecret({String? secretId, String? type, String? name, String? delegatedTo}) async {
-    final req = <String, dynamic>{"secret_id": secretId, "type": type, "name": name, "delegated_to": delegatedTo};
-
-    final res = await _invoke("get_secret", req);
-    if (res is EmptyContent) {
-      return null;
-    }
-    if (res is FileContent) {
-      return res;
-    }
-    throw _unexpectedResponseError("get_secret");
-  }
-
-  Future<void> setSecret({
-    String? secretId,
-    required Uint8List data,
-    String? type,
-    String? mimeType,
-    String? name,
-    String? delegatedTo,
-    String? forIdentity,
-  }) async {
-    final res = await _invoke(
-      "set_secret",
-      BinaryContent(
-        data: data,
-        headers: <String, dynamic>{
-          "secret_id": secretId,
-          "type": type ?? mimeType,
-          "name": name,
-          "delegated_to": delegatedTo,
-          "for_identity": forIdentity,
-          "has_data": true,
-        },
-      ),
-    );
-    if (res is EmptyContent || res is JsonContent) {
-      return;
-    }
-    throw _unexpectedResponseError("set_secret");
-  }
-
-  Future<List<SecretInfo>> listSecrets() async {
-    final res = await _invoke("list_secrets", {});
-
-    if (res is JsonContent) {
-      final secrets = (res.json['secrets'] as List<dynamic>?)?.map((item) => SecretInfo.fromJson(item as Map<String, dynamic>)).toList();
-
-      return secrets ?? [];
-    }
-
-    throw _unexpectedResponseError("list_secrets");
-  }
-
-  Future<bool> exists({required String secretId, String? delegatedTo, String? forIdentity}) async {
-    final req = <String, dynamic>{"secret_id": secretId, "delegated_to": delegatedTo, "for_identity": forIdentity};
-
-    final res = await _invoke("exists", req);
-    if (res is JsonContent && res.json["exists"] is bool) {
-      return res.json["exists"] as bool;
-    }
-    throw _unexpectedResponseError("exists");
-  }
-
-  Future<void> deleteSecret({required String secretId, String? delegatedTo}) async {
-    final req = <String, dynamic>{"id": secretId, "delegated_to": delegatedTo};
-
-    final res = await _invoke("delete_secret", req);
-    if (res is EmptyContent || res is JsonContent) {
-      return;
-    }
-    throw _unexpectedResponseError("delete_secret");
-  }
-
-  Future<void> deleteRequestedSecret({required String url, required String type, String? delegatedTo}) async {
-    final req = <String, dynamic>{"url": url, "type": type, "delegated_to": delegatedTo};
-
-    final res = await _invoke("delete_requested_secret", req);
-    if (res is EmptyContent || res is JsonContent) {
-      return;
-    }
-    throw _unexpectedResponseError("delete_requested_secret");
-  }
-
-  /// Client -> server: Ask another participant (or the server) to obtain an OAuth token for us.
-  /// Returns the `access_token` string.
-  ///
-  /// This matches the Python signature:
-  ///   request_oauth_token(authorization_endpoint, token_endpoint, scopes, timeout, from_participant_id)
-  Future<String?> requestOAuthToken({
-    required String fromParticipantId,
-    required Uri redirectUri,
-    String? delegateTo,
-    ConnectorRef? connector,
-    OAuthClientConfig? oauth,
-    int timeout = 60 * 5,
-  }) async {
-    final req = {
-      "connector": connector?.toJson(),
-      "oauth": oauth?.toJson(),
-      "redirect_uri": redirectUri.toString(),
-      "timeout": timeout,
-      "participant_id": fromParticipantId,
-      "delegate_to": delegateTo,
-    };
-
-    final res = await _invoke("request_oauth_token", req);
-    if (res is! JsonContent) {
-      throw _unexpectedResponseError("request_oauth_token");
-    }
-    final accessToken = (res.json["access_token"] as String?) ?? '';
-    if (accessToken.isEmpty) {
-      return null;
-    }
-    return accessToken;
-  }
-
-  Future<String?> getOfflineOAuthToken({
-    ConnectorRef? connector,
-    OAuthClientConfig? oauth,
-    String? delegatedTo,
-    String? delegatedBy,
-  }) async {
-    final req = <String, dynamic>{
-      'connector': connector?.toJson(),
-      'oauth': oauth?.toJson(),
-      'delegated_by': delegatedBy,
-      'delegated_to': delegatedTo,
-    };
-
-    final res = await _invoke('get_offline_oauth_token', req);
-
-    if (res is JsonContent) {
-      final token = (res.json['access_token'] as String?) ?? '';
-      if (token.isEmpty) {
-        return null;
-      }
-      return token;
-    }
-    throw _unexpectedResponseError('get_offline_oauth_token');
   }
 }

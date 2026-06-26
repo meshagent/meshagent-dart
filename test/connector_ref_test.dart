@@ -78,12 +78,7 @@ void main() {
                 endpoints: [
                   EndpointSpec(
                     path: '/mcp',
-                    mcp: MCPEndpointSpec(
-                      label: 'Local MCP',
-                      requireApproval: 'always',
-                      headers: const {'Authorization': 'Bearer token'},
-                      openaiConnectorId: 'connector_local',
-                    ),
+                    mcp: MCPEndpointSpec(label: 'Local MCP', requireApproval: 'always', headers: const {'Authorization': 'Bearer token'}),
                   ),
                 ],
               ),
@@ -98,7 +93,7 @@ void main() {
                 endpoints: [
                   EndpointSpec(
                     path: 'remote',
-                    mcp: MCPEndpointSpec(label: 'External MCP', openaiConnectorId: 'connector_external'),
+                    mcp: MCPEndpointSpec(label: 'External MCP'),
                   ),
                 ],
               ),
@@ -124,11 +119,82 @@ void main() {
       expect(connectors.map((connector) => connector.name).toList(), ['Local MCP', 'External MCP']);
       expect(connectors.first.server.serverUrl, 'http://localhost:8080/mcp');
       expect(connectors.first.server.requireApproval, 'always');
-      expect(connectors.first.server.openaiConnectorId, 'connector_local');
+      expect(connectors.first.server.openaiConnectorId, isNull);
       expect(connectors.first.server.headers?.map((header) => header.toJson()).toList(), [
         {'name': 'Authorization', 'value': 'Bearer token'},
       ]);
       expect(connectors.last.server.serverUrl, 'https://mcp.example.com:443/root/remote');
+    });
+
+    test('hides OAuth MCP connectors unless they are proxy backed', () {
+      final connectors = mcpConnectorsFromRoomServices(
+        services: [
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'legacy-oauth-mcp'),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(8080),
+                endpoints: [
+                  EndpointSpec(
+                    path: '/legacy',
+                    mcp: MCPEndpointSpec(label: 'Legacy OAuth MCP', openaiConnectorId: 'connector_legacy'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'proxy-oauth-mcp'),
+            external: ExternalServiceSpec(url: 'https://mcp.example.com'),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(443),
+                endpoints: [
+                  EndpointSpec(
+                    path: '/mcp',
+                    mcp: MCPEndpointSpec(label: 'Proxy OAuth MCP', openaiConnectorId: 'connector_proxy', useProxySecret: 'secret-123'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+        meshagentProxyConfig: const MeshagentProxyConfig(apiUrl: 'https://api.meshagent.test', apiKey: 'api-token'),
+      );
+
+      expect(connectors.map((connector) => connector.name).toList(), ['Proxy OAuth MCP']);
+      final connector = connectors.single;
+      final proxyUri = Uri.parse(connector.server.serverUrl!);
+      expect('${proxyUri.origin}${proxyUri.path}', 'https://api.meshagent.test/proxy-request');
+      expect(proxyUri.queryParameters['secret-id'], 'secret-123');
+      expect(connector.server.headers?.map((header) => header.toJson()).toList(), [
+        {'name': 'Authorization', 'value': 'Bearer api-token'},
+      ]);
+      expect(connector.oauth, isNull);
+    });
+
+    test('hides proxy-backed MCP connectors when proxy config is unavailable', () {
+      final connectors = mcpConnectorsFromRoomServices(
+        services: [
+          ServiceSpec(
+            metadata: ServiceMetadata(name: 'proxy-oauth-mcp'),
+            external: ExternalServiceSpec(url: 'https://mcp.example.com'),
+            ports: [
+              PortSpec(
+                num: PortNum.fromInt(443),
+                endpoints: [
+                  EndpointSpec(
+                    path: '/mcp',
+                    mcp: MCPEndpointSpec(label: 'Proxy OAuth MCP', useProxySecret: 'secret-123'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(connectors, isEmpty);
     });
   });
 }

@@ -8,6 +8,7 @@ export 'package:meshagent/schema.dart';
 export 'package:meshagent/protocol.dart';
 export 'package:meshagent_dart_arrow/meshagent_dart_arrow.dart';
 export 'package:meshagent/datasets_client.dart';
+export 'package:meshagent/sqlite_client.dart';
 export 'package:meshagent/client.dart';
 export 'package:meshagent/api_keys.dart';
 export 'package:meshagent/toolkit_config.dart';

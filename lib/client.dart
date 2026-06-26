@@ -127,12 +127,6 @@ abstract final class ProjectRoles {
   static const apiKeyCreator = 'api_key_creator';
   static const apiKeyInventory = 'api_key_inventory';
   static const apiKeyManager = 'api_key_manager';
-  static const secretCreator = 'secret_creator';
-  static const secretInventory = 'secret_inventory';
-  static const secretManager = 'secret_manager';
-  static const externalOauthClientCreator = 'external_oauth_client_creator';
-  static const externalOauthClientInventory = 'external_oauth_client_inventory';
-  static const externalOauthClientManager = 'external_oauth_client_manager';
   static const serviceCreator = 'service_creator';
   static const serviceInventory = 'service_inventory';
   static const serviceManager = 'service_manager';
@@ -183,12 +177,6 @@ abstract final class ProjectRoles {
     apiKeyCreator,
     apiKeyInventory,
     apiKeyManager,
-    secretCreator,
-    secretInventory,
-    secretManager,
-    externalOauthClientCreator,
-    externalOauthClientInventory,
-    externalOauthClientManager,
     serviceCreator,
     serviceInventory,
     serviceManager,
@@ -242,12 +230,6 @@ enum ProjectRole {
   apiKeyCreator(ProjectRoles.apiKeyCreator, 'API Key Creator'),
   apiKeyInventory(ProjectRoles.apiKeyInventory, 'API Key Inventory'),
   apiKeyManager(ProjectRoles.apiKeyManager, 'API Key Manager'),
-  secretCreator(ProjectRoles.secretCreator, 'Secret Creator'),
-  secretInventory(ProjectRoles.secretInventory, 'Secret Inventory'),
-  secretManager(ProjectRoles.secretManager, 'Secret Manager'),
-  externalOauthClientCreator(ProjectRoles.externalOauthClientCreator, 'External OAuth Client Creator'),
-  externalOauthClientInventory(ProjectRoles.externalOauthClientInventory, 'External OAuth Client Inventory'),
-  externalOauthClientManager(ProjectRoles.externalOauthClientManager, 'External OAuth Client Manager'),
   serviceCreator(ProjectRoles.serviceCreator, 'Service Creator'),
   serviceInventory(ProjectRoles.serviceInventory, 'Service Inventory'),
   serviceManager(ProjectRoles.serviceManager, 'Service Manager'),
@@ -303,12 +285,6 @@ enum ProjectRole {
     apiKeyCreator,
     apiKeyInventory,
     apiKeyManager,
-    secretCreator,
-    secretInventory,
-    secretManager,
-    externalOauthClientCreator,
-    externalOauthClientInventory,
-    externalOauthClientManager,
     serviceCreator,
     serviceInventory,
     serviceManager,
@@ -918,52 +894,6 @@ class ProjectRepositoryImage {
   };
 }
 
-class ManagedSecretInfo {
-  final String id;
-  final String type;
-  final String name;
-  final String? delegatedTo;
-  final String? agentId;
-
-  ManagedSecretInfo({required this.id, required this.type, required this.name, this.delegatedTo, this.agentId});
-
-  factory ManagedSecretInfo.fromJson(Map<String, dynamic> json) => ManagedSecretInfo(
-    id: json['id'] as String,
-    type: json['type'] as String,
-    name: json['name'] as String,
-    delegatedTo: json['delegated_to'] as String? ?? json['delegatedTo'] as String?,
-    agentId: json['agent_id'] as String? ?? json['agentId'] as String?,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'type': type,
-    'name': name,
-    if (delegatedTo != null) 'delegated_to': delegatedTo,
-    if (agentId != null) 'agent_id': agentId,
-  };
-}
-
-class ManagedSecret extends ManagedSecretInfo {
-  final String dataBase64;
-
-  ManagedSecret({required super.id, required super.type, required super.name, super.delegatedTo, super.agentId, required this.dataBase64});
-
-  Uint8List get data => base64Decode(dataBase64);
-
-  factory ManagedSecret.fromJson(Map<String, dynamic> json) => ManagedSecret(
-    id: json['id'] as String,
-    type: json['type'] as String,
-    name: json['name'] as String,
-    delegatedTo: json['delegated_to'] as String? ?? json['delegatedTo'] as String?,
-    agentId: json['agent_id'] as String? ?? json['agentId'] as String?,
-    dataBase64: json['data_base64'] as String? ?? json['dataBase64'] as String,
-  );
-
-  @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'data_base64': dataBase64};
-}
-
 class MeshagentRepositoriesPage {
   final List<ProjectRepository> repositories;
   final int total;
@@ -980,28 +910,6 @@ class MeshagentRepositoriesPage {
       continuationToken: json['continuation_token'] as String?,
     );
   }
-}
-
-class MeshagentSecretsPage {
-  final List<ManagedSecretInfo> secrets;
-  final int total;
-
-  MeshagentSecretsPage({required this.secrets, required this.total});
-
-  factory MeshagentSecretsPage.fromJson(Map<String, dynamic> json) {
-    final list = json['secrets'] as List<dynamic>? ?? [];
-    return MeshagentSecretsPage(
-      secrets: list.whereType<Map>().map((m) => ManagedSecretInfo.fromJson(m.cast<String, dynamic>())).toList(),
-      total: _parseInt(json['total']),
-    );
-  }
-}
-
-class MeshagentLegacySecretsPage {
-  final List<Map<String, dynamic>> secrets;
-  final int total;
-
-  MeshagentLegacySecretsPage({required this.secrets, required this.total});
 }
 
 class MeshagentServicesPage {
@@ -1032,64 +940,6 @@ class MeshagentApiKeysPage {
       total: json.containsKey('total') ? _parseInt(json['total']) : list.length,
     );
   }
-}
-
-class ExternalOAuthClientRegistration {
-  final String id;
-  final String delegatedTo;
-  final ConnectorRef? connector;
-  final OAuthClientConfig? oauth;
-  final String clientId;
-  final String? clientSecret;
-
-  ExternalOAuthClientRegistration({
-    required this.id,
-    required this.delegatedTo,
-    this.connector,
-    this.oauth,
-    required this.clientId,
-    this.clientSecret,
-  });
-
-  factory ExternalOAuthClientRegistration.fromJson(Map<String, dynamic> json) => ExternalOAuthClientRegistration(
-    id: json['id'] as String,
-    delegatedTo: json['delegated_to'] as String? ?? json['delegatedTo'] as String,
-    connector: json['connector'] == null ? null : ConnectorRef.fromJson((json['connector'] as Map).cast<String, dynamic>()),
-    oauth: json['oauth'] == null ? null : OAuthClientConfig.fromJson((json['oauth'] as Map).cast<String, dynamic>()),
-    clientId: json['client_id'] as String? ?? json['clientId'] as String,
-    clientSecret: json['client_secret'] as String? ?? json['clientSecret'] as String?,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'delegated_to': delegatedTo,
-    if (connector != null) 'connector': connector!.toJson(),
-    if (oauth != null) 'oauth': oauth!.toJson(),
-    'client_id': clientId,
-    if (clientSecret != null) 'client_secret': clientSecret,
-  };
-}
-
-Uint8List _normalizeSecretBytes(List<int> data) {
-  if (data is Uint8List) {
-    return data;
-  }
-  return Uint8List.fromList(data);
-}
-
-Map<String, dynamic> _parseLegacySecretPayload({required ManagedSecretInfo secret, required Uint8List rawData}) {
-  dynamic payload;
-  try {
-    payload = jsonDecode(utf8.decode(rawData));
-  } catch (_) {
-    throw MeshagentException('Invalid secret payload for ${secret.id}');
-  }
-
-  if (payload is! Map<String, dynamic>) {
-    throw MeshagentException('Invalid secret payload for ${secret.id}');
-  }
-
-  return {'id': secret.id, 'name': secret.name, 'type': secret.type, 'data': payload};
 }
 
 // ---------------------------
@@ -1312,6 +1162,50 @@ class Meshagent {
   final String baseUrl;
   final String token;
   final http.Client httpClient;
+
+  Map<String, dynamic> _secretPayload({
+    String? projectId,
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+  }) {
+    return <String, dynamic>{
+      'project_id': ?projectId,
+      'name': ?name,
+      'type': ?type,
+      'http_only': ?httpOnly,
+      'metadata': ?metadata,
+      'annotations': ?annotations,
+    };
+  }
+
+  Map<String, dynamic> _secretSearchPayload({
+    String? filter,
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+    int pageSize = 100,
+    String? continuationToken,
+  }) {
+    return <String, dynamic>{
+      'page_size': pageSize,
+      'filter': ?filter,
+      'name': ?name,
+      'type': ?type,
+      'http_only': ?httpOnly,
+      'metadata': ?metadata,
+      'annotations': ?annotations,
+      'continuation_token': ?continuationToken,
+    };
+  }
+
+  Map<String, dynamic> _secretVersionPayload({required Uint8List value, bool setCurrent = true}) {
+    return <String, dynamic>{'value_base64': base64Encode(value), 'set_current': setCurrent};
+  }
 
   /// POST /accounts/projects/{project_id}/mailboxes
   /// Body: { "address", "room", "queue" }
@@ -2316,28 +2210,6 @@ class Meshagent {
     }
   }
 
-  Future<String> createProjectSecret({
-    required String projectId,
-    required String name,
-    required String type,
-    required Uint8List data,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets');
-    final body = {'name': name, 'type': type, 'data_base64': base64Encode(_normalizeSecretBytes(data))};
-
-    final response = await httpClient.post(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create project secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
-  }
-
   // Corresponds to: GET /pricing
   Future<Map<String, dynamic>> getPricing() async {
     final uri = Uri.parse('$baseUrl/pricing');
@@ -2353,57 +2225,6 @@ class Meshagent {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<ManagedSecret> getProjectSecret({required String projectId, required String secretId}) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets/$encodedSecretId');
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to get project secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return ManagedSecret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-  }
-
-  Future<MeshagentSecretsPage> listProjectSecretsPage(String projectId, {int count = 100, int offset = 0, String view = 'all'}) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/secrets',
-    ).replace(queryParameters: {'count': '$count', 'offset': '$offset', 'view': view});
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list project secrets. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return MeshagentSecretsPage.fromJson(data);
-  }
-
-  Future<List<ManagedSecretInfo>> listProjectSecrets(String projectId) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets');
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list project secrets. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final secretsList = data['secrets'] as List<dynamic>? ?? [];
-    return secretsList.whereType<Map>().map((m) => ManagedSecretInfo.fromJson(m.cast<String, dynamic>())).toList();
-  }
-
   Future<void> updateProjectSettings({required String projectId, required Map<String, dynamic> settings}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings');
@@ -2415,369 +2236,6 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
-  }
-
-  Future<void> updateProjectSecret({
-    required String projectId,
-    required String secretId,
-    required String name,
-    required String type,
-    required Uint8List data,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets/$encodedSecretId');
-    final body = {'name': name, 'type': type, 'data_base64': base64Encode(_normalizeSecretBytes(data))};
-
-    final response = await httpClient.put(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update project secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<void> deleteProjectSecret({required String projectId, required String secretId}) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/secrets/$encodedSecretId');
-    final response = await httpClient.delete(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to delete project secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<String> createRoomSecret({
-    required String projectId,
-    required String roomName,
-    required Uint8List data,
-    String? secretId,
-    String? name,
-    String? type,
-    String? delegatedTo,
-    String? forIdentity,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets');
-    final body = <String, dynamic>{
-      'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      'secret_id': ?secretId,
-      'name': ?name,
-      'type': ?type,
-      'delegated_to': ?delegatedTo,
-      'for_identity': ?forIdentity,
-    };
-
-    final response = await httpClient.post(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create room secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
-  }
-
-  Future<void> updateRoomSecret({
-    required String projectId,
-    required String roomName,
-    required String secretId,
-    required Uint8List data,
-    String? name,
-    String? type,
-    String? delegatedTo,
-    String? forIdentity,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets/$encodedSecretId');
-    final body = <String, dynamic>{
-      'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      'name': ?name,
-      'type': ?type,
-      'delegated_to': ?delegatedTo,
-      'for_identity': ?forIdentity,
-    };
-
-    final response = await httpClient.put(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update room secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<ManagedSecret> getRoomSecret({
-    required String projectId,
-    required String roomName,
-    required String secretId,
-    String? delegatedTo,
-    String? forIdentity,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    if (forIdentity != null) query['for_identity'] = forIdentity;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets/$encodedSecretId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to get room secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return ManagedSecret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-  }
-
-  Future<List<ManagedSecretInfo>> listRoomSecrets({required String projectId, required String roomName, String? forIdentity}) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final query = <String, String>{};
-    if (forIdentity != null) query['for_identity'] = forIdentity;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list room secrets. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final secretsList = data['secrets'] as List<dynamic>? ?? [];
-    return secretsList.whereType<Map<String, dynamic>>().map(ManagedSecretInfo.fromJson).toList();
-  }
-
-  Future<void> deleteRoomSecret({
-    required String projectId,
-    required String roomName,
-    required String secretId,
-    String? delegatedTo,
-    String? forIdentity,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    if (forIdentity != null) query['for_identity'] = forIdentity;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/secrets/$encodedSecretId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.delete(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to delete room secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<String> createAgentSecret({
-    required String projectId,
-    required String agentId,
-    required Uint8List data,
-    String? secretId,
-    String? name,
-    String? type,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedAgentId = Uri.encodeComponent(agentId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets');
-    final body = <String, dynamic>{
-      'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      'secret_id': ?secretId,
-      'name': ?name,
-      'type': ?type,
-      'delegated_to': ?delegatedTo,
-    };
-
-    final response = await httpClient.post(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create agent secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
-  }
-
-  Future<void> updateAgentSecret({
-    required String projectId,
-    required String agentId,
-    required String secretId,
-    required Uint8List data,
-    String? name,
-    String? type,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedAgentId = Uri.encodeComponent(agentId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId');
-    final body = <String, dynamic>{
-      'data_base64': base64Encode(_normalizeSecretBytes(data)),
-      'name': ?name,
-      'type': ?type,
-      'delegated_to': ?delegatedTo,
-    };
-
-    final response = await httpClient.put(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update agent secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<ManagedSecret> getAgentSecret({
-    required String projectId,
-    required String agentId,
-    required String secretId,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedAgentId = Uri.encodeComponent(agentId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to get agent secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return ManagedSecret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-  }
-
-  Future<List<ManagedSecretInfo>> listAgentSecrets({required String projectId, required String agentId}) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedAgentId = Uri.encodeComponent(agentId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets');
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list agent secrets. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final secretsList = data['secrets'] as List<dynamic>? ?? [];
-    return secretsList.whereType<Map<String, dynamic>>().map(ManagedSecretInfo.fromJson).toList();
-  }
-
-  Future<void> deleteAgentSecret({
-    required String projectId,
-    required String agentId,
-    required String secretId,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedAgentId = Uri.encodeComponent(agentId);
-    final encodedSecretId = Uri.encodeComponent(secretId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/agents/$encodedAgentId/secrets/$encodedSecretId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.delete(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to delete agent secret. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<Map<String, dynamic>> createSecret({
-    required String projectId,
-    required String name,
-    required String type,
-    required Map<String, dynamic> data,
-  }) async {
-    final secretId = await createProjectSecret(
-      projectId: projectId,
-      name: name,
-      type: type,
-      data: Uint8List.fromList(utf8.encode(jsonEncode(data))),
-    );
-    return {'id': secretId};
-  }
-
-  Future<MeshagentLegacySecretsPage> listSecretsPage(String projectId, {int count = 100, int offset = 0, String view = 'all'}) async {
-    final page = await listProjectSecretsPage(projectId, count: count, offset: offset, view: view);
-    final secrets = <Map<String, dynamic>>[];
-    for (final secretInfo in page.secrets) {
-      final secret = await getProjectSecret(projectId: projectId, secretId: secretInfo.id);
-      secrets.add(_parseLegacySecretPayload(secret: secret, rawData: secret.data));
-    }
-    return MeshagentLegacySecretsPage(secrets: secrets, total: page.total);
-  }
-
-  Future<List<Map<String, dynamic>>> listSecrets(String projectId) async {
-    final secretInfos = await listProjectSecrets(projectId);
-    final secrets = <Map<String, dynamic>>[];
-    for (final secretInfo in secretInfos) {
-      final secret = await getProjectSecret(projectId: projectId, secretId: secretInfo.id);
-      secrets.add(_parseLegacySecretPayload(secret: secret, rawData: secret.data));
-    }
-    return secrets;
-  }
-
-  Future<void> updateSecret({
-    required String projectId,
-    required String secretId,
-    required String name,
-    required String type,
-    required Map<String, dynamic> data,
-  }) async {
-    await updateProjectSecret(
-      projectId: projectId,
-      secretId: secretId,
-      name: name,
-      type: type,
-      data: Uint8List.fromList(utf8.encode(jsonEncode(data))),
-    );
-  }
-
-  Future<void> deleteSecret({required String projectId, required String secretId}) async {
-    await deleteProjectSecret(projectId: projectId, secretId: secretId);
   }
 
   /// Corresponds to: POST /projects/:project_id/storage/upload
@@ -2884,7 +2342,7 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /accounts/projects/:project_id/services
-  /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
+  /// Body: a ServiceSpec JSON object.
   /// Returns JSON like { "id" } on success.
   Future<ServiceSpec> createService({required String projectId, required ServiceSpec service}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
@@ -3048,7 +2506,7 @@ class Meshagent {
   }
 
   /// Corresponds to: POST /accounts/projects/:project_id/services
-  /// Body: { "name", "image", "pull_secret", "runtime_secrets", "environment_secrets", "environment" : \<settings\> }
+  /// Body: a ServiceSpec JSON object.
   /// Returns JSON like { "id" } on success.
   Future<String> createRoomService({required String projectId, required ServiceSpec service, required String roomName}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
@@ -3909,6 +3367,496 @@ class Meshagent {
     return list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
+  Future<Secret> createUserSecret({
+    required String projectId,
+    required String name,
+    String type = 'opaque',
+    bool httpOnly = false,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(
+        _secretPayload(projectId: projectId, name: name, type: type, httpOnly: httpOnly, metadata: metadata, annotations: annotations),
+      ),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to create user secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<SecretsPage> listUserSecrets({int pageSize = 100, String? continuationToken, String? filter}) async {
+    final query = <String, String>{'page_size': '$pageSize'};
+    if (continuationToken != null) {
+      query['continuation_token'] = continuationToken;
+    }
+    if (filter != null) {
+      query['filter'] = filter;
+    }
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets').replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list user secrets. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<SecretsPage> searchUserSecrets({
+    String? filter,
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+    int pageSize = 100,
+    String? continuationToken,
+  }) async {
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets:search');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(
+        _secretSearchPayload(
+          filter: filter,
+          name: name,
+          type: type,
+          httpOnly: httpOnly,
+          metadata: metadata,
+          annotations: annotations,
+          pageSize: pageSize,
+          continuationToken: continuationToken,
+        ),
+      ),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to search user secrets. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Secret> getUserSecret(String secretId, {bool includeValue = false}) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/users/me/secrets/$encodedSecretId',
+    ).replace(queryParameters: includeValue ? <String, String>{'include_value': 'true'} : null);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get user secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Secret> updateUserSecret(
+    String secretId, {
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+  }) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId');
+    final response = await httpClient.patch(
+      uri,
+      body: jsonEncode(_secretPayload(name: name, type: type, httpOnly: httpOnly, metadata: metadata, annotations: annotations)),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to update user secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteUserSecret(String secretId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to delete user secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<List<SecretVersion>> listUserSecretVersions(String secretId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/versions');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list user secret versions. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretVersionsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>).versions;
+  }
+
+  Future<SecretVersion> createUserSecretVersion(String secretId, {required Uint8List value, bool setCurrent = true}) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/versions');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(_secretVersionPayload(value: value, setCurrent: setCurrent)),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to create user secret version. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretVersion.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Uint8List> accessUserSecretVersion(String secretId, String versionId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final encodedVersionId = Uri.encodeComponent(versionId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/versions/$encodedVersionId:access');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to access user secret version. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return base64Decode(data['value_base64'] as String);
+  }
+
+  Future<void> deleteUserSecretVersion(String secretId, String versionId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final encodedVersionId = Uri.encodeComponent(versionId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/versions/$encodedVersionId');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to delete user secret version. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<SecretProxyAccessGrantsPage> listUserSecretProxyAccess(String secretId, {int pageSize = 100, String? continuationToken}) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final query = <String, String>{'page_size': '$pageSize'};
+    if (continuationToken != null) {
+      query['continuation_token'] = continuationToken;
+    }
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/access').replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list user secret proxy access. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretProxyAccessGrantsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> grantUserSecretProxyAccess(String secretId, String serviceAccountId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/access:grant-proxy');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode({
+        'subject': {'type': 'service_account', 'id': serviceAccountId},
+      }),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to grant user secret proxy access. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<void> revokeUserSecretProxyAccess(String secretId, String serviceAccountId) async {
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse('$baseUrl/accounts/users/me/secrets/$encodedSecretId/access:revoke-proxy');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode({
+        'subject': {'type': 'service_account', 'id': serviceAccountId},
+      }),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to revoke user secret proxy access. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<Secret> createServiceAccountSecret(
+    String projectId,
+    String serviceAccountId, {
+    required String name,
+    String type = 'opaque',
+    bool httpOnly = false,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(_secretPayload(name: name, type: type, httpOnly: httpOnly, metadata: metadata, annotations: annotations)),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to create service account secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<SecretsPage> listServiceAccountSecrets(
+    String projectId,
+    String serviceAccountId, {
+    int pageSize = 100,
+    String? continuationToken,
+    String? filter,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final query = <String, String>{'page_size': '$pageSize'};
+    if (continuationToken != null) {
+      query['continuation_token'] = continuationToken;
+    }
+    if (filter != null) {
+      query['filter'] = filter;
+    }
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets',
+    ).replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list service account secrets. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<SecretsPage> searchServiceAccountSecrets(
+    String projectId,
+    String serviceAccountId, {
+    String? filter,
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+    int pageSize = 100,
+    String? continuationToken,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets:search');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(
+        _secretSearchPayload(
+          filter: filter,
+          name: name,
+          type: type,
+          httpOnly: httpOnly,
+          metadata: metadata,
+          annotations: annotations,
+          pageSize: pageSize,
+          continuationToken: continuationToken,
+        ),
+      ),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to search service account secrets. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Secret> getServiceAccountSecret(String projectId, String serviceAccountId, String secretId, {bool includeValue = false}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId',
+    ).replace(queryParameters: includeValue ? <String, String>{'include_value': 'true'} : null);
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get service account secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Secret> updateServiceAccountSecret(
+    String projectId,
+    String serviceAccountId,
+    String secretId, {
+    String? name,
+    String? type,
+    bool? httpOnly,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? annotations,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId',
+    );
+    final response = await httpClient.patch(
+      uri,
+      body: jsonEncode(_secretPayload(name: name, type: type, httpOnly: httpOnly, metadata: metadata, annotations: annotations)),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to update service account secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return Secret.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteServiceAccountSecret(String projectId, String serviceAccountId, String secretId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId',
+    );
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to delete service account secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<List<SecretVersion>> listServiceAccountSecretVersions(String projectId, String serviceAccountId, String secretId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId/versions',
+    );
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list service account secret versions. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return SecretVersionsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>).versions;
+  }
+
+  Future<SecretVersion> createServiceAccountSecretVersion(
+    String projectId,
+    String serviceAccountId,
+    String secretId, {
+    required Uint8List value,
+    bool setCurrent = true,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId/versions',
+    );
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(_secretVersionPayload(value: value, setCurrent: setCurrent)),
+    );
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create service account secret version. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return SecretVersion.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Uint8List> accessServiceAccountSecretVersion(String projectId, String serviceAccountId, String secretId, String versionId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final encodedVersionId = Uri.encodeComponent(versionId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId/versions/$encodedVersionId:access',
+    );
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to access service account secret version. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return base64Decode(data['value_base64'] as String);
+  }
+
+  Future<void> deleteServiceAccountSecretVersion(String projectId, String serviceAccountId, String secretId, String versionId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final encodedVersionId = Uri.encodeComponent(versionId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/secrets/$encodedSecretId/versions/$encodedVersionId',
+    );
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete service account secret version. Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  Future<List<Secret>> listServiceAccountPullSecrets(String projectId, String serviceAccountId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/pull-secrets');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list service account pull secrets. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+
+    return SecretsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>).secrets;
+  }
+
+  Future<void> addServiceAccountPullSecret(String projectId, String serviceAccountId, String secretId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/pull-secrets/$encodedSecretId',
+    );
+    final response = await httpClient.put(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to add service account pull secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<void> removeServiceAccountPullSecret(String projectId, String serviceAccountId, String secretId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedServiceAccountId = Uri.encodeComponent(serviceAccountId);
+    final encodedSecretId = Uri.encodeComponent(secretId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/service-accounts/$encodedServiceAccountId/pull-secrets/$encodedSecretId',
+    );
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to remove service account pull secret. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
   // In Meshagent
   /// GET /accounts/projects/{project_id}/sessions
   /// Returns JSON: { "sessions": [ { "room_name", "started_at", "is_active" }, ... ] }
@@ -4685,6 +4633,7 @@ class Meshagent {
     int pageSize = 50,
     String? continuationToken,
   }) async {
+    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -4734,6 +4683,7 @@ class Meshagent {
     required List<String> roles,
     Uri? inviteRedirectUrl,
   }) async {
+    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -4755,6 +4705,7 @@ class Meshagent {
     required String resourceId,
     required AccessSubject subject,
   }) async {
+    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -4765,6 +4716,16 @@ class Meshagent {
       throw MeshagentException(
         'Failed to revoke resource policy. '
         'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+  }
+
+  static void _validateResourcePolicyType(String resourceType) {
+    if (resourceType == 'agent') {
+      throw ArgumentError.value(
+        resourceType,
+        'resourceType',
+        'managed agent resource policies are not supported; use agent run_as instead',
       );
     }
   }
@@ -4955,222 +4916,6 @@ class Meshagent {
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete OAuth client. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<String> createProjectExternalOAuthRegistration({
-    required String projectId,
-    required OAuthClientConfig oauth,
-    required String clientId,
-    String? clientSecret,
-    String? delegatedTo,
-    ConnectorRef? connector,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/external-oauth');
-    final body = <String, dynamic>{
-      'oauth': oauth.toJson(),
-      'client_id': clientId,
-      'client_secret': ?clientSecret,
-      'delegated_to': ?delegatedTo,
-      'connector': ?connector?.toJson(),
-    };
-    final response = await httpClient.post(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create project external oauth registration. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
-  }
-
-  Future<void> updateProjectExternalOAuthRegistration({
-    required String projectId,
-    required String registrationId,
-    required OAuthClientConfig oauth,
-    required String clientId,
-    String? clientSecret,
-    String? delegatedTo,
-    ConnectorRef? connector,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRegistrationId = Uri.encodeComponent(registrationId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/external-oauth/$encodedRegistrationId');
-    final body = <String, dynamic>{
-      'oauth': oauth.toJson(),
-      'client_id': clientId,
-      'client_secret': ?clientSecret,
-      'delegated_to': ?delegatedTo,
-      'connector': ?connector?.toJson(),
-    };
-    final response = await httpClient.put(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update project external oauth registration. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<List<ExternalOAuthClientRegistration>> listProjectExternalOAuthRegistrations({
-    required String projectId,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/external-oauth',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list project external oauth registrations. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final registrations = decoded['registrations'] as List<dynamic>? ?? const [];
-    return registrations.whereType<Map<String, dynamic>>().map(ExternalOAuthClientRegistration.fromJson).toList();
-  }
-
-  Future<void> deleteProjectExternalOAuthRegistration({
-    required String projectId,
-    required String registrationId,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRegistrationId = Uri.encodeComponent(registrationId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/external-oauth/$encodedRegistrationId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.delete(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to delete project external oauth registration. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<String> createRoomExternalOAuthRegistration({
-    required String projectId,
-    required String roomName,
-    required OAuthClientConfig oauth,
-    required String clientId,
-    String? clientSecret,
-    String? delegatedTo,
-    ConnectorRef? connector,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/external-oauth');
-    final body = <String, dynamic>{
-      'oauth': oauth.toJson(),
-      'client_id': clientId,
-      'client_secret': ?clientSecret,
-      'delegated_to': ?delegatedTo,
-      'connector': ?connector?.toJson(),
-    };
-    final response = await httpClient.post(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create room external oauth registration. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
-  }
-
-  Future<void> updateRoomExternalOAuthRegistration({
-    required String projectId,
-    required String roomName,
-    required String registrationId,
-    required OAuthClientConfig oauth,
-    required String clientId,
-    String? clientSecret,
-    String? delegatedTo,
-    ConnectorRef? connector,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final encodedRegistrationId = Uri.encodeComponent(registrationId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/external-oauth/$encodedRegistrationId');
-    final body = <String, dynamic>{
-      'oauth': oauth.toJson(),
-      'client_id': clientId,
-      'client_secret': ?clientSecret,
-      'delegated_to': ?delegatedTo,
-      'connector': ?connector?.toJson(),
-    };
-    final response = await httpClient.put(uri, body: jsonEncode(body));
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update room external oauth registration. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  Future<List<ExternalOAuthClientRegistration>> listRoomExternalOAuthRegistrations({
-    required String projectId,
-    required String roomName,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/external-oauth',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.get(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to list room external oauth registrations. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final registrations = decoded['registrations'] as List<dynamic>? ?? const [];
-    return registrations.whereType<Map<String, dynamic>>().map(ExternalOAuthClientRegistration.fromJson).toList();
-  }
-
-  Future<void> deleteRoomExternalOAuthRegistration({
-    required String projectId,
-    required String roomName,
-    required String registrationId,
-    String? delegatedTo,
-  }) async {
-    final encodedProjectId = Uri.encodeComponent(projectId);
-    final encodedRoomName = Uri.encodeComponent(roomName);
-    final encodedRegistrationId = Uri.encodeComponent(registrationId);
-    final query = <String, String>{};
-    if (delegatedTo != null) query['delegated_to'] = delegatedTo;
-    final uri = Uri.parse(
-      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/external-oauth/$encodedRegistrationId',
-    ).replace(queryParameters: query.isEmpty ? null : query);
-    final response = await httpClient.delete(uri);
-
-    if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to delete room external oauth registration. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
@@ -5554,18 +5299,6 @@ class ProjectMember {
   };
 }
 
-class ManagedAgentGrant {
-  const ManagedAgentGrant({this.admin = false});
-
-  final bool admin;
-
-  factory ManagedAgentGrant.fromJson(Map<String, dynamic> json) {
-    return ManagedAgentGrant(admin: json['admin'] == true);
-  }
-
-  Map<String, dynamic> toJson() => {'admin': admin};
-}
-
 class AccessSubject {
   final String type;
   final String id;
@@ -5891,59 +5624,6 @@ class ResourcePolicyPage {
   };
 }
 
-class ProjectAgentGrant {
-  final AccessResource resource;
-  final AccessSubject subject;
-  final List<String> directRoles;
-
-  ProjectAgentGrant({required this.resource, required this.subject, List<String>? directRoles}) : directRoles = directRoles ?? const [];
-
-  ManagedAgent get agent => ManagedAgent(name: resource.name ?? resource.id, id: resource.id, configuration: const {});
-  String get userId => subject.id;
-  ManagedAgentGrant get permissions => ManagedAgentGrant(admin: directRoles.contains('admin'));
-
-  factory ProjectAgentGrant.fromJson(Map<String, dynamic> json) {
-    return ProjectAgentGrant(
-      resource: AccessResource.fromJson((json['resource'] as Map).cast<String, dynamic>()),
-      subject: AccessSubject.fromJson((json['subject'] as Map).cast<String, dynamic>()),
-      directRoles: (json['direct_roles'] as List? ?? const []).whereType<String>().toList(),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {'resource': resource.toJson(), 'subject': subject.toJson(), 'direct_roles': directRoles};
-}
-
-class AgentGrantsPage {
-  final List<ProjectAgentGrant> agentGrants;
-  final String? continuationToken;
-
-  AgentGrantsPage({required this.agentGrants, this.continuationToken});
-
-  factory AgentGrantsPage.fromJson(Map<String, dynamic> json) {
-    final list = json['agent_grants'] as List<dynamic>? ?? [];
-    return AgentGrantsPage(
-      agentGrants: list.whereType<Map<String, dynamic>>().map(ProjectAgentGrant.fromJson).toList(),
-      continuationToken: json['continuation_token'] as String?,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'agent_grants': agentGrants.map((grant) => grant.toJson()).toList(),
-    'continuation_token': ?continuationToken,
-  };
-}
-
-class ProjectAgentRoomGrant extends ProjectRoomGrant {
-  ProjectAgentRoomGrant({required super.resource, required super.subject, super.directRoles});
-
-  ManagedAgent get agent => ManagedAgent(name: subject.name ?? subject.id, id: subject.id, configuration: const {});
-
-  factory ProjectAgentRoomGrant.fromJson(Map<String, dynamic> json) {
-    final grant = ProjectRoomGrant.fromJson(json);
-    return ProjectAgentRoomGrant(resource: grant.resource, subject: grant.subject, directRoles: grant.directRoles);
-  }
-}
-
 class ProjectRoomGrant {
   final AccessResource resource;
   final AccessSubject subject;
@@ -6038,6 +5718,160 @@ class ApiKeyInfo {
       description: json["description"],
       value: json["value"],
       serviceAccountId: json["service_account_id"],
+    );
+  }
+}
+
+class Secret {
+  Secret({
+    required this.id,
+    required this.projectId,
+    this.ownerUserId,
+    this.ownerServiceAccountId,
+    this.createdByUserId,
+    this.createdByServiceAccountId,
+    required this.type,
+    required this.name,
+    required this.httpOnly,
+    required this.metadata,
+    required this.annotations,
+    this.currentVersionId,
+    this.valueBase64,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String projectId;
+  final String? ownerUserId;
+  final String? ownerServiceAccountId;
+  final String? createdByUserId;
+  final String? createdByServiceAccountId;
+  final String type;
+  final String name;
+  final bool httpOnly;
+  final Map<String, dynamic> metadata;
+  final Map<String, dynamic> annotations;
+  final String? currentVersionId;
+  final String? valueBase64;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  static Secret fromJson(Map<String, dynamic> json) {
+    return Secret(
+      id: json['id'] as String,
+      projectId: json['project_id'] as String,
+      ownerUserId: json['owner_user_id'] as String?,
+      ownerServiceAccountId: json['owner_service_account_id'] as String?,
+      createdByUserId: json['created_by_user_id'] as String?,
+      createdByServiceAccountId: json['created_by_service_account_id'] as String?,
+      type: json['type'] as String,
+      name: json['name'] as String,
+      httpOnly: json['http_only'] as bool? ?? false,
+      metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{},
+      annotations: (json['annotations'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{},
+      currentVersionId: json['current_version_id'] as String?,
+      valueBase64: json['value_base64'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+    );
+  }
+}
+
+class SecretVersion {
+  SecretVersion({
+    required this.id,
+    required this.secretId,
+    required this.version,
+    required this.encryptionKeyId,
+    this.valueSha256,
+    this.createdByUserId,
+    this.createdByServiceAccountId,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String secretId;
+  final int version;
+  final String encryptionKeyId;
+  final String? valueSha256;
+  final String? createdByUserId;
+  final String? createdByServiceAccountId;
+  final DateTime createdAt;
+
+  static SecretVersion fromJson(Map<String, dynamic> json) {
+    return SecretVersion(
+      id: json['id'] as String,
+      secretId: json['secret_id'] as String,
+      version: json['version'] as int,
+      encryptionKeyId: json['encryption_key_id'] as String,
+      valueSha256: json['value_sha256'] as String?,
+      createdByUserId: json['created_by_user_id'] as String?,
+      createdByServiceAccountId: json['created_by_service_account_id'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
+class SecretsPage {
+  SecretsPage({required this.secrets, this.continuationToken});
+
+  final List<Secret> secrets;
+  final String? continuationToken;
+
+  static SecretsPage fromJson(Map<String, dynamic> json) {
+    return SecretsPage(
+      secrets: ((json['secrets'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => Secret.fromJson(item.cast<String, dynamic>()))
+          .toList(),
+      continuationToken: json['continuation_token'] as String?,
+    );
+  }
+}
+
+class SecretVersionsPage {
+  SecretVersionsPage({required this.versions});
+
+  final List<SecretVersion> versions;
+
+  static SecretVersionsPage fromJson(Map<String, dynamic> json) {
+    return SecretVersionsPage(
+      versions: ((json['versions'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => SecretVersion.fromJson(item.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+}
+
+class SecretProxyAccessGrant {
+  SecretProxyAccessGrant({required this.subject, required this.roles});
+
+  final AccessSubject subject;
+  final List<String> roles;
+
+  static SecretProxyAccessGrant fromJson(Map<String, dynamic> json) {
+    return SecretProxyAccessGrant(
+      subject: AccessSubject.fromJson((json['subject'] as Map).cast<String, dynamic>()),
+      roles: ((json['roles'] as List?) ?? const []).map((item) => item.toString()).toList(),
+    );
+  }
+}
+
+class SecretProxyAccessGrantsPage {
+  SecretProxyAccessGrantsPage({required this.accessGrants, this.continuationToken});
+
+  final List<SecretProxyAccessGrant> accessGrants;
+  final String? continuationToken;
+
+  static SecretProxyAccessGrantsPage fromJson(Map<String, dynamic> json) {
+    return SecretProxyAccessGrantsPage(
+      accessGrants: ((json['access_grants'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => SecretProxyAccessGrant.fromJson(item.cast<String, dynamic>()))
+          .toList(),
+      continuationToken: json['continuation_token'] as String?,
     );
   }
 }

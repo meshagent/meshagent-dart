@@ -19,6 +19,10 @@ class QueuesClient {
     if (output is! ToolContentOutput) {
       throw _unexpectedResponseError(operation);
     }
+    if (output.content is ErrorContent) {
+      final error = output.content as ErrorContent;
+      throw RoomServerException(error.text, code: error.code);
+    }
     return output.content;
   }
 

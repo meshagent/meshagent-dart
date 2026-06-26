@@ -12,6 +12,71 @@ void main() {
     expect(restored.role, 'agent');
   });
 
+  test('secret value rejects legacy identity field', () {
+    final secret = SecretValue.fromJson({'id': 'secret-1'});
+
+    expect(secret.toJson(), {'id': 'secret-1'});
+    expect(() => SecretValue.fromJson({'id': 'secret-1', 'identity': 'agent'}), throwsFormatException);
+    expect(
+      () => EnvironmentVariable.fromJson({
+        'name': 'TOKEN',
+        'secret': {'id': 'secret-1', 'identity': 'agent'},
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('secret value environment requires container run_as', () {
+    expect(
+      () => ServiceSpec.fromJson({
+        'version': 'v1',
+        'kind': 'Service',
+        'metadata': {'name': 'secret-service'},
+        'container': {
+          'image': 'meshagent/example',
+          'environment': [
+            {
+              'name': 'TOKEN',
+              'secret': {'id': 'secret-1'},
+            },
+          ],
+        },
+      }),
+      throwsFormatException,
+    );
+
+    final service = ServiceSpec.fromJson({
+      'version': 'v1',
+      'kind': 'Service',
+      'metadata': {'name': 'secret-service'},
+      'container': {
+        'image': 'meshagent/example',
+        'run_as': {
+          'email': 'agent@example.com',
+          'scopes': ['secrets:proxy', 'llm_proxy'],
+        },
+        'environment': [
+          {
+            'name': 'TOKEN',
+            'secret': {'id': 'secret-1'},
+          },
+        ],
+      },
+    });
+
+    expect(service.container!.runAs!.email, 'agent@example.com');
+    expect(service.container!.runAs!.scopes, ['secrets:proxy', 'llm_proxy']);
+    expect(service.container!.toJson()['run_as'], {
+      'email': 'agent@example.com',
+      'scopes': ['secrets:proxy', 'llm_proxy'],
+    });
+    expect(service.container!.environment.single.secret!.id, 'secret-1');
+  });
+
+  test('container run_as rejects legacy string', () {
+    expect(() => ServiceRunAs.fromJson('Agent@Example.com'), throwsFormatException);
+  });
+
   test('service spec channels roundtrip through toJson/fromJson', () {
     final service = ServiceSpec(
       metadata: ServiceMetadata(name: 'channel-service'),

@@ -636,6 +636,52 @@ void main() {
     await pair.dispose();
   });
 
+  test('stream invoke waits for open response before sending request chunks', () async {
+    final pair = _ProtocolPair();
+    var opened = false;
+    var chunkBeforeOpen = false;
+    var requestChunks = 0;
+    pair.serverProtocol.start(
+      onMessage: (protocol, messageId, type, data) async {
+        if (type == 'room.invoke_tool') {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          opened = true;
+          await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
+          return;
+        }
+        if (type == 'room.tool_call_request_chunk') {
+          requestChunks++;
+          if (!opened) {
+            chunkBeforeOpen = true;
+          }
+          await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+        }
+      },
+    );
+
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    final output = await room.invoke(
+      toolkit: 'test',
+      tool: 'stream',
+      input: ToolStreamInput(
+        Stream<Content>.fromIterable([
+          JsonContent(json: const {'step': 1}),
+        ]),
+      ),
+    );
+    expect(output, isA<ToolStreamOutput>());
+    await (output as ToolStreamOutput).inputClosed;
+
+    expect(chunkBeforeOpen, isFalse);
+    expect(requestChunks, 2);
+
+    await pair.dispose();
+  });
+
   test('websocket room_ready message can be delivered over a raw socket', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
 

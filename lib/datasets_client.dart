@@ -373,6 +373,14 @@ String? _whereClause(Object? where) {
   return null;
 }
 
+String _requireDatasetTableName(String name) {
+  final normalized = name.trim();
+  if (normalized.isEmpty) {
+    throw ArgumentError.value(name, 'name', 'table name must not be empty');
+  }
+  return normalized;
+}
+
 class _DatasetWriteInputStream {
   _DatasetWriteInputStream({required this.start, required DatasetRowChunks chunks}) : _source = StreamQueue(chunks);
 
@@ -750,10 +758,11 @@ class DatasetsClient {
     String? branch,
     Map<String, dynamic>? metadata,
   }) async {
+    final tableName = _requireDatasetTableName(name);
     final input = _DatasetWriteInputStream(
       start: {
         "kind": "start",
-        "name": name,
+        "name": tableName,
         "mode": mode.value,
         "namespace": namespace,
         "branch": branch,
@@ -813,10 +822,11 @@ class DatasetsClient {
     String? branch,
     Map<String, dynamic>? metadata,
   }) async {
+    final tableName = _requireDatasetTableName(name);
     final input = _DatasetArrowWriteInputStream(
       start: {
         "kind": "start",
-        "name": name,
+        "name": tableName,
         "mode": mode.value,
         "namespace": namespace,
         "branch": branch,
@@ -836,10 +846,11 @@ class DatasetsClient {
     String? branch,
     Map<String, dynamic>? metadata,
   }) async {
+    final tableName = _requireDatasetTableName(name);
     final input = _DatasetArrowWriteInputStream(
       start: {
         "kind": "start",
-        "name": name,
+        "name": tableName,
         "mode": mode.value,
         "namespace": namespace,
         "branch": branch,
@@ -989,6 +1000,18 @@ class DatasetsClient {
     await _drainArrowWriteStream("insert", input);
   }
 
+  Future<void> insertData({required String table, required DatasetRows records, List<String>? namespace, String? branch}) async {
+    await insertDataStream(table: table, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
+  }
+
+  Future<void> insertDataStream({required String table, required DatasetRowChunks chunks, List<String>? namespace, String? branch}) async {
+    final input = _DatasetWriteInputStream(
+      start: {"kind": "start", "table": _requireDatasetTableName(table), "namespace": namespace, "branch": branch},
+      chunks: chunks,
+    );
+    await _drainWriteStream("insert", input);
+  }
+
   Future<void> update({
     required String table,
     required String where,
@@ -1041,6 +1064,30 @@ class DatasetsClient {
       chunks: chunks,
     );
     await _drainArrowWriteStream("merge", input);
+  }
+
+  Future<void> mergeData({
+    required String table,
+    required String on,
+    required DatasetRows records,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    await mergeDataStream(table: table, on: on, chunks: Stream.fromIterable(_rowChunks(records)), namespace: namespace, branch: branch);
+  }
+
+  Future<void> mergeDataStream({
+    required String table,
+    required String on,
+    required DatasetRowChunks chunks,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    final input = _DatasetWriteInputStream(
+      start: {"kind": "start", "table": _requireDatasetTableName(table), "on": on, "namespace": namespace, "branch": branch},
+      chunks: chunks,
+    );
+    await _drainWriteStream("merge", input);
   }
 
   Future<List<ArrowRecordBatch>> sql({

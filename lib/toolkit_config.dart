@@ -111,6 +111,14 @@ class MCPServer {
   }
 }
 
+class MeshagentProxyConfig {
+  final String apiUrl;
+  final String apiKey;
+  final String? user;
+
+  const MeshagentProxyConfig({required this.apiUrl, required this.apiKey, this.user});
+}
+
 class Connector {
   Connector({required this.name, required this.server, this.oauth});
 
@@ -157,20 +165,13 @@ class Connector {
     if (connectorRef == null && oauth == null) {
       return true;
     }
-    final token = await room.secrets.getOfflineOAuthToken(connector: connectorRef, oauth: oauth, delegatedTo: agentName);
-    return token != null;
+    throw StateError('OAuth MCP connections require a proxy-backed secret');
   }
 
   Future<String?> authenticate(RoomClient client, RemoteParticipant agent, Uri redirectUri) async {
     final connectorRef = _buildConnectorRef();
     if (connectorRef != null || oauth != null) {
-      return await client.secrets.requestOAuthToken(
-        fromParticipantId: client.localParticipant!.id,
-        connector: connectorRef,
-        oauth: oauth,
-        redirectUri: redirectUri,
-        delegateTo: agent.getAttribute("name"),
-      );
+      throw StateError('OAuth MCP connections require a proxy-backed secret');
     } else {
       return null;
     }
@@ -256,7 +257,32 @@ String? _roomServiceMcpServerUrl({required ServiceSpec service, required PortSpe
   return uriBuffer.toString();
 }
 
-List<Connector> mcpConnectorsFromRoomServices({required Iterable<ServiceSpec> services, String? agentName}) {
+String? _proxyMcpServerUrl({required String? serverUrl, required String? useProxySecret, required MeshagentProxyConfig? proxyConfig}) {
+  final secretId = useProxySecret?.trim();
+  if (serverUrl == null || secretId == null || secretId.isEmpty || proxyConfig == null) {
+    return serverUrl;
+  }
+  final apiUrl = proxyConfig.apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+  if (apiUrl.isEmpty || proxyConfig.apiKey.trim().isEmpty) {
+    throw ArgumentError('meshagent_proxy_config requires apiUrl and apiKey');
+  }
+  final uri = Uri.parse('$apiUrl/proxy-request');
+  return uri
+      .replace(
+        queryParameters: {
+          'url': serverUrl,
+          'secret-id': secretId,
+          if (proxyConfig.user != null && proxyConfig.user!.trim().isNotEmpty) 'user': proxyConfig.user!.trim(),
+        },
+      )
+      .toString();
+}
+
+List<Connector> mcpConnectorsFromRoomServices({
+  required Iterable<ServiceSpec> services,
+  String? agentName,
+  MeshagentProxyConfig? meshagentProxyConfig,
+}) {
   final connectors = <Connector>[];
 
   for (final service in services) {
@@ -271,18 +297,33 @@ List<Connector> mcpConnectorsFromRoomServices({required Iterable<ServiceSpec> se
         if (mcp == null) {
           continue;
         }
+        if (mcp.useProxySecret != null && meshagentProxyConfig == null) {
+          continue;
+        }
+        if (mcp.useProxySecret == null && (mcp.oauth != null || mcp.openaiConnectorId != null)) {
+          continue;
+        }
 
         connectors.add(
           Connector(
             name: mcp.label,
             server: MCPServer(
               serverLabel: mcp.label,
-              serverUrl: _roomServiceMcpServerUrl(service: service, port: port, endpoint: endpoint),
-              headers: _headersFromEndpointSpec(mcp.headers),
+              serverUrl: _proxyMcpServerUrl(
+                serverUrl: _roomServiceMcpServerUrl(service: service, port: port, endpoint: endpoint),
+                useProxySecret: mcp.useProxySecret,
+                proxyConfig: meshagentProxyConfig,
+              ),
+              headers: mcp.useProxySecret != null && meshagentProxyConfig != null
+                  ? [
+                      ...?_headersFromEndpointSpec(mcp.headers),
+                      MCPHeader(name: 'Authorization', value: 'Bearer ${meshagentProxyConfig.apiKey}'),
+                    ]
+                  : _headersFromEndpointSpec(mcp.headers),
               requireApproval: mcp.requireApproval,
               openaiConnectorId: mcp.openaiConnectorId,
             ),
-            oauth: mcp.oauth,
+            oauth: mcp.useProxySecret != null ? null : mcp.oauth,
           ),
         );
       }

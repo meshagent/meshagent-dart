@@ -209,6 +209,189 @@ class DatasetGrant {
   );
 }
 
+class SqliteTableGrant {
+  final String database;
+  final String table;
+  final List<String>? namespace;
+  final bool write;
+  final bool read;
+  final bool alter;
+
+  SqliteTableGrant({required this.database, required this.table, this.namespace, this.write = true, this.read = true, this.alter = false});
+
+  Map<String, dynamic> toJson() => {
+    'database': database,
+    'table': table,
+    if (namespace != null) 'namespace': namespace,
+    if (!write) 'write': write,
+    if (!read) 'read': read,
+    if (alter) 'alter': alter,
+  };
+
+  factory SqliteTableGrant.fromJson(Map<String, dynamic> j) => SqliteTableGrant(
+    database: j['database'] as String,
+    table: j['table'] as String,
+    namespace: (j['namespace'] as List?)?.cast<String>(),
+    write: j['write'] ?? true,
+    read: j['read'] ?? true,
+    alter: j['alter'] ?? false,
+  );
+}
+
+class SqliteDatabaseGrant {
+  final String name;
+  final List<String>? namespace;
+  final bool createTable;
+  final bool drop;
+  final bool inspect;
+  final bool listTables;
+  final bool execute;
+  final List<SqliteTableGrant>? tables;
+
+  SqliteDatabaseGrant({
+    required this.name,
+    this.namespace,
+    this.createTable = true,
+    this.drop = false,
+    this.inspect = true,
+    this.listTables = true,
+    this.execute = true,
+    this.tables,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (namespace != null) 'namespace': namespace,
+    if (!createTable) 'create_table': createTable,
+    if (drop) 'drop': drop,
+    if (!inspect) 'inspect': inspect,
+    if (!listTables) 'list_tables': listTables,
+    if (!execute) 'execute': execute,
+    if (tables != null) 'tables': tables!.map((e) => e.toJson()).toList(),
+  };
+
+  factory SqliteDatabaseGrant.fromJson(Map<String, dynamic> j) => SqliteDatabaseGrant(
+    name: j['name'] as String,
+    namespace: (j['namespace'] as List?)?.cast<String>(),
+    createTable: j['create_table'] ?? true,
+    drop: j['drop'] ?? false,
+    inspect: j['inspect'] ?? true,
+    listTables: j['list_tables'] ?? true,
+    execute: j['execute'] ?? true,
+    tables: (j['tables'] as List?)?.map((e) => SqliteTableGrant.fromJson(e as Map<String, dynamic>)).toList(),
+  );
+}
+
+class SqliteGrant {
+  final List<SqliteDatabaseGrant>? databases;
+  final bool createDatabase;
+  final bool listDatabases;
+
+  SqliteGrant({this.databases, this.createDatabase = true, this.listDatabases = true});
+
+  List<SqliteDatabaseGrant> _matchingDatabases({required String database, List<String>? namespace}) {
+    if (databases == null) {
+      return const <SqliteDatabaseGrant>[];
+    }
+
+    final requestedNamespace = _normalizeNamespace(namespace);
+    final matches = <SqliteDatabaseGrant>[];
+    for (final databaseGrant in databases!) {
+      if (databaseGrant.name != database) {
+        continue;
+      }
+      if (databaseGrant.namespace == null) {
+        matches.add(databaseGrant);
+        continue;
+      }
+      if (_stringListEquality.equals(_normalizeNamespace(databaseGrant.namespace), requestedNamespace)) {
+        matches.add(databaseGrant);
+      }
+    }
+    return matches;
+  }
+
+  List<SqliteTableGrant> _matchingTables({required String database, required String table, List<String>? namespace}) {
+    final requestedNamespace = _normalizeNamespace(namespace);
+    final matches = <SqliteTableGrant>[];
+    for (final databaseGrant in _matchingDatabases(database: database, namespace: namespace)) {
+      final tableGrants = databaseGrant.tables;
+      if (tableGrants == null) {
+        continue;
+      }
+      for (final tableGrant in tableGrants) {
+        if (tableGrant.database != database || tableGrant.table != table) {
+          continue;
+        }
+        if (tableGrant.namespace == null) {
+          matches.add(tableGrant);
+          continue;
+        }
+        if (_stringListEquality.equals(_normalizeNamespace(tableGrant.namespace), requestedNamespace)) {
+          matches.add(tableGrant);
+        }
+      }
+    }
+    return matches;
+  }
+
+  bool canCreateDatabase() => createDatabase;
+
+  bool canListDatabases() => listDatabases;
+
+  bool canDropDatabase(String database, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingDatabases(database: database, namespace: namespace).any((databaseGrant) => databaseGrant.drop);
+  }
+
+  bool canInspectDatabase(String database, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingDatabases(database: database, namespace: namespace).any((databaseGrant) => databaseGrant.inspect);
+  }
+
+  bool canListTables(String database, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingDatabases(database: database, namespace: namespace).any((databaseGrant) => databaseGrant.listTables);
+  }
+
+  bool canCreateTable(String database, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingDatabases(database: database, namespace: namespace).any((databaseGrant) => databaseGrant.createTable);
+  }
+
+  bool canExecute(String database, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingDatabases(database: database, namespace: namespace).any((databaseGrant) => databaseGrant.execute);
+  }
+
+  bool canWrite(String database, String table, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingTables(database: database, table: table, namespace: namespace).any((tableGrant) => tableGrant.write);
+  }
+
+  bool canRead(String database, String table, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingTables(database: database, table: table, namespace: namespace).any((tableGrant) => tableGrant.read);
+  }
+
+  bool canAlter(String database, String table, {List<String>? namespace}) {
+    if (databases == null) return true;
+    return _matchingTables(database: database, table: table, namespace: namespace).any((tableGrant) => tableGrant.alter);
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (databases != null) 'databases': databases!.map((e) => e.toJson()).toList(),
+    if (!createDatabase) 'create_database': createDatabase,
+    if (!listDatabases) 'list_databases': listDatabases,
+  };
+
+  factory SqliteGrant.fromJson(Map<String, dynamic> j) => SqliteGrant(
+    databases: (j['databases'] as List?)?.map((e) => SqliteDatabaseGrant.fromJson(e as Map<String, dynamic>)).toList(),
+    createDatabase: j['create_database'] ?? true,
+    listDatabases: j['list_databases'] ?? true,
+  );
+}
+
 class MemoryPermissions {
   final bool create;
   final bool drop;
@@ -550,40 +733,17 @@ class LLMGrant {
   factory LLMGrant.fromJson(Map<String, dynamic> j) => LLMGrant(models: (j['models'] as List?)?.cast<String>());
 }
 
-class OAuthEndpoint {
-  final String endpoint;
-  final String clientId;
-
-  OAuthEndpoint({required this.endpoint, required this.clientId});
-
-  Map<String, dynamic> toJson() => {'endpoint': endpoint, 'client_id': clientId};
-
-  factory OAuthEndpoint.fromJson(Map<String, dynamic> j) => OAuthEndpoint(endpoint: j['endpoint'], clientId: j['client_id']);
-}
-
 class SecretsGrant {
-  final List<OAuthEndpoint>? requestOAuthToken;
+  SecretsGrant();
 
-  SecretsGrant({this.requestOAuthToken});
+  Map<String, dynamic> toJson() => {};
 
-  bool canRequestOAuthToken({required String authorizationEndpoint, required String clientId}) {
-    if (requestOAuthToken == null) return true;
-    for (final t in requestOAuthToken!) {
-      final match =
-          t.endpoint == authorizationEndpoint ||
-          (_hasWildcardSuffix(t.endpoint) && authorizationEndpoint.startsWith(_stripWildcardSuffix(t.endpoint)));
-      if (match && t.clientId == clientId) return true;
+  factory SecretsGrant.fromJson(Map<String, dynamic> j) {
+    if (j.isNotEmpty) {
+      throw FormatException('unsupported SecretsGrant fields: ${j.keys.join(', ')}');
     }
-    return false;
+    return SecretsGrant();
   }
-
-  Map<String, dynamic> toJson() => {
-    if (requestOAuthToken != null) 'request_oauth_token': requestOAuthToken!.map((e) => e.toJson()).toList(),
-  };
-
-  factory SecretsGrant.fromJson(Map<String, dynamic> j) => SecretsGrant(
-    requestOAuthToken: (j['request_oauth_token'] as List?)?.map((e) => OAuthEndpoint.fromJson(e as Map<String, dynamic>)).toList(),
-  );
 }
 
 class TunnelsGrant {
@@ -613,6 +773,7 @@ class ApiScope {
   final QueuesGrant? queues;
   final MessagingGrant? messaging;
   final DatasetGrant? dataset;
+  final SqliteGrant? sqlite;
   final MemoryGrant? memory;
   final SyncGrant? sync;
   final StorageGrant? storage;
@@ -630,6 +791,7 @@ class ApiScope {
     this.queues,
     this.messaging,
     this.dataset,
+    this.sqlite,
     this.memory,
     this.sync,
     this.storage,
@@ -648,6 +810,7 @@ class ApiScope {
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
     dataset: DatasetGrant(),
+    sqlite: SqliteGrant(),
     memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
@@ -663,13 +826,13 @@ class ApiScope {
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
     dataset: DatasetGrant(),
+    sqlite: SqliteGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
     llm: LLMGrant(),
-    secrets: SecretsGrant(),
     services: ServicesGrant(),
   );
 
@@ -678,6 +841,7 @@ class ApiScope {
     queues: QueuesGrant(),
     messaging: MessagingGrant(),
     dataset: DatasetGrant(),
+    sqlite: SqliteGrant(),
     memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
@@ -686,7 +850,6 @@ class ApiScope {
     agents: AgentsGrant(),
     llm: LLMGrant(),
     admin: AdminGrant(),
-    secrets: SecretsGrant(),
     tunnels: TunnelsGrant(),
     services: ServicesGrant(),
   );
@@ -696,6 +859,7 @@ class ApiScope {
     if (queues != null) 'queues': queues!.toJson(),
     if (messaging != null) 'messaging': messaging!.toJson(),
     if (dataset != null) 'dataset': dataset!.toJson(),
+    if (sqlite != null) 'sqlite': sqlite!.toJson(),
     if (memory != null) 'memory': memory!.toJson(),
     if (sync != null) 'sync': sync!.toJson(),
     if (storage != null) 'storage': storage!.toJson(),
@@ -714,6 +878,7 @@ class ApiScope {
     queues: j['queues'] != null ? QueuesGrant.fromJson(j['queues'] as Map<String, dynamic>) : null,
     messaging: j['messaging'] != null ? MessagingGrant.fromJson(j['messaging'] as Map<String, dynamic>) : null,
     dataset: _apiScopeDatasetGrantFromJson(j),
+    sqlite: j['sqlite'] != null ? SqliteGrant.fromJson(j['sqlite'] as Map<String, dynamic>) : null,
     memory: j['memory'] != null ? MemoryGrant.fromJson(j['memory'] as Map<String, dynamic>) : null,
     sync: j['sync'] != null ? SyncGrant.fromJson(j['sync'] as Map<String, dynamic>) : null,
     storage: j['storage'] != null ? StorageGrant.fromJson(j['storage'] as Map<String, dynamic>) : null,
