@@ -12,15 +12,32 @@ void main() {
     expect(restored.role, 'agent');
   });
 
-  test('secret value rejects legacy identity field', () {
+  test('secret value is id only', () {
     final secret = SecretValue.fromJson({'id': 'secret-1'});
 
     expect(secret.toJson(), {'id': 'secret-1'});
-    expect(() => SecretValue.fromJson({'id': 'secret-1', 'identity': 'agent'}), throwsFormatException);
+    expect(() => SecretValue.fromJson({'id': 'secret-1', 'name': 'secret-name'}), throwsFormatException);
     expect(
       () => EnvironmentVariable.fromJson({
         'name': 'TOKEN',
-        'secret': {'id': 'secret-1', 'identity': 'agent'},
+        'secret': {'id': 'secret-1', 'name': 'secret-name'},
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('container pull_secret is id only', () {
+    final container = ContainerSpec.fromJson({
+      'image': 'meshagent/example',
+      'pull_secret': {'id': 'pull-secret-1'},
+    });
+
+    expect(container.pullSecret!.id, 'pull-secret-1');
+    expect(container.toJson()['pull_secret'], {'id': 'pull-secret-1'});
+    expect(
+      () => ContainerSpec.fromJson({
+        'image': 'meshagent/example',
+        'pull_secret': {'id': 'pull-secret-1', 'name': 'pull-secret-name'},
       }),
       throwsFormatException,
     );

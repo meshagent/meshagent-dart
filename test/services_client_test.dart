@@ -136,6 +136,18 @@ class _FakeServicesServer {
                   'restart_count': 2,
                   'last_exit_code': 137,
                   'last_exit_at': 122.0,
+                  'last_start_error': 'container.environment.token.identity is required',
+                  'last_start_error_at': 124.0,
+                  'events': [
+                    {
+                      'type': 'Warning',
+                      'reason': 'FailedStart',
+                      'message': 'Unable to start service svc-1: container.environment.token.identity is required',
+                      'count': 2,
+                      'first_timestamp': 123.0,
+                      'last_timestamp': 124.0,
+                    },
+                  ],
                 },
               ],
             },
@@ -184,6 +196,10 @@ void main() {
     expect(result.serviceStates.keys, ['svc-1']);
     expect(result.serviceStates['svc-1']!.state, 'running');
     expect(result.serviceStates['svc-1']!.containerId, 'container-123');
+    expect(result.serviceStates['svc-1']!.lastStartError, 'container.environment.token.identity is required');
+    expect(result.serviceStates['svc-1']!.lastStartErrorAt, 124.0);
+    expect(result.serviceStates['svc-1']!.events.single.reason, 'FailedStart');
+    expect(result.serviceStates['svc-1']!.events.single.message, contains('token.identity'));
 
     await harness.dispose();
   });

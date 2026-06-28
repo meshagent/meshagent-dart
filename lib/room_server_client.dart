@@ -2930,6 +2930,38 @@ class ContainerExitStatus {
   }
 }
 
+class ServiceRuntimeEvent {
+  ServiceRuntimeEvent({
+    required this.type,
+    required this.reason,
+    required this.message,
+    required this.count,
+    required this.firstTimestamp,
+    required this.lastTimestamp,
+  });
+
+  final String type;
+  final String reason;
+  final String message;
+  final int count;
+  final double firstTimestamp;
+  final double lastTimestamp;
+
+  DateTime get firstTimestampTime => ServiceRuntimeState._timestampToDateTime(firstTimestamp)!;
+  DateTime get lastTimestampTime => ServiceRuntimeState._timestampToDateTime(lastTimestamp)!;
+
+  static ServiceRuntimeEvent fromJson(Map<String, dynamic> json) {
+    return ServiceRuntimeEvent(
+      type: (json["type"] as String?) ?? "Normal",
+      reason: (json["reason"] as String?) ?? "Unknown",
+      message: (json["message"] as String?) ?? "",
+      count: ServiceRuntimeState._toInt(json["count"]) ?? 1,
+      firstTimestamp: ServiceRuntimeState._toDouble(json["first_timestamp"]) ?? 0,
+      lastTimestamp: ServiceRuntimeState._toDouble(json["last_timestamp"]) ?? 0,
+    );
+  }
+}
+
 class ServiceRuntimeState {
   ServiceRuntimeState({
     required this.serviceId,
@@ -2940,6 +2972,9 @@ class ServiceRuntimeState {
     required this.restartCount,
     required this.lastExitCode,
     required this.lastExitAt,
+    required this.lastStartError,
+    required this.lastStartErrorAt,
+    required this.events,
   });
 
   final String serviceId;
@@ -2950,12 +2985,17 @@ class ServiceRuntimeState {
   final int restartCount;
   final int? lastExitCode;
   final double? lastExitAt;
+  final String? lastStartError;
+  final double? lastStartErrorAt;
+  final List<ServiceRuntimeEvent> events;
 
   DateTime? get restartScheduledAtTime => _timestampToDateTime(restartScheduledAt);
   DateTime? get startedAtTime => _timestampToDateTime(startedAt);
   DateTime? get lastExitAtTime => _timestampToDateTime(lastExitAt);
+  DateTime? get lastStartErrorAtTime => _timestampToDateTime(lastStartErrorAt);
 
   static ServiceRuntimeState fromJson(Map<String, dynamic> json) {
+    final eventsRaw = json["events"];
     return ServiceRuntimeState(
       serviceId: json["service_id"] as String,
       state: (json["state"] as String?) ?? "unknown",
@@ -2965,6 +3005,11 @@ class ServiceRuntimeState {
       restartCount: _toInt(json["restart_count"]) ?? 0,
       lastExitCode: _toInt(json["last_exit_code"]),
       lastExitAt: _toDouble(json["last_exit_at"]),
+      lastStartError: json["last_start_error"] as String?,
+      lastStartErrorAt: _toDouble(json["last_start_error_at"]),
+      events: eventsRaw is List
+          ? eventsRaw.whereType<Map>().map((event) => ServiceRuntimeEvent.fromJson(event.cast<String, dynamic>())).toList()
+          : const [],
     );
   }
 
@@ -7290,6 +7335,7 @@ class ContainerSpec {
     this.workingDir,
     required this.image,
     this.runAs,
+    this.pullSecret,
     List<EnvironmentVariable>? environment,
     this.storage,
     this.onDemand,
@@ -7301,6 +7347,7 @@ class ContainerSpec {
   final String? workingDir;
   final String image;
   final ServiceRunAs? runAs;
+  final SecretValue? pullSecret;
   final List<EnvironmentVariable> environment;
   final ContainerMountSpec? storage;
   final bool? onDemand;
@@ -7320,6 +7367,7 @@ class ContainerSpec {
       workingDir: json['working_dir'] as String?,
       image: json['image'] as String,
       runAs: runAs,
+      pullSecret: json['pull_secret'] == null ? null : SecretValue.fromJson(json['pull_secret']),
       environment: environment,
       storage: ContainerMountSpec.fromJson(json['storage'] as Map<String, dynamic>?),
       onDemand: json["on_demand"],
@@ -7334,6 +7382,7 @@ class ContainerSpec {
       if (workingDir != null) 'working_dir': workingDir,
       'image': image,
       if (runAs != null) 'run_as': runAs!.toJson(),
+      if (pullSecret != null) 'pull_secret': pullSecret!.toJson(),
       if (environment.isNotEmpty) 'environment': environment.map((x) => x.toJson()).toList(),
       if (storage != null) 'storage': storage!.toJson(),
       if (onDemand != null) 'on_demand': onDemand,
