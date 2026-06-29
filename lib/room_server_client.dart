@@ -1618,24 +1618,23 @@ class RoomClient extends ChangeEmitter {
     }
 
     try {
-      final response = await _awaitInvokeResponse(
-        toolCallId: toolCallId,
-        requestFuture: sendRequest("room.invoke_tool", request, data: invokeData),
-      );
+      final requestFuture = sendRequest("room.invoke_tool", request, data: invokeData);
+      if (input is ToolStreamInput) {
+        inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
+        unawaited(
+          inputTask.catchError((Object error, StackTrace stackTrace) async {
+            final wrapped = error is RoomServerException ? error : RoomServerException("request stream failed: $error");
+            if (!controller.isClosed) {
+              controller.addError(wrapped, stackTrace);
+            }
+            await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
+          }),
+        );
+      }
+
+      final response = await _awaitInvokeResponse(toolCallId: toolCallId, requestFuture: requestFuture);
 
       if (response is ControlContent && response.method == "open") {
-        if (input is ToolStreamInput) {
-          inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
-          unawaited(
-            inputTask.catchError((Object error, StackTrace stackTrace) async {
-              final wrapped = error is RoomServerException ? error : RoomServerException("request stream failed: $error");
-              if (!controller.isClosed) {
-                controller.addError(wrapped, stackTrace);
-              }
-              await _closeToolCallStream(toolCallId: toolCallId, controller: controller);
-            }),
-          );
-        }
         return ToolStreamOutput(controller.stream, inputClosed: inputTask);
       }
 
