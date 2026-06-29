@@ -636,7 +636,7 @@ void main() {
     await pair.dispose();
   });
 
-  test('stream invoke waits for open response before sending request chunks', () async {
+  test('stream invoke sends request chunks before initial response', () async {
     final pair = _ProtocolPair();
     var opened = false;
     var chunkBeforeOpen = false;
@@ -676,7 +676,7 @@ void main() {
     expect(output, isA<ToolStreamOutput>());
     await (output as ToolStreamOutput).inputClosed;
 
-    expect(chunkBeforeOpen, isFalse);
+    expect(chunkBeforeOpen, isTrue);
     expect(requestChunks, 2);
 
     await pair.dispose();

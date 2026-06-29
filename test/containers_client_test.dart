@@ -687,6 +687,10 @@ void main() {
       'build line',
     ]);
     expect(await buildLogs.result.timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('build log result timed out')), 0);
+    final buildLogsToolCallId = harness.server._streamTools.entries.singleWhere((entry) => entry.value == 'get_build_logs').key;
+    await harness.server
+        .waitForLogsClose(buildLogsToolCallId)
+        .timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('build logs close timed out'));
 
     await harness.room.containers.stop(containerId: 'container-1');
 
