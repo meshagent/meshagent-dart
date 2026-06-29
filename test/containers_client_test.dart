@@ -424,6 +424,11 @@ class _FakeContainersServer {
             headers: {'request_id': chunk.headers['request_id'], 'build_id': chunk.headers['build_id'], 'channel': 3},
           ),
         );
+        await _sendToolCallChunk(
+          protocol,
+          toolCallId: toolCallId,
+          chunk: ControlContent(method: 'close'),
+        );
       } else if (tool == 'logs') {
         logChunks.add(chunk);
         requests.add(_RecordedRequest(tool: 'logs', input: Map<String, dynamic>.from(chunk.headers)));
