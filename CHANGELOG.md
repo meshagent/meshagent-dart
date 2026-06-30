@@ -1,3 +1,8 @@
+## [0.45.0]
+- Added `pull_secret` to service container specs and exposed service runtime startup errors and lifecycle events in the Dart room client.
+- Enforced id-only secret payloads, rejecting legacy secret fields, which is a breaking change for older service specs.
+- Updated service-state and room-client tests to cover the new runtime fields and secret handling.
+
 ## [0.44.13]
 - Added `ChatThreadCustomInputBuilder` and `ChatThreadInputConfig` so callers can replace the default composer while still reusing thread state, attachment handling, audio hooks, and menu wiring.
 - Added `ThreadTypographyOverride` and helper APIs to customize thread fonts, spacing, colors, link styling, code blocks, inline code, markdown headings, and attachment/error surfaces.
