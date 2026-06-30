@@ -428,7 +428,7 @@ void main() {
     expect(created.name, 'builder');
     expect(key.serviceAccountId, 'service-account-1');
     expect(requests.map((request) => '${request['method']} ${request['url']}'), [
-      'GET http://example.test/accounts/projects/proj_123/service-accounts?page_size=100&continuation_token=cursor-1&filter=build',
+      'GET http://example.test/accounts/projects/proj_123/service-accounts?page_size=100&continuation_token=cursor-1&filter=build&view=all',
       'POST http://example.test/accounts/projects/proj_123/service-accounts',
       'PUT http://example.test/accounts/projects/proj_123/service-accounts/service-account-1',
       'DELETE http://example.test/accounts/projects/proj_123/service-accounts/service-account-1',
