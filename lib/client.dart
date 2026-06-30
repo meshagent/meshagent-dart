@@ -3105,6 +3105,7 @@ class Meshagent {
     int pageSize = 100,
     String? continuationToken,
     String? filter,
+    String? view,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final query = <String, String>{'page_size': '$pageSize'};
@@ -3113,6 +3114,9 @@ class Meshagent {
     }
     if (filter != null) {
       query['filter'] = filter;
+    }
+    if (view != null) {
+      query['view'] = view;
     }
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/service-accounts').replace(queryParameters: query);
     final response = await httpClient.get(uri);

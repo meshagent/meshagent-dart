@@ -403,7 +403,7 @@ void main() {
     });
     final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
 
-    final page = await meshagent.listServiceAccountsPage('proj_123', continuationToken: 'cursor-1', filter: 'build');
+    final page = await meshagent.listServiceAccountsPage('proj_123', continuationToken: 'cursor-1', filter: 'build', view: 'all');
     final created = await meshagent.createServiceAccount(
       'proj_123',
       'builder',
@@ -418,6 +418,10 @@ void main() {
 
     expect(page.continuationToken, 'next-service-account');
     expect(page.serviceAccounts.single.id, 'service-account-1');
+    expect(
+      requests.first['url'],
+      'http://example.test/accounts/projects/proj_123/service-accounts?page_size=100&continuation_token=cursor-1&filter=build&view=all',
+    );
     expect(page.serviceAccounts.single.displayName, 'Builder Metadata');
     expect(page.serviceAccounts.single.email, 'builder@service.demo.example.test');
     expect(page.serviceAccounts.single.metadata, {'display_name': 'Builder Metadata', 'env': 'ci'});
