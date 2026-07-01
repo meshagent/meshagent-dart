@@ -1,3 +1,6 @@
+## [0.45.5]
+- Fixed the status counter wheel animation so digits wrap smoothly during transitions and no longer glitch at rollover.
+
 ## [0.45.4]
 - Stability
 
