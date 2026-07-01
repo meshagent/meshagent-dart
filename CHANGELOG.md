@@ -1,3 +1,8 @@
+## [0.45.2]
+- Added `pull_secret` support to service container specs and exposed service runtime startup errors plus lifecycle events in Dart clients.
+- Added `view` support to service-account listing and tightened service-spec validation so pull secrets must be id-only, which breaks legacy named-secret payloads.
+- Improved dataset thread storage shutdown so close operations do not hang on long-running subscriptions or refresh work.
+
 ## [0.45.1]
 - `listServiceAccountsPage` now accepts a `view` parameter so Dart callers can request personal or full service-account listings.
 
