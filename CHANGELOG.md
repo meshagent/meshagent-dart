@@ -1,3 +1,12 @@
+## [0.45.4]
+- Stability
+
+## [0.45.3]
+- Added `pull_secret` support for service container specs, service-account `view` filtering, and surfaced service runtime startup errors plus lifecycle events in Dart clients.
+- Improved dataset-thread shutdown so close operations do not hang on long-running subscriptions or refresh work.
+- Updated injected chat-client handling so new threads wait for agent readiness and refresh when the agent participant changes.
+- Enforced id-only secret payload validation, which breaks older named-secret service specs.
+
 ## [0.45.2]
 - Added `pull_secret` support to service container specs and exposed service runtime startup errors plus lifecycle events in Dart clients.
 - Added `view` support to service-account listing and tightened service-spec validation so pull secrets must be id-only, which breaks legacy named-secret payloads.
