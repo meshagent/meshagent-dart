@@ -1,3 +1,6 @@
+## [0.45.1]
+- `listServiceAccountsPage` now accepts a `view` parameter so Dart callers can request personal or full service-account listings.
+
 ## [0.45.0]
 - Added `pull_secret` to service container specs and exposed service runtime startup errors and lifecycle events in the Dart room client.
 - Enforced id-only secret payloads, rejecting legacy secret fields, which is a breaking change for older service specs.
