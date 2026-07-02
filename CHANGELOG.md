@@ -1,3 +1,6 @@
+## [0.45.6]
+- Aligned the core Dart SDK packages and their inter-package dependencies across the Dart, service, arrow, agents, Flutter, and Luau surfaces.
+
 ## [0.45.5]
 - Fixed the status counter wheel animation so digits wrap smoothly during transitions and no longer glitch at rollover.
 
