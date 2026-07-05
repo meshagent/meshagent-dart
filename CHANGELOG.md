@@ -1,3 +1,12 @@
+## [0.45.9]
+- Breaking change: `SecretVersion.encryptionKeyId` was removed from the generated client models.
+- Room server clients now expose typed service runtime state via `listWithState()`, including `ServiceRuntimeStatus` and per-port liveness records, and `PortNum` now compares by value.
+- The dev terminal and trace-viewer package now uses a Ghostty-backed controller/view API, bundles the `libghostty` 0.0.10 WASM runtime, and formats durations in milliseconds with improved span handling.
+- The deprecated `meshagent_flutter_widgets` and `meshagent_luau` packages were removed.
+
+## [0.45.8]
+- Stability
+
 ## [0.45.7]
 - Updated Dart SDK package dependency versions and release metadata for the published Dart APIs.
 
