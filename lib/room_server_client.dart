@@ -2973,6 +2973,7 @@ class ServiceRuntimeState {
     required this.lastExitAt,
     required this.lastStartError,
     required this.lastStartErrorAt,
+    required this.status,
     required this.events,
   });
 
@@ -2986,6 +2987,7 @@ class ServiceRuntimeState {
   final double? lastExitAt;
   final String? lastStartError;
   final double? lastStartErrorAt;
+  final ServiceRuntimeStatus status;
   final List<ServiceRuntimeEvent> events;
 
   DateTime? get restartScheduledAtTime => _timestampToDateTime(restartScheduledAt);
@@ -3006,6 +3008,7 @@ class ServiceRuntimeState {
       lastExitAt: _toDouble(json["last_exit_at"]),
       lastStartError: json["last_start_error"] as String?,
       lastStartErrorAt: _toDouble(json["last_start_error_at"]),
+      status: ServiceRuntimeStatus.fromJson((json["status"] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{}),
       events: eventsRaw is List
           ? eventsRaw.whereType<Map>().map((event) => ServiceRuntimeEvent.fromJson(event.cast<String, dynamic>())).toList()
           : const [],
@@ -3029,6 +3032,47 @@ class ServiceRuntimeState {
       return null;
     }
     return DateTime.fromMillisecondsSinceEpoch((timestamp * 1000).round(), isUtc: true).toLocal();
+  }
+}
+
+class ServiceRuntimeStatus {
+  ServiceRuntimeStatus({required this.ports});
+
+  final List<ServicePortRuntimeState> ports;
+
+  static ServiceRuntimeStatus fromJson(Map<String, dynamic> json) {
+    final portsRaw = json["ports"];
+    return ServiceRuntimeStatus(
+      ports: portsRaw is List
+          ? portsRaw.whereType<Map>().map((port) => ServicePortRuntimeState.fromJson(port.cast<String, dynamic>())).toList()
+          : const [],
+    );
+  }
+}
+
+class ServicePortRuntimeState {
+  ServicePortRuntimeState({
+    required this.num,
+    required this.liveness,
+    required this.livenessStatus,
+    required this.lastCheckedAt,
+    required this.lastError,
+  });
+
+  final PortNum num;
+  final String? liveness;
+  final String livenessStatus;
+  final double? lastCheckedAt;
+  final String? lastError;
+
+  static ServicePortRuntimeState fromJson(Map<String, dynamic> json) {
+    return ServicePortRuntimeState(
+      num: PortNum.fromJson(json["num"]),
+      liveness: json["liveness"] as String?,
+      livenessStatus: (json["liveness_status"] as String?) ?? "not_configured",
+      lastCheckedAt: ServiceRuntimeState._toDouble(json["last_checked_at"]),
+      lastError: json["last_error"] as String?,
+    );
   }
 }
 
@@ -5972,6 +6016,12 @@ class PortNum {
 
   @override
   String toString() => value?.toString() ?? '*';
+
+  @override
+  bool operator ==(Object other) => other is PortNum && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
 }
 
 /// ---------------------------------------------------------------------------

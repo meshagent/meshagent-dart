@@ -5787,7 +5787,6 @@ class SecretVersion {
     required this.id,
     required this.secretId,
     required this.version,
-    required this.encryptionKeyId,
     this.valueSha256,
     this.createdByUserId,
     this.createdByServiceAccountId,
@@ -5797,7 +5796,6 @@ class SecretVersion {
   final String id;
   final String secretId;
   final int version;
-  final String encryptionKeyId;
   final String? valueSha256;
   final String? createdByUserId;
   final String? createdByServiceAccountId;
@@ -5808,7 +5806,6 @@ class SecretVersion {
       id: json['id'] as String,
       secretId: json['secret_id'] as String,
       version: json['version'] as int,
-      encryptionKeyId: json['encryption_key_id'] as String,
       valueSha256: json['value_sha256'] as String?,
       createdByUserId: json['created_by_user_id'] as String?,
       createdByServiceAccountId: json['created_by_service_account_id'] as String?,
