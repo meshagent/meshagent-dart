@@ -109,6 +109,14 @@ String _valueJson(Object? value) {
   return jsonEncode(_encodeSqliteValue(value));
 }
 
+List<String> _stringListField(Map<String, dynamic> json, String field, String operation) {
+  final values = json[field];
+  if (values is! List || values.any((value) => value is! String)) {
+    throw RoomServerException("unexpected return type from sqlite.$operation call");
+  }
+  return values.cast<String>().toList(growable: false);
+}
+
 class _SqliteArrowWriteInputStream {
   _SqliteArrowWriteInputStream({required this.start, required SqliteArrowBatches chunks, this.schema}) : _source = StreamQueue(chunks);
 
@@ -391,6 +399,8 @@ class SqliteClient {
 
   Future<void> _drainArrowWriteStream(String operation, _SqliteArrowWriteInputStream input) async {
     final output = await _invokeStream(operation, input.inputStream());
+    Object? pendingError;
+    StackTrace? pendingStackTrace;
     try {
       await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
@@ -407,9 +417,21 @@ class SqliteClient {
         }
         input.requestNext();
       }
+    } catch (error, stackTrace) {
+      pendingError = error;
+      pendingStackTrace = stackTrace;
     } finally {
       input.close();
-      await output.inputClosed;
+      try {
+        await output.inputClosed;
+      } catch (error, stackTrace) {
+        if (pendingError == null) {
+          Error.throwWithStackTrace(error, stackTrace);
+        }
+      }
+    }
+    if (pendingError != null) {
+      Error.throwWithStackTrace(pendingError, pendingStackTrace!);
     }
   }
 
@@ -417,6 +439,8 @@ class SqliteClient {
     final input = _SqliteArrowReadInputStream(start: start);
     final output = await _invokeStream(operation, input.inputStream());
     input.requestNext();
+    Object? pendingError;
+    StackTrace? pendingStackTrace;
     try {
       await for (final chunk in output.stream) {
         if (chunk is ErrorContent) {
@@ -434,9 +458,21 @@ class SqliteClient {
         yield ArrowRecordBatch(chunk.data);
         input.requestNext();
       }
+    } catch (error, stackTrace) {
+      pendingError = error;
+      pendingStackTrace = stackTrace;
     } finally {
       input.close();
-      await output.inputClosed;
+      try {
+        await output.inputClosed;
+      } catch (error, stackTrace) {
+        if (pendingError == null) {
+          Error.throwWithStackTrace(error, stackTrace);
+        }
+      }
+    }
+    if (pendingError != null) {
+      Error.throwWithStackTrace(pendingError, pendingStackTrace!);
     }
   }
 
@@ -445,8 +481,7 @@ class SqliteClient {
     if (response is! JsonContent) {
       throw _unexpectedResponseError("list_databases");
     }
-    final databases = response.json["databases"] as List<dynamic>? ?? [];
-    return databases.map((value) => value.toString()).toList(growable: false);
+    return _stringListField(response.json, "databases", "list_databases");
   }
 
   Future<void> createDatabase({required String name, List<String>? namespace, SqliteCreateMode mode = SqliteCreateMode.create}) async {
@@ -476,8 +511,7 @@ class SqliteClient {
     if (response is! JsonContent) {
       throw _unexpectedResponseError("list_tables");
     }
-    final tables = response.json["tables"] as List<dynamic>? ?? [];
-    return tables.map((value) => value.toString()).toList(growable: false);
+    return _stringListField(response.json, "tables", "list_tables");
   }
 
   Future<void> createTableWithSchema({

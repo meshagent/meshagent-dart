@@ -85,6 +85,28 @@ ArrowRecordBatch _testArrowBatch({int id = 1, String label = 'alpha'}) {
   );
 }
 
+ArrowRecordBatch _mixedArrowBatch() {
+  const schema = ArrowSchema([
+    ArrowField(name: 'id', type: ArrowIntType(bitWidth: 64, signed: true)),
+    ArrowField(name: 'score', type: ArrowFloatingPointType(ArrowFloatingPointPrecision.doublePrecision)),
+    ArrowField(name: 'payload', type: ArrowBinaryType()),
+  ]);
+  return ArrowRecordBatch.fromColumns(
+    schema: schema,
+    columns: [
+      ArrowValueArray(field: schema.fields[0], values: [BigInt.one, BigInt.two]),
+      ArrowValueArray(field: schema.fields[1], values: [1.5, null]),
+      ArrowValueArray(
+        field: schema.fields[2],
+        values: [
+          Uint8List.fromList([1, 2, 3]),
+          null,
+        ],
+      ),
+    ],
+  );
+}
+
 class _SqliteHarness {
   _SqliteHarness({required this.pair, required this.room, required this.server});
 
@@ -106,6 +128,8 @@ class _FakeSqliteServer {
   final writeChunks = <String, List<Map<String, dynamic>>>{'create_table': [], 'insert': []};
   final readStarts = <String, List<Map<String, dynamic>>>{'search': [], 'read_sql_query': []};
   final readPulls = <String, List<Map<String, dynamic>>>{'search': [], 'read_sql_query': []};
+  final malformedResponses = <String, Content>{};
+  final streamChunks = <String, List<Content>>{};
   final _toolCallTools = <String, String>{};
   late Uint8List searchBatchBytes = _testArrowBatch(id: 1, label: 'search').ipcBytes;
   late Uint8List sqlBatchBytes = _testArrowBatch(id: 2, label: 'sql').ipcBytes;
@@ -119,6 +143,11 @@ class _FakeSqliteServer {
       }
       final tool = request['tool'] as String;
       final input = _decodeInput(message: message, request: request);
+      final malformed = malformedResponses[tool];
+      if (malformed != null) {
+        await protocol.send('__response__', malformed.pack(), id: messageId);
+        return;
+      }
       if (input is ControlContent) {
         final toolCallId = request['tool_call_id'] as String;
         _toolCallTools[toolCallId] = tool;
@@ -240,7 +269,8 @@ class _FakeSqliteServer {
         if (chunk.headers['kind'] == 'start') {
           writeStarts[tool]!.add(Map<String, dynamic>.from(chunk.headers));
           writeStartData[tool]!.add(chunk.data);
-          await _sendResponseChunk(protocol, toolCallId, BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}));
+          final override = _takeStreamChunk(tool);
+          await _sendResponseChunk(protocol, toolCallId, override ?? BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}));
           return;
         }
         writeChunks[tool]!.add({'headers': Map<String, dynamic>.from(chunk.headers), 'data': chunk.data});
@@ -256,6 +286,11 @@ class _FakeSqliteServer {
           return;
         }
         readPulls[tool]!.add(Map<String, dynamic>.from(chunk.headers));
+        final override = _takeStreamChunk(tool);
+        if (override != null) {
+          await _sendResponseChunk(protocol, toolCallId, override);
+          return;
+        }
         if (readPulls[tool]!.length == 1) {
           await _sendResponseChunk(
             protocol,
@@ -268,6 +303,14 @@ class _FakeSqliteServer {
         return;
       }
     }
+  }
+
+  Content? _takeStreamChunk(String tool) {
+    final chunks = streamChunks[tool];
+    if (chunks == null || chunks.isEmpty) {
+      return null;
+    }
+    return chunks.removeAt(0);
   }
 
   Map<String, dynamic> _jsonInput(Content input, String tool) {
@@ -406,6 +449,123 @@ void main() {
       'columns': ['email'],
       'namespace': ['team'],
     });
+
+    await harness.dispose();
+  });
+
+  test('sqlite client rejects malformed responses', () async {
+    final harness = await _startSqliteHarness();
+    final client = harness.room.sqlite;
+
+    harness.server.malformedResponses['list_databases'] = EmptyContent();
+    expect(() => client.listDatabases(), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['list_databases'] = JsonContent(
+      json: const {
+        'databases': ['app', 3],
+      },
+    );
+    expect(() => client.listDatabases(), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['list_tables'] = JsonContent(
+      json: const {
+        'tables': ['records', 3],
+      },
+    );
+    expect(() => client.listTables(database: 'app'), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['count'] = JsonContent(json: const {'count': '3'});
+    expect(() => client.count(database: 'app', table: 'records'), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['open_sql_query'] = BinaryContent(
+      data: ArrowIpcSchema.fromSchema(_testArrowSchema()).bytes,
+      headers: const {'kind': 'query'},
+    );
+    expect(() => client.openSqlQuery(database: 'app', query: 'SELECT * FROM records'), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['execute_sql'] = JsonContent(json: const {'kind': 'statement', 'rows_affected': '3'});
+    expect(() => client.executeSql(database: 'app', query: 'DELETE FROM records'), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['execute_sql_statement'] = JsonContent(json: const {'rows_affected': '3'});
+    expect(() => client.executeSqlStatement(database: 'app', query: 'DELETE FROM records'), throwsA(isA<RoomServerException>()));
+
+    harness.server.malformedResponses['cancel_sql_query'] = JsonContent(json: const {'status': 'done'});
+    expect(() => client.cancelSqlQuery(queryId: 'sql-query-1'), throwsA(isA<RoomServerException>()));
+
+    await harness.dispose();
+  });
+
+  test('sqlite client propagates stream errors and rejects malformed stream chunks', () async {
+    final batch = _testArrowBatch();
+    final table = ArrowTable(schema: batch.schema, batches: [batch]);
+
+    var harness = await _startSqliteHarness();
+    harness.server.streamChunks['create_table'] = [
+      JsonContent(json: const {'kind': 'pull'}),
+    ];
+    expect(
+      () => harness.room.sqlite.createTableFromArrowTable(database: 'app', name: 'records', table: table),
+      throwsA(isA<RoomServerException>()),
+    );
+    await harness.dispose();
+
+    harness = await _startSqliteHarness();
+    harness.server.streamChunks['create_table'] = [ErrorContent(text: 'create failed', code: 400)];
+    await expectLater(
+      () => harness.room.sqlite.createTableFromArrowTable(database: 'app', name: 'records', table: table),
+      throwsA(isA<RoomServerException>().having((error) => error.message, 'message', contains('create failed'))),
+    );
+    await harness.dispose();
+
+    harness = await _startSqliteHarness();
+    harness.server.streamChunks['search'] = [
+      BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}),
+    ];
+    expect(() => harness.room.sqlite.searchTable(database: 'app', table: 'records'), throwsA(isA<RoomServerException>()));
+    await harness.dispose();
+
+    harness = await _startSqliteHarness();
+    harness.server.streamChunks['search'] = [ErrorContent(text: 'search failed', code: 400)];
+    await expectLater(
+      () => harness.room.sqlite.searchTable(database: 'app', table: 'records'),
+      throwsA(isA<RoomServerException>().having((error) => error.message, 'message', contains('search failed'))),
+    );
+    await harness.dispose();
+
+    harness = await _startSqliteHarness();
+    harness.server.streamChunks['read_sql_query'] = [
+      BinaryContent(data: Uint8List(0), headers: const {'kind': 'pull'}),
+    ];
+    expect(() => harness.room.sqlite.readSqlQuery(queryId: 'sql-query-1').toList(), throwsA(isA<RoomServerException>()));
+    await harness.dispose();
+
+    harness = await _startSqliteHarness();
+    harness.server.streamChunks['read_sql_query'] = [ErrorContent(text: 'read failed', code: 400)];
+    await expectLater(
+      () => harness.room.sqlite.readSqlQuery(queryId: 'sql-query-1').toList(),
+      throwsA(isA<RoomServerException>().having((error) => error.message, 'message', contains('read failed'))),
+    );
+    await harness.dispose();
+  });
+
+  test('sqlite client decodes float, binary, and null Arrow values', () async {
+    final harness = await _startSqliteHarness();
+    final mixed = _mixedArrowBatch();
+    harness.server.searchBatchBytes = mixed.ipcBytes;
+    harness.server.sqlBatchBytes = mixed.ipcBytes;
+
+    final searchRows = (await harness.room.sqlite.searchTable(database: 'app', table: 'metrics')).toRows();
+    expect(searchRows, [
+      {
+        'id': BigInt.one,
+        'score': 1.5,
+        'payload': Uint8List.fromList([1, 2, 3]),
+      },
+      {'id': BigInt.two, 'score': null, 'payload': null},
+    ]);
+
+    final sqlRows = (await harness.room.sqlite.sqlTable(database: 'app', query: 'SELECT id, score, payload FROM metrics')).toRows();
+    expect(sqlRows, searchRows);
 
     await harness.dispose();
   });
