@@ -183,10 +183,10 @@ Future<_ServicesHarness> _startServicesHarness() async {
 }
 
 void main() {
-  test('services listWithState uses invoke and translates service state array', () async {
+  test('services list uses invoke and translates service state array', () async {
     final harness = await _startServicesHarness();
 
-    final result = await harness.room.services.listWithState();
+    final result = await harness.room.services.list();
 
     expect(harness.server.requests, hasLength(1));
     expect(harness.server.requests.single.tool, 'list');

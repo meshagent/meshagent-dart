@@ -4028,11 +4028,7 @@ class ServicesClient {
     return RoomServerException("unexpected return type from services.$operation");
   }
 
-  Future<List<ServiceSpec>> list() async {
-    return (await listWithState()).services;
-  }
-
-  Future<ListServicesResult> listWithState() async {
+  Future<ListServicesResult> list() async {
     final output = await room.invoke(
       toolkit: "services",
       tool: "list",
