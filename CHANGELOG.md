@@ -1,3 +1,6 @@
+## [0.46.2]
+- Stability
+
 ## [0.46.1]
 - Breaking change: `ServicesClient.list()` now returns the combined services-and-runtime-state result instead of a plain service array, so callers must read the `services` field for the old list-only behavior.
 
