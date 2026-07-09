@@ -1020,12 +1020,7 @@ class ParticipantToken {
   }
 
   Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{
-      if (extra != null) ...extra!,
-      'name': name,
-      'grants': grants.map((g) => g.toJson()).toList(),
-      'version': version,
-    };
+    final map = <String, dynamic>{...?extra, 'name': name, 'grants': grants.map((g) => g.toJson()).toList(), 'version': version};
     if (projectId != null) map['sub'] = projectId;
     if (apiKeyId != null) map['kid'] = apiKeyId;
     return map;
