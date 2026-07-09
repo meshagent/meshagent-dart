@@ -20,6 +20,27 @@ void main() {
     expect(requests, ['GET http://example.test/accounts/projects/by-key/team%2Fapp']);
   });
 
+  test('getProjectSettings requests the project settings endpoint', () async {
+    final requests = <String>[];
+    final client = MockClient((request) async {
+      requests.add('${request.method} ${request.url}');
+      return http.Response(
+        jsonEncode({
+          'openai': {'base_url': 'https://openai.example'},
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final settings = await meshagent.getProjectSettings(projectId: 'proj_123');
+
+    expect(settings, {
+      'openai': {'base_url': 'https://openai.example'},
+    });
+    expect(requests, ['GET http://example.test/accounts/projects/proj_123/settings']);
+  });
+
   test('createRoom does not serialize permission grants', () async {
     Map<String, dynamic>? body;
     final client = MockClient((request) async {

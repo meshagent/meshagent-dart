@@ -2238,6 +2238,21 @@ class Meshagent {
     }
   }
 
+  Future<Map<String, dynamic>> getProjectSettings({required String projectId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get project settings. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Corresponds to: POST /projects/:project_id/storage/upload
   Future<void> upload({required String projectId, required String path, required Uint8List data}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
