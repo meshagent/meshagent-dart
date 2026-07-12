@@ -1,3 +1,6 @@
+## [0.46.4]
+- Stability
+
 ## [0.46.3]
 - Added `Meshagent.getProjectSettings(projectId)` to fetch project settings from the API and return them as a JSON map.
 - The Dart service webhook helper now merges optional headers with null-aware spread semantics.
