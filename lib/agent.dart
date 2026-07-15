@@ -36,6 +36,15 @@ abstract class BaseTool {
   final Map<String, dynamic>? defs;
 }
 
+/// Receives a notification only after a non-streaming tool response has been
+/// handed back to the caller successfully.
+///
+/// Tools that refresh or replace the surface hosting them should use this
+/// boundary instead of starting that work from [execute].
+abstract interface class ToolResponseSentListener {
+  FutureOr<void> onToolResponseSent(ToolContext context, Content response);
+}
+
 abstract class FunctionTool extends BaseTool {
   FunctionTool({
     required super.name,
@@ -567,7 +576,15 @@ class _RemoteToolkitWrapper {
         case ToolContentOutput(:final content):
           toolkit._validateStreamMode(tool: tool, direction: "output", spec: toolkit._resolveOutputSpec(tool), stream: false);
           toolkit._validateOutputContent(tool: tool, content: content);
-          await _sendToolCallResponse(messageId: messageId, chunk: content);
+          final responseSent = await _sendToolCallResponse(messageId: messageId, chunk: content);
+          if (responseSent && tool is ToolResponseSentListener) {
+            final listener = tool as ToolResponseSentListener;
+            try {
+              await listener.onToolResponseSent(context, content);
+            } catch (error, stackTrace) {
+              Logger.root.fine("tool response callback failed for ${toolkit.name}.${tool.name}", error, stackTrace);
+            }
+          }
           return;
         case ToolStreamOutput(:final stream):
           toolkit._validateStreamMode(tool: tool, direction: "output", spec: toolkit._resolveOutputSpec(tool), stream: true);

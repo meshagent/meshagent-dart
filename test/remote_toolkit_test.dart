@@ -130,6 +130,28 @@ class _EchoTool extends FunctionTool {
   }
 }
 
+class _ResponseSentTool extends FunctionTool implements ToolResponseSentListener {
+  _ResponseSentTool()
+    : super(
+        name: "response_sent",
+        title: "ResponseSent",
+        description: "records response delivery",
+        inputSchema: const {"type": "object", "additionalProperties": false, "properties": {}},
+      );
+
+  int responseSentCount = 0;
+
+  @override
+  Future<Content> execute(ToolContext context, Map<String, dynamic> arguments) async {
+    return JsonContent(json: {"ok": true});
+  }
+
+  @override
+  void onToolResponseSent(ToolContext context, Content response) {
+    responseSentCount += 1;
+  }
+}
+
 class _RequiredValueTool extends FunctionTool {
   _RequiredValueTool()
     : super(
@@ -275,6 +297,56 @@ class _TestToolkit extends Toolkit {
 }
 
 void main() {
+  test('hosted toolkit notifies a tool after its response is sent', () async {
+    final pair = _ProtocolPair();
+    final responses = <Content>[];
+    final tool = _ResponseSentTool();
+
+    pair.serverProtocol.start(
+      onMessage: (protocol, messageId, type, data) async {
+        if (type == "room.register_toolkit") {
+          await protocol.send("__response__", JsonContent(json: {"id": "toolkit-registration"}).pack(), id: messageId);
+          return;
+        }
+        if (type == "room.unregister_toolkit") {
+          await protocol.send("__response__", EmptyContent().pack(), id: messageId);
+          return;
+        }
+        if (type == "room.tool_call_response") {
+          responses.add(unpackContent(data));
+        }
+      },
+    );
+
+    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
+    final startFuture = room.start();
+    await _sendRoomReady(pair.serverProtocol);
+    await startFuture;
+
+    final hostedToolkit = await startHostedToolkit(
+      room: room,
+      toolkit: _TestToolkit(name: "test", tools: [tool]),
+      public: true,
+    );
+
+    await pair.serverProtocol.send(
+      "room.tool_call.test",
+      packMessage({
+        "name": "response_sent",
+        "arguments": {"type": "json", "json": {}},
+        "tool_call_id": "call-response-sent",
+      }),
+    );
+
+    await _waitUntil(() => responses.isNotEmpty && tool.responseSentCount == 1);
+
+    expect((responses.single as JsonContent).json, {"ok": true});
+    expect(tool.responseSentCount, 1);
+
+    await hostedToolkit.stop();
+    await pair.dispose();
+  });
+
   test('hosted toolkit forwards streamed request input to ContentTool', () async {
     final pair = _ProtocolPair();
     final responses = <Content>[];
