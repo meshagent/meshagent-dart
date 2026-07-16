@@ -6,6 +6,26 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('connectAgent normalizes a legacy messages URL', () async {
+    final client = MockClient((request) async {
+      expect(request.url.toString(), 'http://example.test/accounts/projects/proj_123/agents/planner/connect');
+      return http.Response(
+        jsonEncode({
+          'jwt': 'agent-token',
+          'agent_name': 'planner',
+          'project_id': 'proj_123',
+          'agent_url': 'wss://api.example.test/base/accounts/projects/proj_123/agents/planner/messages?thread=one',
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final connection = await meshagent.connectAgent(projectId: 'proj_123', agentName: 'planner');
+
+    expect(connection.agentUrl.toString(), 'wss://api.example.test/base/agents/proj_123/planner/messages?thread=one');
+  });
+
   test('createAgent omits null permissions', () async {
     Map<String, dynamic>? body;
     final client = MockClient((request) async {
