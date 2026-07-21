@@ -5314,6 +5314,7 @@ class MessagingClient extends ChangeEmitter {
   final ListQueue<_QueuedRoomMessage> _messageQueue = ListQueue<_QueuedRoomMessage>();
   Completer<void>? _messageQueueSignal;
   Future<void>? _sendTask;
+  final Set<Future<void>> _sendOperations = <Future<void>>{};
   bool _messageQueueClosed = false;
   bool _desiredEnabled = false;
   bool _online = false;
@@ -5387,6 +5388,7 @@ class MessagingClient extends ChangeEmitter {
     if (sendTask != null) {
       await sendTask;
     }
+    await Future.wait(_sendOperations);
     _sendTask = null;
     _desiredEnabled = false;
     _clearCurrentConnectionState();
@@ -5545,37 +5547,40 @@ class MessagingClient extends ChangeEmitter {
         continue;
       }
 
-      try {
-        await _invoke(
-          operation: "send",
-          input: _messageInput(
-            toParticipantId: resolvedTo.id,
-            type: message.type,
-            message: message.message,
-            attachment: message.attachment,
-          ),
-        );
-        final completer = message.completer;
-        if (completer != null && !completer.isCompleted) {
-          completer.complete();
+      // Preserve queue-order dispatch without making the next message wait for
+      // this request's round trip.
+      final operation = _sendQueuedMessage(message: message, resolvedTo: resolvedTo);
+      _sendOperations.add(operation);
+      unawaited(operation.whenComplete(() => _sendOperations.remove(operation)));
+    }
+  }
+
+  Future<void> _sendQueuedMessage({required _QueuedRoomMessage message, required Participant resolvedTo}) async {
+    try {
+      await _invoke(
+        operation: "send",
+        input: _messageInput(toParticipantId: resolvedTo.id, type: message.type, message: message.message, attachment: message.attachment),
+      );
+      final completer = message.completer;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete();
+      }
+    } on RoomServerException catch (error) {
+      final wrapped = room._coerceMessageSendError(error);
+      if (wrapped.message == "the participant was not found") {
+        _markParticipantOffline(message.to);
+        if (message.dropIfOffline) {
+          _dropQueuedMessage(message: message, error: wrapped);
+          return;
         }
-      } on RoomServerException catch (error) {
-        final wrapped = room._coerceMessageSendError(error);
-        if (wrapped.message == "the participant was not found") {
-          _markParticipantOffline(message.to);
-          if (message.dropIfOffline) {
-            _dropQueuedMessage(message: message, error: wrapped);
-            continue;
-          }
-        }
-        _roomClientLogger.log(Level.INFO, 'unable to send message to participant', wrapped, StackTrace.current);
-        _dropQueuedMessage(message: message, error: wrapped);
-      } catch (error, stackTrace) {
-        _roomClientLogger.log(Level.INFO, 'unable to send message to participant', error, stackTrace);
-        final completer = message.completer;
-        if (completer != null && !completer.isCompleted) {
-          completer.completeError(error, stackTrace);
-        }
+      }
+      _roomClientLogger.log(Level.INFO, 'unable to send message to participant', wrapped, StackTrace.current);
+      _dropQueuedMessage(message: message, error: wrapped);
+    } catch (error, stackTrace) {
+      _roomClientLogger.log(Level.INFO, 'unable to send message to participant', error, stackTrace);
+      final completer = message.completer;
+      if (completer != null && !completer.isCompleted) {
+        completer.completeError(error, stackTrace);
       }
     }
   }
