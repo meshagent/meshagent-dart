@@ -1500,7 +1500,7 @@ class RoomClient extends ChangeEmitter {
   }
 
   // send a request, optionally with a binary trailer
-  Future<Content> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data}) async {
+  Future<Content> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data, void Function()? afterSend}) async {
     _raiseIfTerminal();
     if (_entered && !_connected && !_allowDisconnectedRequests) {
       throw _disconnectedError(baseMessage: 'room connection is disconnected');
@@ -1515,6 +1515,7 @@ class RoomClient extends ChangeEmitter {
 
     try {
       await _protocolInstance.send(type, message, id: requestId);
+      afterSend?.call();
       final response = await pr.fut;
       if (response is ErrorContent) {
         throw RoomServerException(response.text, code: response.code);
@@ -1585,6 +1586,7 @@ class RoomClient extends ChangeEmitter {
     required ToolInput input,
     String? participantId,
     String? onBehalfOfId,
+    void Function()? afterSend,
   }) async {
     final toolCallId = _uuid.v4();
     final controller = StreamController<Content>(
@@ -1618,7 +1620,7 @@ class RoomClient extends ChangeEmitter {
     }
 
     try {
-      final requestFuture = sendRequest("room.invoke_tool", request, data: invokeData);
+      final requestFuture = sendRequest("room.invoke_tool", request, data: invokeData, afterSend: afterSend);
       if (input is ToolStreamInput) {
         inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
         unawaited(
@@ -5351,11 +5353,12 @@ class MessagingClient extends ChangeEmitter {
     return input;
   }
 
-  Future<void> _invoke({required String operation, required Map<String, dynamic> input}) async {
+  Future<void> _invoke({required String operation, required Map<String, dynamic> input, void Function()? afterSend}) async {
     await room.invoke(
       toolkit: "messaging",
       tool: operation,
       input: ToolContentInput(JsonContent(json: input)),
+      afterSend: afterSend,
     );
   }
 
@@ -5549,17 +5552,37 @@ class MessagingClient extends ChangeEmitter {
 
       // Preserve queue-order dispatch without making the next message wait for
       // this request's round trip.
-      final operation = _sendQueuedMessage(message: message, resolvedTo: resolvedTo);
+      final dispatched = Completer<void>();
+      final operation = _sendQueuedMessage(
+        message: message,
+        resolvedTo: resolvedTo,
+        afterSend: () {
+          if (!dispatched.isCompleted) {
+            dispatched.complete();
+          }
+        },
+      );
       _sendOperations.add(operation);
-      unawaited(operation.whenComplete(() => _sendOperations.remove(operation)));
+      unawaited(operation.whenComplete(() {
+        _sendOperations.remove(operation);
+        if (!dispatched.isCompleted) {
+          dispatched.complete();
+        }
+      }));
+      await dispatched.future;
     }
   }
 
-  Future<void> _sendQueuedMessage({required _QueuedRoomMessage message, required Participant resolvedTo}) async {
+  Future<void> _sendQueuedMessage({
+    required _QueuedRoomMessage message,
+    required Participant resolvedTo,
+    required void Function() afterSend,
+  }) async {
     try {
       await _invoke(
         operation: "send",
         input: _messageInput(toParticipantId: resolvedTo.id, type: message.type, message: message.message, attachment: message.attachment),
+        afterSend: afterSend,
       );
       final completer = message.completer;
       if (completer != null && !completer.isCompleted) {
