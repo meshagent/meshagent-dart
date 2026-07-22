@@ -364,12 +364,17 @@ class AgentConnectionInfo {
   Uri agentUrl;
 
   static AgentConnectionInfo fromJson(Map<String, dynamic> json) {
-    return AgentConnectionInfo(
-      jwt: json["jwt"],
-      agentName: json["agent_name"],
-      projectId: json["project_id"],
-      agentUrl: Uri.parse(json["agent_url"]),
-    );
+    final agentName = json["agent_name"] as String;
+    final projectId = json["project_id"] as String;
+    final agentUrl = Uri.parse(json["agent_url"] as String);
+    final legacySuffix = '/accounts/projects/${Uri.encodeComponent(projectId)}/agents/${Uri.encodeComponent(agentName)}/messages';
+    final normalizedAgentUrl = agentUrl.path.endsWith(legacySuffix)
+        ? agentUrl.replace(
+            path:
+                '${agentUrl.path.substring(0, agentUrl.path.length - legacySuffix.length)}/agents/${Uri.encodeComponent(projectId)}/${Uri.encodeComponent(agentName)}/messages',
+          )
+        : agentUrl;
+    return AgentConnectionInfo(jwt: json["jwt"], agentName: agentName, projectId: projectId, agentUrl: normalizedAgentUrl);
   }
 }
 

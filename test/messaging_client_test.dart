@@ -90,6 +90,8 @@ class _MessagingHarness {
 
 class _FakeMessagingServer {
   final requests = <_RecordedRequest>[];
+  final List<(Protocol, int)> _pendingSendResponses = <(Protocol, int)>[];
+  bool holdSendResponses = false;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
     if (type != 'room.invoke_tool') {
@@ -131,6 +133,12 @@ class _FakeMessagingServer {
         );
         return;
       case 'send':
+        if (holdSendResponses) {
+          _pendingSendResponses.add((protocol, messageId));
+          return;
+        }
+        await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+        return;
       case 'broadcast':
       case 'disable':
         await protocol.send('__response__', EmptyContent().pack(), id: messageId);
@@ -138,6 +146,13 @@ class _FakeMessagingServer {
       default:
         throw StateError('unsupported messaging operation: $tool');
     }
+  }
+
+  Future<void> releaseSendResponses() async {
+    for (final (protocol, messageId) in _pendingSendResponses) {
+      await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+    }
+    _pendingSendResponses.clear();
   }
 
   Future<void> sendIncomingMessage(
@@ -255,6 +270,25 @@ void main() {
     expect(sendInput['to_participant_id'], 'remote-1');
     expect(jsonDecode(sendInput['message_json'] as String), {'value': 1});
 
+    await harness.dispose();
+  });
+
+  test('messaging client pipelines queued sends before their responses', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final remote = harness.room.messaging.remoteParticipants.single;
+    harness.server.holdSendResponses = true;
+
+    await harness.room.messaging.sendMessage(to: remote, type: 'delta', message: {'index': 1}, ignoreOffline: true);
+    await harness.room.messaging.sendMessage(to: remote, type: 'delta', message: {'index': 2}, ignoreOffline: true);
+
+    await _waitUntil(() => harness.server.requests.where((request) => request.tool == 'send').length == 2);
+    final sends = harness.server.requests.where((request) => request.tool == 'send').toList();
+    expect(sends.map((request) => jsonDecode(request.input['message_json'] as String)['index']).toList(), [1, 2]);
+
+    await harness.server.releaseSendResponses();
     await harness.dispose();
   });
 
