@@ -5563,12 +5563,14 @@ class MessagingClient extends ChangeEmitter {
         },
       );
       _sendOperations.add(operation);
-      unawaited(operation.whenComplete(() {
-        _sendOperations.remove(operation);
-        if (!dispatched.isCompleted) {
-          dispatched.complete();
-        }
-      }));
+      unawaited(
+        operation.whenComplete(() {
+          _sendOperations.remove(operation);
+          if (!dispatched.isCompleted) {
+            dispatched.complete();
+          }
+        }),
+      );
       await dispatched.future;
     }
   }
