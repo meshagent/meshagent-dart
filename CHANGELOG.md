@@ -1,3 +1,9 @@
+## [0.47.0]
+- Improved Dart room client messaging and startup behavior, including the Rust tunnel-backed room routing path.
+- Hardened managed-agent and V1 thread flows, including activation, replay, uninstall lifecycle, and preview-link decoding.
+- Expanded chat and thread rendering for ask-agent flows, dataset threads, and thread typography.
+- Added and strengthened SDK tests for messaging, managed-agent clients, file previews, and chat thread state.
+
 ## [0.46.3]
 - Added `Meshagent.getProjectSettings(projectId)` to fetch project settings from the API and return them as a JSON map.
 - The Dart service webhook helper now merges optional headers with null-aware spread semantics.
