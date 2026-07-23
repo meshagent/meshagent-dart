@@ -597,11 +597,11 @@ class _RemoteToolkitWrapper {
           }
           await for (final chunk in stream) {
             toolkit._validateOutputContent(tool: tool, content: chunk);
-            if (!await _sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: chunk)) {
+            if (!_sendToolCallResponseChunk(messageId: messageId, toolCallId: toolCallId, chunk: chunk)) {
               return;
             }
           }
-          await _sendToolCallResponseChunk(
+          _sendToolCallResponseChunk(
             messageId: messageId,
             toolCallId: toolCallId,
             chunk: ControlContent(method: "close"),
@@ -618,13 +618,13 @@ class _RemoteToolkitWrapper {
       }
 
       if (error is! InvalidToolDataException) {
-        await _sendToolCallResponseChunk(
+        _sendToolCallResponseChunk(
           messageId: messageId,
           toolCallId: toolCallId,
           chunk: ErrorContent(text: "$error"),
         );
       }
-      await _sendToolCallResponseChunk(
+      _sendToolCallResponseChunk(
         messageId: messageId,
         toolCallId: toolCallId,
         chunk: error is InvalidToolDataException
@@ -714,10 +714,10 @@ class _RemoteToolkitWrapper {
     return RemoteParticipant(client: room, id: participantId, role: "user");
   }
 
-  Future<bool> _sendToolCallResponseChunk({required int messageId, required String toolCallId, required Content chunk}) async {
+  bool _sendToolCallResponseChunk({required int messageId, required String toolCallId, required Content chunk}) {
     final packedChunk = unpackMessage(chunk.pack());
     try {
-      await room.protocol.send(
+      room.protocol.sendNowait(
         "room.tool_call_response_chunk",
         packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
         id: messageId,
