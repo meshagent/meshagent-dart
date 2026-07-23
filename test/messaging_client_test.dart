@@ -68,6 +68,14 @@ Future<void> _sendRoomReady(Protocol protocol) async {
   );
 }
 
+Future<void> _sendToolCallResponseChunk({required Protocol protocol, required String toolCallId, required Content chunk}) async {
+  final packed = unpackMessage(chunk.pack());
+  await protocol.send(
+    'room.tool_call_response_chunk',
+    packMessage({'tool_call_id': toolCallId, 'chunk': packed.header}, packed.payload.isEmpty ? null : packed.payload),
+  );
+}
+
 class _RecordedRequest {
   _RecordedRequest({required this.tool, required this.input});
 
@@ -91,9 +99,19 @@ class _MessagingHarness {
 class _FakeMessagingServer {
   final requests = <_RecordedRequest>[];
   final List<(Protocol, int)> _pendingSendResponses = <(Protocol, int)>[];
+  final streamMessages = <Map<String, dynamic>>[];
   bool holdSendResponses = false;
+  bool holdFirstStreamMessageResponse = false;
+  bool failNextStreamMessage = false;
+  (Protocol, int)? _pendingStreamMessageResponse;
+  String? _streamToolCallId;
+  int _streamCount = 0;
 
   Future<void> handleMessage(Protocol protocol, int messageId, String type, Uint8List data) async {
+    if (type == 'room.tool_call_request_chunk') {
+      await _handleStreamChunk(protocol, messageId, data);
+      return;
+    }
     if (type != 'room.invoke_tool') {
       return;
     }
@@ -105,6 +123,12 @@ class _FakeMessagingServer {
     }
 
     final tool = request['tool'] as String;
+    if (tool == 'stream') {
+      _streamToolCallId = request['tool_call_id'] as String;
+      _streamCount++;
+      await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
+      return;
+    }
     final input = _decodeInput(message: message, request: request);
     if (input is! JsonContent) {
       throw StateError('messaging.$tool expected JsonContent input');
@@ -146,6 +170,66 @@ class _FakeMessagingServer {
       default:
         throw StateError('unsupported messaging operation: $tool');
     }
+  }
+
+  Future<void> _handleStreamChunk(Protocol protocol, int messageId, Uint8List data) async {
+    final toolCallId = _streamToolCallId;
+    if (toolCallId == null) {
+      return;
+    }
+    final request = unpackMessage(data);
+    final chunkHeader = Map<String, dynamic>.from(request.header['chunk'] as Map);
+    final chunk = unpackContent(packMessage(chunkHeader, request.payload.isEmpty ? null : request.payload));
+    if (chunk is ControlContent) {
+      await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+      return;
+    }
+    if (chunk is! JsonContent) {
+      throw StateError('messaging.stream expected JsonContent chunks');
+    }
+    if (chunk.json.containsKey('to_participant_id')) {
+      await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+      await _sendToolCallResponseChunk(
+        protocol: protocol,
+        toolCallId: toolCallId,
+        chunk: JsonContent(json: {'kind': 'accepted', 'stream_id': 'stream-$_streamCount'}),
+      );
+      return;
+    }
+
+    streamMessages.add(Map<String, dynamic>.from(jsonDecode(chunk.json['message_json'] as String) as Map));
+    if (failNextStreamMessage) {
+      failNextStreamMessage = false;
+      await protocol.send('__response__', ErrorContent(text: 'client disconnected').pack(), id: messageId);
+      return;
+    }
+    if (holdFirstStreamMessageResponse && _pendingStreamMessageResponse == null) {
+      _pendingStreamMessageResponse = (protocol, messageId);
+      return;
+    }
+    await protocol.send('__response__', EmptyContent().pack(), id: messageId);
+  }
+
+  Future<void> releaseStreamMessageResponse() async {
+    final pending = _pendingStreamMessageResponse;
+    _pendingStreamMessageResponse = null;
+    holdFirstStreamMessageResponse = false;
+    if (pending == null) {
+      return;
+    }
+    await pending.$1.send('__response__', EmptyContent().pack(), id: pending.$2);
+  }
+
+  Future<void> disconnectStream(Protocol protocol) async {
+    final toolCallId = _streamToolCallId;
+    if (toolCallId == null) {
+      throw StateError('messaging stream has not opened');
+    }
+    await _sendToolCallResponseChunk(
+      protocol: protocol,
+      toolCallId: toolCallId,
+      chunk: JsonContent(json: const {'kind': 'client_disconnected', 'participant_id': 'remote-1'}),
+    );
   }
 
   Future<void> releaseSendResponses() async {
@@ -289,6 +373,69 @@ void main() {
     expect(sends.map((request) => jsonDecode(request.input['message_json'] as String)['index']).toList(), [1, 2]);
 
     await harness.server.releaseSendResponses();
+    await harness.dispose();
+  });
+
+  test('messaging stream serializes chunk sends without waiting for responses', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final remote = harness.room.messaging.remoteParticipants.single;
+    harness.server.holdFirstStreamMessageResponse = true;
+
+    final stream = await harness.room.messaging.stream(
+      to: remote,
+      type: 'meshagent.chat.thread.subscribe',
+      message: {'type': 'thread.open', 'thread_id': 'thread-1'},
+    );
+    final first = stream.sendMessage(type: 'agent-message', message: {'index': 1});
+    final second = stream.sendMessage(type: 'agent-message', message: {'index': 2});
+
+    await _waitUntil(() => harness.server.streamMessages.length == 1);
+    expect(harness.server.streamMessages, [
+      {'index': 1},
+    ]);
+    await harness.server.releaseStreamMessageResponse();
+    await Future.wait([first, second]);
+    expect(harness.server.streamMessages, [
+      {'index': 1},
+      {'index': 2},
+    ]);
+
+    await stream.close();
+    expect(stream.closed, isTrue);
+    await harness.dispose();
+  });
+
+  test('messaging stream surfaces send failures and remote disconnects', () async {
+    final harness = await _startMessagingHarness();
+
+    await harness.room.messaging.enable();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final remote = harness.room.messaging.remoteParticipants.single;
+
+    final failed = await harness.room.messaging.stream(to: remote, type: 'test', message: {'open': true});
+    harness.server.failNextStreamMessage = true;
+    await expectLater(
+      failed.sendMessage(type: 'test', message: {'index': 1}),
+      throwsA(isA<RoomServerException>().having((exception) => exception.message, 'message', contains('client disconnected'))),
+    );
+    await _waitUntil(() => failed.closed);
+    await failed.close();
+
+    final disconnected = await harness.room.messaging.stream(to: remote, type: 'test', message: {'open': true});
+    final eventFuture = disconnected.events.first;
+    await harness.server.disconnectStream(harness.pair.serverProtocol);
+    final event = await eventFuture;
+    expect(event, isA<MessagingStreamClientDisconnected>());
+    await _waitUntil(() => disconnected.closed);
+    await disconnected.close();
+    await expectLater(
+      disconnected.sendMessage(type: 'test', message: const {}),
+      throwsA(isA<RoomServerException>().having((exception) => exception.message, 'message', contains('closed'))),
+    );
+
     await harness.dispose();
   });
 
