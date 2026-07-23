@@ -2553,10 +2553,38 @@ class ContainersClient extends ChangeEmitter {
       size: size,
     );
     final output = await room.invoke(toolkit: 'containers', tool: 'build', input: ToolStreamInput(input.inputStream()));
-    if (output is! ToolContentOutput || output.content is! JsonContent) {
+    return _decodeBuildId(output);
+  }
+
+  Future<String> _decodeBuildId(ToolCallOutput output) async {
+    if (output is ToolContentOutput && output.content is JsonContent) {
+      return _decodeBuildIdJson((output.content as JsonContent).json);
+    }
+
+    if (output is ToolStreamOutput) {
+      await for (final chunk in output.stream) {
+        if (chunk is JsonContent) {
+          return _decodeBuildIdJson(chunk.json);
+        }
+        if (chunk is ErrorContent) {
+          throw RoomServerException(chunk.text, code: chunk.code);
+        }
+        if (chunk is ControlContent && chunk.method == 'close') {
+          break;
+        }
+        throw _unexpectedResponseError(operation: 'build');
+      }
+    }
+
+    throw _unexpectedResponseError(operation: 'build');
+  }
+
+  String _decodeBuildIdJson(Map<String, dynamic> json) {
+    final buildId = json['build_id'];
+    if (buildId is! String || buildId.isEmpty) {
       throw _unexpectedResponseError(operation: 'build');
     }
-    return (output.content as JsonContent).json['build_id'] as String;
+    return buildId;
   }
 
   Future<List<BuildInfo>> listBuilds() async {

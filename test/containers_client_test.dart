@@ -97,6 +97,9 @@ class _ContainersHarness {
 }
 
 class _FakeContainersServer {
+  _FakeContainersServer({this.streamBuildResponse = false});
+
+  final bool streamBuildResponse;
   final requests = <_RecordedRequest>[];
   final execChunks = <BinaryContent>[];
   final logChunks = <BinaryContent>[];
@@ -138,6 +141,9 @@ class _FakeContainersServer {
         _streamTools[toolCallId] = tool;
         if (tool == 'build') {
           _pendingBuildRequests[toolCallId] = _PendingBuildRequest(protocol: protocol, messageId: messageId);
+          if (streamBuildResponse) {
+            await protocol.send('__response__', ControlContent(method: 'open').pack(), id: messageId);
+          }
           return;
         }
         if (tool == 'exec') {
@@ -330,7 +336,20 @@ class _FakeContainersServer {
           if (pending == null) {
             throw StateError('no build request recorded for $toolCallId');
           }
-          await pending.protocol.send('__response__', JsonContent(json: {'build_id': 'build-job'}).pack(), id: pending.messageId);
+          if (streamBuildResponse) {
+            await _sendToolCallChunk(
+              protocol,
+              toolCallId: toolCallId,
+              chunk: JsonContent(json: {'build_id': 'build-job'}),
+            );
+            await _sendToolCallChunk(
+              protocol,
+              toolCallId: toolCallId,
+              chunk: ControlContent(method: 'close'),
+            );
+          } else {
+            await pending.protocol.send('__response__', JsonContent(json: {'build_id': 'build-job'}).pack(), id: pending.messageId);
+          }
         }
         final execCloseCompleter = _execCloseCompleters[toolCallId];
         if (execCloseCompleter != null && !execCloseCompleter.isCompleted) {
@@ -477,9 +496,9 @@ class _FakeContainersServer {
   }
 }
 
-Future<_ContainersHarness> _startContainersHarness() async {
+Future<_ContainersHarness> _startContainersHarness({bool streamBuildResponse = false}) async {
   final pair = _ProtocolPair();
-  final server = _FakeContainersServer();
+  final server = _FakeContainersServer(streamBuildResponse: streamBuildResponse);
   pair.serverProtocol.start(onMessage: server.handleMessage);
 
   final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
@@ -745,6 +764,31 @@ void main() {
     final stopRequest = harness.server.requests.firstWhere((entry) => entry.tool == 'stop_container');
     final stopInput = stopRequest.input;
     expect(stopInput['force'], false);
+
+    await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
+  });
+
+  test('containers client accepts streamed build id responses', () async {
+    final harness = await _startContainersHarness(streamBuildResponse: true);
+
+    Stream<Uint8List> buildChunks() async* {
+      yield Uint8List.fromList('hello'.codeUnits);
+    }
+
+    expect(
+      await harness.room.containers.build(
+        tags: const ['example:latest'],
+        mountPath: '/context',
+        contextPath: '/workspace',
+        chunks: buildChunks(),
+      ),
+      'build-job',
+    );
+
+    final buildRequest = harness.server.requests.singleWhere((entry) => entry.tool == 'build');
+    expect(buildRequest.input['tags'], ['example:latest']);
+    expect(buildRequest.input['mount_path'], '/context');
+    expect(buildRequest.input['context_path'], '/workspace');
 
     await harness.dispose().timeout(const Duration(seconds: 2), onTimeout: () => throw StateError('harness.dispose timed out'));
   });
