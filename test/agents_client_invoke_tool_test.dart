@@ -191,8 +191,6 @@ void main() {
         } else {
           received.add(chunkType);
         }
-
-        await protocol.send("__response__", EmptyContent().pack(), id: messageId);
       },
     );
 
@@ -215,70 +213,6 @@ void main() {
     await pair.dispose();
   });
 
-  test('invokeTool stream emits error when request chunk send fails after open', () async {
-    final pair = _ProtocolPair();
-    var sawTextChunk = false;
-    pair.serverProtocol.start(
-      onMessage: (protocol, messageId, type, data) async {
-        if (type == "room.invoke_tool") {
-          await protocol.send("__response__", ControlContent(method: "open").pack(), id: messageId);
-          return;
-        }
-        if (type != "room.tool_call_request_chunk") {
-          return;
-        }
-
-        final message = unpackMessage(data).header;
-        final chunk = Map<String, dynamic>.from(message["chunk"] as Map);
-        final chunkType = chunk["type"] as String?;
-        if (chunkType == "text") {
-          sawTextChunk = true;
-          await protocol.send("__response__", ErrorContent(text: "schema mismatch").pack(), id: messageId);
-          return;
-        }
-        await protocol.send("__response__", EmptyContent().pack(), id: messageId);
-      },
-    );
-
-    final room = RoomClient(protocolFactory: pair.clientProtocolFactory);
-    final startFuture = room.start();
-    await _sendRoomReady(pair.serverProtocol);
-    await startFuture;
-
-    final input = StreamController<Content>();
-    final response = await room.agents.invokeTool(toolkit: "test-stream-toolkit", tool: "stream", input: ToolStreamInput(input.stream));
-    expect(response, isA<ToolStreamOutput>());
-
-    final output = response as ToolStreamOutput;
-    final streamDone = Completer<void>();
-    Object? streamError;
-    output.stream.listen(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {
-        streamError = error;
-        if (!streamDone.isCompleted) {
-          streamDone.complete();
-        }
-      },
-      onDone: () {
-        if (!streamDone.isCompleted) {
-          streamDone.complete();
-        }
-      },
-      cancelOnError: false,
-    );
-
-    input.add(TextContent(text: "bad"));
-    await input.close();
-
-    await streamDone.future.timeout(const Duration(seconds: 1));
-    expect(sawTextChunk, isTrue);
-    expect(streamError, isA<RoomServerException>());
-    expect((streamError as RoomServerException).message, contains("schema mismatch"));
-
-    await pair.dispose();
-  });
-
   test('invokeTool stream delivers ErrorContent chunk and then closes when server closes stream', () async {
     final pair = _ProtocolPair();
     String? toolCallId;
@@ -295,7 +229,6 @@ void main() {
           return;
         }
 
-        await protocol.send("__response__", EmptyContent().pack(), id: messageId);
         if (sentFailureChunks || toolCallId == null) {
           return;
         }
@@ -382,7 +315,6 @@ void main() {
           return;
         }
 
-        await protocol.send("__response__", EmptyContent().pack(), id: messageId);
         if (sentClose || toolCallId == null) {
           return;
         }
