@@ -978,6 +978,10 @@ class ParticipantToken {
     grants.add(ParticipantGrant(name: 'room', scope: roomName));
   }
 
+  void addSiteGrant(String roomName) {
+    grants.add(ParticipantGrant(name: 'site', scope: roomName));
+  }
+
   void addApiGrant(ApiScope grant) {
     for (final g in grants) {
       if (g.name == 'api') {
