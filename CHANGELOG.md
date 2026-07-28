@@ -1,3 +1,8 @@
+## [0.47.1]
+- Added duplex messaging stream subscriptions and aligned replay pending-state behavior across the Dart chat clients so completed replay inputs stay resolved and pending work clears consistently.
+- Reworked room client and participant-token handling to match site-only room access and the newer ordered dispatch and close behavior.
+- Expanded Dart SDK test coverage for messaging presence, stream latency, token validation, and replay handling.
+
 ## [0.47.0]
 - Improved Dart room client messaging and startup behavior, including the Rust tunnel-backed room routing path.
 - Hardened managed-agent and V1 thread flows, including activation, replay, uninstall lifecycle, and preview-link decoding.

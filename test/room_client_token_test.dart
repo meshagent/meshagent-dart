@@ -42,11 +42,13 @@ void main() {
   test('participant token json round trip preserves extra payload', () {
     final token = ParticipantToken(name: 'user', extra: {'meshagent_bootstrap': true});
     token.addRoomGrant('room');
+    token.addSiteGrant('room');
 
     final decoded = ParticipantToken.fromJson(token.toJson());
 
     expect(decoded.extra, containsPair('meshagent_bootstrap', true));
     expect(decoded.grantScope('room'), equals('room'));
+    expect(decoded.grantScope('site'), equals('room'));
   });
 
   test('explicit raw secret preserves kid on participant tokens', () {

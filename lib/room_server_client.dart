@@ -1501,6 +1501,12 @@ class RoomClient extends ChangeEmitter {
 
   // send a request, optionally with a binary trailer
   Future<Content> sendRequest(String type, Map<String, dynamic> request, {Uint8List? data, void Function()? afterSend}) async {
+    final response = _dispatchRequest(type, request, data: data);
+    afterSend?.call();
+    return await response;
+  }
+
+  Future<Content> _dispatchRequest(String type, Map<String, dynamic> request, {Uint8List? data}) {
     _raiseIfTerminal();
     if (_entered && !_connected && !_allowDisconnectedRequests) {
       throw _disconnectedError(baseMessage: 'room connection is disconnected');
@@ -1514,17 +1520,26 @@ class RoomClient extends ChangeEmitter {
     final message = packMessage(request, data);
 
     try {
-      await _protocolInstance.send(type, message, id: requestId);
-      afterSend?.call();
-      final response = await pr.fut;
-      if (response is ErrorContent) {
-        throw RoomServerException(response.text, code: response.code);
-      }
-      return response;
+      _protocolInstance.sendNowait(type, message, id: requestId);
     } catch (error) {
       _pendingRequests.remove(requestId);
       rethrow;
     }
+
+    Future<Content> waitResponse() async {
+      try {
+        final response = await pr.fut;
+        if (response is ErrorContent) {
+          throw RoomServerException(response.text, code: response.code);
+        }
+        return response;
+      } catch (error) {
+        _pendingRequests.remove(requestId);
+        rethrow;
+      }
+    }
+
+    return waitResponse();
   }
 
   Future<void> call({required String name, required String url, required Map<String, dynamic> arguments}) async {
@@ -1620,7 +1635,8 @@ class RoomClient extends ChangeEmitter {
     }
 
     try {
-      final requestFuture = sendRequest("room.invoke_tool", request, data: invokeData, afterSend: afterSend);
+      final requestFuture = _dispatchRequest("room.invoke_tool", request, data: invokeData);
+      afterSend?.call();
       if (input is ToolStreamInput) {
         inputTask = _streamInvokeToolRequestChunks(toolCallId: toolCallId, inputChunks: input.chunks);
         unawaited(
@@ -1676,22 +1692,25 @@ class RoomClient extends ChangeEmitter {
     }
   }
 
-  Future<void> _sendToolCallRequestChunk({required String toolCallId, required Content chunk}) async {
+  void _dispatchToolCallRequestChunk({required String toolCallId, required Content chunk}) {
+    _raiseIfTerminal();
+    if (_entered && !_connected && !_allowDisconnectedRequests) {
+      throw _disconnectedError(baseMessage: 'room connection is disconnected');
+    }
     final packedChunk = unpackMessage(chunk.pack());
-    await sendRequest("room.tool_call_request_chunk", {
-      "tool_call_id": toolCallId,
-      "chunk": packedChunk.header,
-    }, data: packedChunk.payload.isEmpty ? null : packedChunk.payload);
+    _protocolInstance.sendNowait(
+      "room.tool_call_request_chunk",
+      packMessage({"tool_call_id": toolCallId, "chunk": packedChunk.header}, packedChunk.payload.isEmpty ? null : packedChunk.payload),
+    );
   }
 
   Future<void> _streamInvokeToolRequestChunks({required String toolCallId, required Stream<Content> inputChunks}) async {
-    await Future<void>.delayed(Duration.zero);
     try {
       await for (final item in inputChunks) {
-        await _sendToolCallRequestChunk(toolCallId: toolCallId, chunk: item);
+        _dispatchToolCallRequestChunk(toolCallId: toolCallId, chunk: item);
       }
     } finally {
-      await _sendToolCallRequestChunk(
+      _dispatchToolCallRequestChunk(
         toolCallId: toolCallId,
         chunk: ControlContent(method: "close"),
       );
@@ -5306,6 +5325,263 @@ class Queue {
   final int size;
 }
 
+sealed class MessagingStreamEvent {}
+
+class MessagingStreamMessage extends MessagingStreamEvent {
+  MessagingStreamMessage(this.message);
+
+  final RoomMessage message;
+}
+
+class MessagingStreamClientDisconnected extends MessagingStreamEvent {
+  MessagingStreamClientDisconnected({required this.streamId, required this.participantId});
+
+  final String streamId;
+  final String participantId;
+}
+
+class MessagingStreamClosed extends MessagingStreamEvent {
+  MessagingStreamClosed({required this.streamId, required this.reason, this.message});
+
+  final String streamId;
+  final String reason;
+  final String? message;
+}
+
+class _MessagingStreamInputItem {
+  _MessagingStreamInputItem({required this.content, this.sent});
+
+  final Content content;
+  final Completer<void>? sent;
+}
+
+class _MessagingStreamInput {
+  final ListQueue<_MessagingStreamInputItem> _items = ListQueue<_MessagingStreamInputItem>();
+  Completer<void>? _signal;
+  _MessagingStreamInputItem? _active;
+  bool _closed = false;
+  Object? _error;
+  StackTrace? _stackTrace;
+
+  Future<void> add(Content content, {bool wait = false}) {
+    if (_closed) {
+      return Future<void>.error(_error ?? RoomServerException('the messaging stream is closed'), _stackTrace);
+    }
+    final sent = wait ? Completer<void>() : null;
+    _items.add(_MessagingStreamInputItem(content: content, sent: sent));
+    _signal?.complete();
+    _signal = null;
+    return sent?.future ?? Future<void>.value();
+  }
+
+  void close([Object? error, StackTrace? stackTrace]) {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    _error = error ?? RoomServerException('the messaging stream is closed');
+    _stackTrace = stackTrace;
+    final active = _active;
+    _active = null;
+    if (active?.sent case final sent?) {
+      sent.completeError(_error!, _stackTrace);
+    }
+    while (_items.isNotEmpty) {
+      final sent = _items.removeFirst().sent;
+      if (sent != null) {
+        sent.completeError(_error!, _stackTrace);
+      }
+    }
+    if (!(_signal?.isCompleted ?? true)) {
+      _signal!.complete();
+    }
+    _signal = null;
+  }
+
+  void fail(Object error, StackTrace stackTrace) {
+    close(error, stackTrace);
+  }
+
+  Stream<Content> stream() async* {
+    try {
+      while (true) {
+        while (_items.isEmpty && !_closed) {
+          _signal ??= Completer<void>();
+          await _signal!.future;
+        }
+        if (_items.isEmpty) {
+          return;
+        }
+        final item = _items.removeFirst();
+        _active = item;
+        yield item.content;
+        item.sent?.complete();
+        _active = null;
+      }
+    } finally {
+      final active = _active;
+      if (_closed) {
+        _active = null;
+      }
+      final sent = active?.sent;
+      if (_closed && sent != null) {
+        sent.completeError(_error ?? RoomServerException('the messaging stream is closed'), _stackTrace);
+      }
+    }
+  }
+}
+
+enum _MessagingStreamState { accepted, terminal }
+
+class MessagingStream {
+  MessagingStream._({
+    required this.streamId,
+    required this.remoteParticipantId,
+    required _MessagingStreamInput input,
+    required StreamIterator<Content> output,
+    required Future<void>? inputClosed,
+    required void Function() onClosed,
+  }) : _input = input,
+       _output = output,
+       _onClosed = onClosed {
+    _inputDone = inputClosed?.catchError((Object error, StackTrace stackTrace) {
+      _input.fail(error, stackTrace);
+      if (_state == _MessagingStreamState.accepted) {
+        _events.add(MessagingStreamClosed(streamId: streamId, reason: 'error', message: error.toString()));
+        unawaited(_output.cancel());
+        _finish();
+      }
+    });
+    unawaited(_consumeOutput());
+  }
+
+  final String streamId;
+  final String remoteParticipantId;
+  final _MessagingStreamInput _input;
+  final StreamIterator<Content> _output;
+  Future<void>? _inputDone;
+  final void Function() _onClosed;
+  final StreamController<MessagingStreamEvent> _events = StreamController<MessagingStreamEvent>();
+  _MessagingStreamState _state = _MessagingStreamState.accepted;
+
+  bool get closed => _state == _MessagingStreamState.terminal;
+  Stream<MessagingStreamEvent> get events => _events.stream;
+
+  Future<void> _consumeOutput() async {
+    try {
+      while (await _output.moveNext()) {
+        final content = _output.current;
+        if (content is ControlContent && content.method == 'close') {
+          _events.add(MessagingStreamClientDisconnected(streamId: streamId, participantId: remoteParticipantId));
+          return;
+        }
+        if (content is! JsonContent) {
+          throw RoomServerException('unexpected chunk from messaging.stream');
+        }
+        final value = content.json;
+        final kind = value['kind'];
+        if (kind == 'message') {
+          final type = value['type'];
+          final message = value['message'];
+          if (type is! String || message is! Map) {
+            throw RoomServerException('invalid message chunk from messaging.stream');
+          }
+          final attachmentBase64 = value['attachment_base64'];
+          _events.add(
+            MessagingStreamMessage(
+              RoomMessage(
+                fromParticipantId: remoteParticipantId,
+                type: type,
+                message: Map<String, dynamic>.from(message),
+                attachment: attachmentBase64 is String && attachmentBase64.isNotEmpty ? base64Decode(attachmentBase64) : null,
+              ),
+            ),
+          );
+          continue;
+        }
+        if (kind == 'client_disconnected' && value['participant_id'] is String) {
+          _events.add(MessagingStreamClientDisconnected(streamId: streamId, participantId: value['participant_id'] as String));
+          return;
+        }
+        if (kind == 'closed') {
+          _events.add(
+            MessagingStreamClosed(
+              streamId: streamId,
+              reason: value['reason'] is String ? value['reason'] as String : 'closed',
+              message: value['message'] is String ? value['message'] as String : null,
+            ),
+          );
+          return;
+        }
+        throw RoomServerException('unexpected chunk from messaging.stream');
+      }
+    } catch (error) {
+      if (_state == _MessagingStreamState.accepted) {
+        _events.add(MessagingStreamClosed(streamId: streamId, reason: 'error', message: error.toString()));
+      }
+      _input.fail(error, StackTrace.current);
+    } finally {
+      _finish();
+    }
+  }
+
+  JsonContent _messageContent({required String type, required Map<String, dynamic> message, Uint8List? attachment}) {
+    return JsonContent(
+      json: <String, dynamic>{
+        'type': type,
+        'message_json': jsonEncode(message),
+        if (attachment != null) 'attachment_base64': base64Encode(attachment),
+      },
+    );
+  }
+
+  void sendMessageNowait({required String type, required Map<String, dynamic> message, Uint8List? attachment}) {
+    if (_state != _MessagingStreamState.accepted) {
+      throw RoomServerException('the messaging stream is closed');
+    }
+    unawaited(_input.add(_messageContent(type: type, message: message, attachment: attachment)));
+  }
+
+  Future<void> sendMessage({required String type, required Map<String, dynamic> message, Uint8List? attachment}) async {
+    if (_state != _MessagingStreamState.accepted) {
+      throw RoomServerException('the messaging stream is closed');
+    }
+    await _input.add(_messageContent(type: type, message: message, attachment: attachment), wait: true);
+  }
+
+  void _clientDisconnected(String participantId) {
+    if (_state == _MessagingStreamState.terminal) {
+      return;
+    }
+    _events.add(MessagingStreamClientDisconnected(streamId: streamId, participantId: participantId));
+    _finish();
+  }
+
+  void _finish() {
+    if (_state == _MessagingStreamState.terminal) {
+      return;
+    }
+    _state = _MessagingStreamState.terminal;
+    _input.close();
+    unawaited(_events.close());
+    unawaited((_inputDone ?? Future<void>.value()).whenComplete(_onClosed));
+  }
+
+  Future<void> close() async {
+    if (_state == _MessagingStreamState.terminal) {
+      await _inputDone;
+      return;
+    }
+    _input.close();
+    try {
+      await _inputDone;
+    } finally {
+      await _output.cancel();
+      _finish();
+    }
+  }
+}
+
 class MessagingClient extends ChangeEmitter {
   MessagingClient({required this.room}) {
     room.protocol.addHandler("messaging.send", _handleMessageSend);
@@ -5317,6 +5593,7 @@ class MessagingClient extends ChangeEmitter {
   Completer<void>? _messageQueueSignal;
   Future<void>? _sendTask;
   final Set<Future<void>> _sendOperations = <Future<void>>{};
+  final Set<MessagingStream> _streams = <MessagingStream>{};
   bool _messageQueueClosed = false;
   bool _desiredEnabled = false;
   bool _online = false;
@@ -5392,6 +5669,7 @@ class MessagingClient extends ChangeEmitter {
       await sendTask;
     }
     await Future.wait(_sendOperations);
+    await Future.wait(List<MessagingStream>.from(_streams).map((stream) => stream.close()));
     _sendTask = null;
     _desiredEnabled = false;
     _clearCurrentConnectionState();
@@ -5466,6 +5744,9 @@ class MessagingClient extends ChangeEmitter {
   }
 
   void _onRoomDisconnect({String? reason}) {
+    for (final stream in List<MessagingStream>.from(_streams)) {
+      stream._clientDisconnected(room.localParticipant?.id ?? stream.remoteParticipantId);
+    }
     _clearCurrentConnectionState();
   }
 
@@ -5669,6 +5950,56 @@ class MessagingClient extends ChangeEmitter {
     } on RoomServerException catch (error) {
       throw room._coerceMessageSendError(error);
     }
+  }
+
+  Future<MessagingStream> stream({
+    required Participant to,
+    required String type,
+    required Map<String, dynamic> message,
+    Uint8List? attachment,
+  }) async {
+    final input = _MessagingStreamInput();
+    unawaited(
+      input.add(
+        JsonContent(
+          json: <String, dynamic>{
+            'to_participant_id': to.id,
+            'type': type,
+            'message_json': jsonEncode(message),
+            if (attachment != null) 'attachment_base64': base64Encode(attachment),
+          },
+        ),
+      ),
+    );
+    final output = await room.invoke(toolkit: 'messaging', tool: 'stream', input: ToolStreamInput(input.stream()));
+    if (output is! ToolStreamOutput) {
+      input.close();
+      throw RoomServerException('unexpected return type from messaging.stream');
+    }
+    final inputClosed = output.inputClosed;
+    final iterator = StreamIterator<Content>(output.stream);
+    if (!await iterator.moveNext()) {
+      input.close();
+      await iterator.cancel();
+      throw RoomServerException('messaging.stream closed before acceptance');
+    }
+    final accepted = iterator.current;
+    if (accepted is! JsonContent || accepted.json['kind'] != 'accepted' || accepted.json['stream_id'] is! String) {
+      input.close();
+      await iterator.cancel();
+      throw RoomServerException('messaging.stream did not acknowledge acceptance');
+    }
+    late MessagingStream result;
+    result = MessagingStream._(
+      streamId: accepted.json['stream_id'] as String,
+      remoteParticipantId: to.id,
+      input: input,
+      output: iterator,
+      inputClosed: inputClosed,
+      onClosed: () => _streams.remove(result),
+    );
+    _streams.add(result);
+    return result;
   }
 
   Future<void> _handleMessageSend(Protocol protocol, int messageId, String type, Uint8List bytes) async {
