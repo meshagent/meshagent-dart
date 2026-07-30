@@ -48,7 +48,7 @@ void main() {
     expect(() => meshagent.listRepositoryTags(projectId: 'project-1', repositoryId: 'repository-1'), throwsA(isA<NotFoundException>()));
   });
 
-  test('listRepositoryImages requests the repository images endpoint', () async {
+  test('listRepositoryImagesPage requests a repository image page', () async {
     final requests = <String>[];
     final client = MockClient((request) async {
       requests.add('${request.method} ${request.url}');
@@ -80,6 +80,8 @@ void main() {
               'updated_at': '2026-04-19T08:30:00Z',
             },
           ],
+          'total': 12,
+          'next_last': '2026-04-19T08:30:00Z|sha256:def456',
         }),
         200,
       );
@@ -87,10 +89,20 @@ void main() {
 
     final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
 
-    final images = await meshagent.listRepositoryImages(projectId: 'project-1', repositoryId: 'repository-1');
+    final page = await meshagent.listRepositoryImagesPage(
+      projectId: 'project-1',
+      repositoryId: 'repository-1',
+      pageSize: 30,
+      continuationToken: '2026-04-21T00:00:00Z|sha256:previous',
+    );
+    final images = page.images;
 
-    expect(requests, ['GET http://example.test/accounts/projects/project-1/repositories/repository-1/images']);
+    expect(requests, [
+      'GET http://example.test/accounts/projects/project-1/repositories/repository-1/images?n=30&last=2026-04-21T00%3A00%3A00Z%7Csha256%3Aprevious',
+    ]);
     expect(images, hasLength(2));
+    expect(page.total, 12);
+    expect(page.continuationToken, '2026-04-19T08:30:00Z|sha256:def456');
     expect(images.first.digest, 'sha256:abc123');
     expect(images.first.tags, ['latest', 'stable']);
     expect(images.first.mediaType, 'application/vnd.oci.image.manifest.v1+json');
@@ -101,12 +113,42 @@ void main() {
     expect(images.last.updatedAt, DateTime.parse('2026-04-19T08:30:00Z'));
   });
 
-  test('listRepositoryImages throws NotFoundException for missing repositories', () async {
+  test('listRepositoryImages loads all repository image pages', () async {
+    final requests = <String>[];
+    final client = MockClient((request) async {
+      requests.add('${request.method} ${request.url}');
+      final isSecondPage = request.url.queryParameters['last'] == 'next-image';
+      return http.Response(
+        jsonEncode({
+          'images': [
+            {'digest': isSecondPage ? 'sha256:second' : 'sha256:first', 'tags': <String>[]},
+          ],
+          'total': 2,
+          if (!isSecondPage) 'next_last': 'next-image',
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final images = await meshagent.listRepositoryImages(projectId: 'project-1', repositoryId: 'repository-1', pageSize: 1);
+
+    expect(images.map((image) => image.digest), ['sha256:first', 'sha256:second']);
+    expect(requests, [
+      'GET http://example.test/accounts/projects/project-1/repositories/repository-1/images?n=1',
+      'GET http://example.test/accounts/projects/project-1/repositories/repository-1/images?n=1&last=next-image',
+    ]);
+  });
+
+  test('listRepositoryImagesPage throws NotFoundException for missing repositories', () async {
     final client = MockClient((_) async => http.Response('missing', 404));
 
     final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
 
-    expect(() => meshagent.listRepositoryImages(projectId: 'project-1', repositoryId: 'repository-1'), throwsA(isA<NotFoundException>()));
+    expect(
+      () => meshagent.listRepositoryImagesPage(projectId: 'project-1', repositoryId: 'repository-1'),
+      throwsA(isA<NotFoundException>()),
+    );
   });
 
   test('deleteRepositoryTag requests the repository tag delete endpoint', () async {
