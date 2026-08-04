@@ -1,4 +1,6 @@
 ## [0.47.1]
+- Added monotonic room-volume expansion to the account client for controller-reconciled capacity changes.
+- Changed room mount discovery to return typed room/container consumers without exposing internal source paths, and added typed container mount specs to listed containers.
 - Added duplex messaging stream subscriptions and aligned replay pending-state behavior across the Dart chat clients so completed replay inputs stay resolved and pending work clears consistently.
 - Reworked room client and participant-token handling to match site-only room access and the newer ordered dispatch and close behavior.
 - Expanded Dart SDK test coverage for messaging presence, stream latency, token validation, and replay handling.

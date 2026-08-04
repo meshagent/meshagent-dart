@@ -669,6 +669,7 @@ class RoomClient extends ChangeEmitter {
     sqlite = SqliteClient(room: this);
     memory = MemoryClient(room: this);
     containers = ContainersClient(room: this);
+    mounts = MountsClient(room: this);
     services = ServicesClient(room: this);
   }
 
@@ -700,6 +701,7 @@ class RoomClient extends ChangeEmitter {
   late final SqliteClient sqlite;
   late final MemoryClient memory;
   late final ContainersClient containers;
+  late final MountsClient mounts;
   late final ServicesClient services;
 
   final _ready = Completer<void>();
@@ -2313,6 +2315,94 @@ class ExecSession {
   }
 }
 
+enum MountedVolumeConsumerKind { room, container }
+
+class MountedVolumeConsumer {
+  const MountedVolumeConsumer({required this.kind, this.containerId});
+
+  final MountedVolumeConsumerKind kind;
+  final String? containerId;
+
+  factory MountedVolumeConsumer.fromJson(Map<String, dynamic> json) {
+    final kind = switch (json['kind']) {
+      'room' => MountedVolumeConsumerKind.room,
+      'container' => MountedVolumeConsumerKind.container,
+      _ => throw RoomServerException('unexpected return type from mounts.list'),
+    };
+    final containerId = json['container_id'] as String?;
+    if (kind == MountedVolumeConsumerKind.container && containerId == null) {
+      throw RoomServerException('unexpected return type from mounts.list');
+    }
+    if (kind == MountedVolumeConsumerKind.room && containerId != null) {
+      throw RoomServerException('unexpected return type from mounts.list');
+    }
+    return MountedVolumeConsumer(kind: kind, containerId: containerId);
+  }
+}
+
+class MountedVolume {
+  const MountedVolume({
+    required this.id,
+    required this.name,
+    required this.required,
+    this.description = '',
+    this.metadata = const {},
+    this.annotations = const {},
+    this.storageClass = 'standard',
+    this.maxSizeMb,
+    this.consumers = const [],
+  });
+
+  final String id;
+  final String name;
+  final bool required;
+  final String description;
+  final Map<String, dynamic> metadata;
+  final Map<String, String> annotations;
+  final String storageClass;
+  final int? maxSizeMb;
+  final List<MountedVolumeConsumer> consumers;
+
+  factory MountedVolume.fromJson(Map<String, dynamic> json) {
+    return MountedVolume(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      required: json['required'] as bool,
+      description: json['description'] as String? ?? '',
+      metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? const {}),
+      annotations: Map<String, String>.from(json['annotations'] as Map? ?? const {}),
+      storageClass: json['storage_class'] as String? ?? 'standard',
+      maxSizeMb: (json['max_size_mb'] as num?)?.toInt(),
+      consumers: ((json['consumers'] as List?) ?? const [])
+          .map((item) => MountedVolumeConsumer.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList(growable: false),
+    );
+  }
+}
+
+class MountsClient {
+  MountsClient({required this.room});
+
+  final RoomClient room;
+
+  Future<List<MountedVolume>> list() async {
+    final output = await room.invoke(
+      toolkit: 'mounts',
+      tool: 'list',
+      input: ToolContentInput(JsonContent(json: const {})),
+    );
+    if (output is! ToolContentOutput || output.content is! JsonContent) {
+      throw RoomServerException('unexpected return type from mounts.list');
+    }
+    final json = (output.content as JsonContent).json;
+    final volumes = json['volumes'];
+    if (volumes is! List) {
+      throw RoomServerException('unexpected return type from mounts.list');
+    }
+    return volumes.map((item) => MountedVolume.fromJson(Map<String, dynamic>.from(item as Map))).toList();
+  }
+}
+
 class ContainersClient extends ChangeEmitter {
   ContainersClient({required this.room});
 
@@ -2926,6 +3016,7 @@ class RoomContainer {
     required this.state,
     required this.private,
     required this.serviceId,
+    this.mounts,
     this.stats,
     this.exitStatus,
   });
@@ -2938,6 +3029,7 @@ class RoomContainer {
   final String state;
   final bool private;
   final String? serviceId;
+  final ContainerMountSpec? mounts;
   final RoomContainerStats? stats;
   final ContainerExitStatus? exitStatus;
 
@@ -2954,6 +3046,7 @@ class RoomContainer {
       state: json["state"],
       private: json["private"],
       serviceId: json["service_id"],
+      mounts: ContainerMountSpec.fromJson(json["mounts"] == null ? null : Map<String, dynamic>.from(json["mounts"] as Map)),
       stats: statsJson is Map<String, dynamic> ? RoomContainerStats.fromJson(statsJson) : null,
       exitStatus: exitStatusJson is Map<String, dynamic> ? ContainerExitStatus.fromJson(exitStatusJson) : null,
     );
@@ -6836,6 +6929,35 @@ class RoomStorageMountSpec {
   }
 }
 
+class VolumeStorageMountSpec {
+  const VolumeStorageMountSpec({required this.name, required this.path, this.subpath, this.readOnly = false});
+
+  final String name;
+  final String path;
+  final String? subpath;
+  final bool readOnly;
+
+  factory VolumeStorageMountSpec.fromJson(Map<String, dynamic> json) {
+    return VolumeStorageMountSpec(
+      name: json['name'] as String,
+      path: json['path'] as String,
+      subpath: json['subpath'] as String?,
+      readOnly: json['read_only'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'path': path, if (subpath != null) 'subpath': subpath, 'read_only': readOnly};
+
+  VolumeStorageMountSpec copyWith({String? name, String? path, String? subpath, bool? readOnly}) {
+    return VolumeStorageMountSpec(
+      name: name ?? this.name,
+      path: path ?? this.path,
+      subpath: subpath ?? this.subpath,
+      readOnly: readOnly ?? this.readOnly,
+    );
+  }
+}
+
 class ConfigMountSpec {
   final String path;
 
@@ -6859,16 +6981,18 @@ Map<String, dynamic> _jsonObject(dynamic value) {
 /// Wrapper for all storage mounts on a template.
 class ServiceTemplateContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
+  final List<VolumeStorageMountSpec>? volumes;
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
   final List<ConfigMountSpec>? configs;
 
-  ServiceTemplateContainerMountSpec({this.room, this.images, this.files, this.emptyDirs, this.configs});
+  ServiceTemplateContainerMountSpec({this.room, this.volumes, this.images, this.files, this.emptyDirs, this.configs});
 
   factory ServiceTemplateContainerMountSpec.fromJson(Map<String, dynamic> json) {
     return ServiceTemplateContainerMountSpec(
       room: (json['room'] as List<dynamic>?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      volumes: (json['volumes'] as List<dynamic>?)?.map((e) => VolumeStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       images: (json['images'] as List<dynamic>?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       files: (json['files'] as List<dynamic>?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       emptyDirs: (json['empty_dirs'] as List<dynamic>?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
@@ -6878,6 +7002,7 @@ class ServiceTemplateContainerMountSpec {
 
   Map<String, dynamic> toJson() => {
     if (room != null) 'room': room!.map((e) => e.toJson()).toList(),
+    if (volumes != null) 'volumes': volumes!.map((e) => e.toJson()).toList(),
     if (images != null) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
@@ -7662,15 +7787,17 @@ class EmptyDirMountSpec {
 
 class ContainerMountSpec {
   final List<RoomStorageMountSpec>? room;
+  final List<VolumeStorageMountSpec>? volumes;
   final List<ImageStorageMountSpec>? images;
   final List<FileStorageMountSpec>? files;
   final List<EmptyDirMountSpec>? emptyDirs;
   final List<ConfigMountSpec>? configs;
 
-  const ContainerMountSpec({this.room, this.images, this.files, this.emptyDirs, this.configs});
+  const ContainerMountSpec({this.room, this.volumes, this.images, this.files, this.emptyDirs, this.configs});
 
   Map<String, dynamic> toJson() => {
     if (room != null && room!.isNotEmpty) 'room': room!.map((e) => e.toJson()).toList(),
+    if (volumes != null && volumes!.isNotEmpty) 'volumes': volumes!.map((e) => e.toJson()).toList(),
     if (images != null && images!.isNotEmpty) 'images': images!.map((e) => e.toJson()).toList(),
     if (files != null && files!.isNotEmpty) 'files': files!.map((e) => e.toJson()).toList(),
     if (emptyDirs != null && emptyDirs!.isNotEmpty) 'empty_dirs': emptyDirs!.map((e) => e.toJson()).toList(),
@@ -7681,6 +7808,7 @@ class ContainerMountSpec {
     if (json == null) return null;
     return ContainerMountSpec(
       room: (json['room'] as List?)?.map((e) => RoomStorageMountSpec.fromJson(_jsonObject(e))).toList(),
+      volumes: (json['volumes'] as List?)?.map((e) => VolumeStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       images: (json['images'] as List?)?.map((e) => ImageStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       files: (json['files'] as List?)?.map((e) => FileStorageMountSpec.fromJson(_jsonObject(e))).toList(),
       emptyDirs: (json['empty_dirs'] as List?)?.map((e) => EmptyDirMountSpec.fromJson(_jsonObject(e))).toList(),
