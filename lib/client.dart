@@ -425,6 +425,131 @@ class RoomSession {
   };
 }
 
+class PersonalSession {
+  const PersonalSession({
+    required this.id,
+    required this.clientType,
+    required this.createdAt,
+    required this.lastAuthenticatedAt,
+    required this.lastSeenAt,
+    required this.expiresAt,
+    required this.oauthTokenCount,
+    required this.iapSessionCount,
+    required this.current,
+    this.clientName,
+    this.operatingSystem,
+    this.deviceClass,
+    this.friendlyName,
+    this.city,
+    this.region,
+    this.countryCode,
+    this.revokedAt,
+  });
+
+  final String id;
+  final String clientType;
+  final String? clientName;
+  final String? operatingSystem;
+  final String? deviceClass;
+  final String? friendlyName;
+  final String? city;
+  final String? region;
+  final String? countryCode;
+  final DateTime createdAt;
+  final DateTime lastAuthenticatedAt;
+  final DateTime lastSeenAt;
+  final DateTime expiresAt;
+  final DateTime? revokedAt;
+  final int oauthTokenCount;
+  final int iapSessionCount;
+  final bool current;
+
+  factory PersonalSession.fromJson(Map<String, dynamic> json) => PersonalSession(
+    id: json['id'] as String,
+    clientType: json['client_type'] as String,
+    clientName: json['client_name'] as String?,
+    operatingSystem: json['operating_system'] as String?,
+    deviceClass: json['device_class'] as String?,
+    friendlyName: json['friendly_name'] as String?,
+    city: json['city'] as String?,
+    region: json['region'] as String?,
+    countryCode: json['country_code'] as String?,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    lastAuthenticatedAt: DateTime.parse(json['last_authenticated_at'] as String),
+    lastSeenAt: DateTime.parse(json['last_seen_at'] as String),
+    expiresAt: DateTime.parse(json['expires_at'] as String),
+    revokedAt: json['revoked_at'] == null ? null : DateTime.parse(json['revoked_at'] as String),
+    oauthTokenCount: json['oauth_token_count'] as int,
+    iapSessionCount: json['iap_session_count'] as int,
+    current: json['current'] as bool? ?? false,
+  );
+}
+
+class RoomIapSession {
+  const RoomIapSession({
+    required this.id,
+    required this.userId,
+    required this.email,
+    required this.clientType,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.expiresAt,
+    this.firstName,
+    this.lastName,
+    this.clientName,
+    this.operatingSystem,
+    this.deviceClass,
+    this.friendlyName,
+    this.city,
+    this.region,
+    this.countryCode,
+    this.revokedAt,
+  });
+
+  final String id;
+  final String userId;
+  final String? firstName;
+  final String? lastName;
+  final String email;
+  final String clientType;
+  final String? clientName;
+  final String? operatingSystem;
+  final String? deviceClass;
+  final String? friendlyName;
+  final String? city;
+  final String? region;
+  final String? countryCode;
+  final DateTime createdAt;
+  final DateTime lastSeenAt;
+  final DateTime expiresAt;
+  final DateTime? revokedAt;
+
+  factory RoomIapSession.fromJson(Map<String, dynamic> json) => RoomIapSession(
+    id: json['id'] as String,
+    userId: json['user_id'] as String,
+    firstName: json['first_name'] as String?,
+    lastName: json['last_name'] as String?,
+    email: json['email'] as String,
+    clientType: json['client_type'] as String,
+    clientName: json['client_name'] as String?,
+    operatingSystem: json['operating_system'] as String?,
+    deviceClass: json['device_class'] as String?,
+    friendlyName: json['friendly_name'] as String?,
+    city: json['city'] as String?,
+    region: json['region'] as String?,
+    countryCode: json['country_code'] as String?,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    lastSeenAt: DateTime.parse(json['last_seen_at'] as String),
+    expiresAt: DateTime.parse(json['expires_at'] as String),
+    revokedAt: json['revoked_at'] == null ? null : DateTime.parse(json['revoked_at'] as String),
+  );
+
+  String get displayName {
+    final fullName = '${firstName ?? ''} ${lastName ?? ''}'.trim();
+    return fullName.isEmpty ? email : fullName;
+  }
+}
+
 class Balance {
   Balance({
     required this.balance,
@@ -3926,6 +4051,46 @@ class Meshagent {
   }
 
   // In Meshagent
+  Future<List<PersonalSession>> listPersonalSessions() async {
+    final response = await httpClient.get(Uri.parse('$baseUrl/sessions'));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list personal sessions. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final sessions = data['sessions'] as List<dynamic>? ?? const [];
+    return sessions.whereType<Map<String, dynamic>>().map(PersonalSession.fromJson).toList();
+  }
+
+  Future<void> revokePersonalSession(String deviceId) async {
+    final response = await httpClient.delete(Uri.parse('$baseUrl/sessions/${Uri.encodeComponent(deviceId)}'));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to revoke personal session. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
+  Future<List<RoomIapSession>> listRoomIapSessions(String projectId, String roomName) async {
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/${Uri.encodeComponent(projectId)}/rooms/${Uri.encodeComponent(roomName)}/iap-sessions',
+    );
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list room IAP sessions. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final sessions = data['sessions'] as List<dynamic>? ?? const [];
+    return sessions.whereType<Map<String, dynamic>>().map(RoomIapSession.fromJson).toList();
+  }
+
+  Future<void> revokeRoomIapSession(String projectId, String roomName, String sessionId) async {
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/${Uri.encodeComponent(projectId)}/rooms/${Uri.encodeComponent(roomName)}/iap-sessions/${Uri.encodeComponent(sessionId)}',
+    );
+    final response = await httpClient.delete(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to revoke room IAP session. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+  }
+
   /// GET /accounts/projects/{project_id}/sessions
   /// Returns JSON: { "sessions": [ { "room_name", "started_at", "is_active" }, ... ] }
   Future<List<RoomSession>> listActiveSessions(String projectId) async {
@@ -4331,6 +4496,100 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+  }
+
+  Future<List<StorageVolume>> listRoomVolumes({required String projectId, required String roomName}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/volumes');
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room volumes. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return (data['volumes'] as List<dynamic>? ?? const []).whereType<Map<String, dynamic>>().map(StorageVolume.fromJson).toList();
+  }
+
+  Future<StorageVolume> createRoomVolume({
+    required String projectId,
+    required String roomName,
+    required String name,
+    String description = '',
+    Map<String, dynamic>? metadata,
+    String storageClass = 'standard',
+    int? maxSizeMb,
+    Map<String, String>? annotations,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/volumes');
+    final response = await httpClient.post(
+      uri,
+      body: jsonEncode(
+        _jsonMapWithoutNulls({
+          'name': name,
+          'description': description,
+          'metadata': metadata,
+          'storage_class': storageClass,
+          'max_size_mb': maxSizeMb,
+          'annotations': annotations,
+        }),
+      ),
+    );
+    if (response.statusCode == 409) {
+      throw NameInUseException('The storage volume name is already in use');
+    }
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to create room volume. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return StorageVolume.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<StorageVolume> deleteRoomVolume({required String projectId, required String roomName, required String volumeId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final encodedVolumeId = Uri.encodeComponent(volumeId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/rooms/'
+      '$encodedRoomName/volumes/$encodedVolumeId',
+    );
+    final response = await httpClient.delete(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete room volume. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return StorageVolume.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<StorageVolume> expandRoomVolume({
+    required String projectId,
+    required String roomName,
+    required String volumeId,
+    required int maxSizeMb,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(roomName);
+    final encodedVolumeId = Uri.encodeComponent(volumeId);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/rooms/'
+      '$encodedRoomName/volumes/$encodedVolumeId',
+    );
+    final response = await httpClient.patch(uri, body: jsonEncode({'max_size_mb': maxSizeMb}));
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to expand room volume. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return StorageVolume.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<Group> createGroup({
@@ -5260,6 +5519,74 @@ class Room {
   }
 
   Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations};
+}
+
+class StorageVolume {
+  const StorageVolume({
+    required this.id,
+    required this.roomId,
+    required this.name,
+    required this.subpath,
+    required this.description,
+    required this.metadata,
+    required this.annotations,
+    required this.provisioned,
+    required this.createdAt,
+    required this.updatedAt,
+    this.storageClass = 'standard',
+    this.maxSizeMb,
+    this.phase = 'pending',
+    this.reconcileError,
+  });
+
+  final String id;
+  final String roomId;
+  final String name;
+  final String subpath;
+  final String description;
+  final Map<String, dynamic> metadata;
+  final Map<String, String> annotations;
+  final String storageClass;
+  final int? maxSizeMb;
+  final String phase;
+  final bool provisioned;
+  final String? reconcileError;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory StorageVolume.fromJson(Map<String, dynamic> json) => StorageVolume(
+    id: json['id'] as String,
+    roomId: json['room_id'] as String,
+    name: json['name'] as String,
+    subpath: json['subpath'] as String,
+    description: json['description'] as String? ?? '',
+    metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ?? {},
+    annotations: (json['annotations'] as Map?)?.cast<String, String>() ?? {},
+    storageClass: json['storage_class'] as String? ?? 'standard',
+    maxSizeMb: (json['max_size_mb'] as num?)?.toInt(),
+    phase: json['phase'] as String? ?? 'pending',
+    provisioned: json['provisioned'] as bool? ?? false,
+    reconcileError: json['reconcile_error'] as String?,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    updatedAt: DateTime.parse(json['updated_at'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'room_id': roomId,
+    'name': name,
+    'subpath': subpath,
+    'description': description,
+    'metadata': metadata,
+    'annotations': annotations,
+    'storage_class': storageClass,
+    'max_size_mb': maxSizeMb,
+    'phase': phase,
+    'provisioned': provisioned,
+    'reconcile_error': reconcileError,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 }
 
 class RoomsPage {

@@ -128,6 +128,27 @@ class _FakeContainersServer {
     if (type == 'room.invoke_tool') {
       final message = unpackMessage(data);
       final request = message.header;
+      if (request['toolkit'] == 'mounts' && request['tool'] == 'list') {
+        await protocol.send(
+          '__response__',
+          JsonContent(
+            json: {
+              'volumes': [
+                {
+                  'id': 'zero-id',
+                  'name': 'zero',
+                  'required': false,
+                  'consumers': [
+                    {'kind': 'container', 'container_id': 'container-1'},
+                  ],
+                },
+              ],
+            },
+          ).pack(),
+          id: messageId,
+        );
+        return;
+      }
       if (request['toolkit'] != 'containers') {
         return;
       }
@@ -286,6 +307,11 @@ class _FakeContainersServer {
                     'state': 'RUNNING',
                     'private': false,
                     'service_id': null,
+                    'mounts': {
+                      'volumes': [
+                        {'name': 'zero', 'path': '/mnt/zero', 'read_only': false},
+                      ],
+                    },
                     'stats': {
                       'cpu_usage_nano_cores': 125000000,
                       'memory_usage_bytes': 67108864,
@@ -516,12 +542,17 @@ void main() {
     expect(containers.single.imageId, 'sha256:demo');
     expect(containers.single.ports.single.containerPort, 80);
     expect(containers.single.ports.single.hostPort, 8080);
+    expect(containers.single.mounts?.volumes?.single.name, 'zero');
+    expect(containers.single.mounts?.volumes?.single.path, '/mnt/zero');
     expect(containers.single.stats?.cpuUsageNanoCores, 125000000);
     expect(containers.single.stats?.memoryUsageBytes, 67108864);
     expect(containers.single.stats?.memoryWorkingSetBytes, 33554432);
     expect(containers.single.stats?.timestampNs, 1700000000);
     expect(containers.single.exitStatus?.exitCode, 0);
     expect(containers.single.exitStatus?.reason, 'Completed');
+    final mounts = await harness.room.mounts.list();
+    expect(mounts.single.consumers.single.kind, MountedVolumeConsumerKind.container);
+    expect(mounts.single.consumers.single.containerId, 'container-1');
     expect(await harness.room.containers.waitForExit(containerId: 'container-1'), 0);
     final exitStatus = await harness.room.containers.waitForExitStatus(containerId: 'container-1');
     expect(exitStatus.exitCode, 0);
