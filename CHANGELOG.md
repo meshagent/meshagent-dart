@@ -1,3 +1,9 @@
+## [0.48.0]
+- Added Dart client support for device sessions, storage volumes, mounts, and room-server volume operations.
+- Improved repository image listing pagination and room-server client behavior.
+- Reworked Flutter-facing chat and tool rendering so threaded and injected messages preserve order and display correctly.
+- Refreshed shared Dart package dependencies for the new client surface and Builder/desktop-updater integrations.
+
 ## [0.47.1]
 - Added monotonic room-volume expansion to the account client for controller-reconciled capacity changes.
 - Changed room mount discovery to return typed room/container consumers without exposing internal source paths, and added typed container mount specs to listed containers.
