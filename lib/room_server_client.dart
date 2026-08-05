@@ -724,6 +724,7 @@ class RoomClient extends ChangeEmitter {
   _RoomClientTerminalState? _terminalState;
   bool _entered = false;
   bool _closing = false;
+  bool _dismissed = false;
   bool _connected = false;
   bool _allowDisconnectedRequests = false;
   bool _terminalCallbacksInvoked = false;
@@ -1103,7 +1104,7 @@ class RoomClient extends ChangeEmitter {
 
     var firstAttempt = true;
     var retryCount = 0;
-    while (!_closing) {
+    while (!_closing && !_dismissed) {
       if (firstAttempt) {
         firstAttempt = false;
         if (_reconnectTimeout == null) {
@@ -1225,7 +1226,7 @@ class RoomClient extends ChangeEmitter {
 
       final shouldReconnect = closeKind == ProtocolCloseKind.error || closeKind == ProtocolCloseKind.server;
 
-      if (!shouldReconnect) {
+      if (!shouldReconnect || _dismissed) {
         _setTerminalState(state: state);
       }
 
@@ -1236,7 +1237,7 @@ class RoomClient extends ChangeEmitter {
       await _failPendingWork(state: state);
       await _closeProtocol(protocol);
 
-      if (shouldReconnect) {
+      if (shouldReconnect && !_dismissed) {
         final normalizedReason = _normalizeCloseReason(closeReason);
         if (_reconnectTimeout == Duration.zero) {
           if (normalizedReason == null) {
@@ -1265,6 +1266,14 @@ class RoomClient extends ChangeEmitter {
       _invokeTerminalCallbacks(useErrorCallback: false);
       return;
     }
+  }
+
+  void _dismiss() {
+    if (_closing || _dismissed) {
+      return;
+    }
+    _dismissed = true;
+    _protocolInstance.dispose();
   }
 
   static String? _normalizeCloseReason(String? reason) {
@@ -6150,6 +6159,9 @@ class MessagingClient extends ChangeEmitter {
     }
 
     room._eventsController.add(RoomMessageEvent(message: message));
+    if (message.type == 'dismiss') {
+      room._dismiss();
+    }
   }
 
   void _onParticipantEnabled(RoomMessage message) {

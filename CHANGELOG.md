@@ -1,3 +1,6 @@
+## [0.48.1]
+- Stability
+
 ## [0.48.0]
 - Added Dart client support for device sessions, storage volumes, mounts, and room-server volume operations.
 - Improved repository image listing pagination and room-server client behavior.

@@ -16,6 +16,7 @@ class _ProtocolPair {
   final _serverToClient = StreamController<Uint8List>();
   Protocol? _clientProtocol;
   late final Protocol serverProtocol;
+  int clientProtocolFactoryCalls = 0;
 
   Protocol get clientProtocol {
     final protocol = _clientProtocol;
@@ -26,6 +27,7 @@ class _ProtocolPair {
   }
 
   Protocol clientProtocolFactory() {
+    clientProtocolFactoryCalls++;
     if (_clientProtocol != null) {
       throw ProtocolReconnectUnsupportedException('protocolFactory was not configured for reconnecting this protocol');
     }
@@ -332,6 +334,24 @@ void main() {
     expect(roomMessage.fromParticipantId, 'remote-1');
     expect(roomMessage.message, {'text': 'hello'});
     expect(utf8.decode(roomMessage.attachment!), 'hi');
+
+    await harness.dispose();
+  });
+
+  test('dismiss message closes the room without reconnecting', () async {
+    final harness = await _startMessagingHarness();
+    final messageFuture = harness.room.events.firstWhere((event) {
+      return event is RoomMessageEvent && event.message.type == 'dismiss';
+    });
+
+    await harness.server.sendIncomingMessage(harness.pair.serverProtocol, type: 'dismiss', message: const {});
+    final event = await messageFuture.timeout(const Duration(seconds: 1));
+    await harness.room.waitForClose().timeout(const Duration(seconds: 1));
+
+    expect((event as RoomMessageEvent).message.fromParticipantId, 'remote-1');
+    expect(harness.room.isClosed, isTrue);
+    expect(harness.room.isConnected, isFalse);
+    expect(harness.pair.clientProtocolFactoryCalls, 1);
 
     await harness.dispose();
   });
