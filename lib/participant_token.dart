@@ -827,12 +827,12 @@ class ApiScope {
     messaging: MessagingGrant(),
     dataset: DatasetGrant(),
     sqlite: SqliteGrant(),
+    memory: MemoryGrant(),
     sync: SyncGrant(),
     storage: StorageGrant(),
     containers: ContainersGrant(),
     developer: DeveloperGrant(),
     agents: AgentsGrant(),
-    llm: LLMGrant(),
     services: ServicesGrant(),
   );
 
