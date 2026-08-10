@@ -2399,32 +2399,65 @@ class Meshagent {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<void> updateProjectSettings({required String projectId, required Map<String, dynamic> settings}) async {
+  String _projectSettingsDocumentPath(String name) {
+    const paths = {
+      'openai': 'openai',
+      'anthropic': 'anthropic',
+      'otel': 'otel',
+      'admission': 'admission',
+      'room': 'room',
+      'room_roles': 'room-roles',
+    };
+    final path = paths[name];
+    if (path == null) {
+      throw ArgumentError.value(name, 'name', 'Unsupported project settings document');
+    }
+    return path;
+  }
+
+  Future<void> setProjectSettingsDocument({required String projectId, required String name, required Map<String, dynamic> document}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings');
-    final response = await httpClient.put(uri, body: jsonEncode(settings));
+    final path = _projectSettingsDocumentPath(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings/$path');
+    final response = await httpClient.put(uri, body: jsonEncode(document));
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to update secret. '
+        'Failed to set project settings document. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
   }
 
-  Future<Map<String, dynamic>> getProjectSettings({required String projectId}) async {
+  Future<Map<String, dynamic>?> getProjectSettingsDocument({required String projectId, required String name}) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
-    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings');
+    final path = _projectSettingsDocumentPath(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings/$path');
     final response = await httpClient.get(uri);
 
+    if (response.statusCode == 404) return null;
     if (response.statusCode >= 400) {
       throw MeshagentException(
-        'Failed to get project settings. '
+        'Failed to get project settings document. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteProjectSettingsDocument({required String projectId, required String name}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final path = _projectSettingsDocumentPath(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings/$path');
+    final response = await httpClient.delete(uri);
+
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to delete project settings document. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
   }
 
   /// Corresponds to: POST /projects/:project_id/storage/upload
