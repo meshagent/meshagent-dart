@@ -2,6 +2,36 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('route content preserves website options through json', () {
+    final route = RouteSpec(
+      metadata: RouteMetadata(name: 'docs.example.com'),
+      domain: 'docs.example.com',
+      backend: RouteBackend(room: RouteBackendTarget(name: 'docs-room')),
+      paths: [
+        RoutePath(
+          path: '/docs',
+          targetContent: RouteContentSpec(
+            subpath: 'sites/docs',
+            index: true,
+            iap: true,
+            cors: [
+              RouteCorsRule(allowedOrigins: ['https://app.example.com'], allowedHeaders: ['Authorization'], exposeHeaders: ['ETag']),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final restored = RouteSpec.fromJson(route.toJson());
+
+    expect(restored.paths.single.targetPort, isNull);
+    expect(restored.paths.single.targetContent!.subpath, 'sites/docs');
+    expect(restored.paths.single.targetContent!.index, isTrue);
+    expect(restored.paths.single.targetContent!.iap, isTrue);
+    expect(restored.paths.single.targetContent!.compression, 'brotli');
+    expect(restored.paths.single.targetContent!.cors.single.allowedHeaders, ['Authorization']);
+  });
+
   test('token value preserves role through json', () {
     final token = TokenValue(identity: 'TravelAssistant', role: 'agent');
 

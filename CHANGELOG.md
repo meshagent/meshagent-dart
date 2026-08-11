@@ -1,5 +1,6 @@
 ## [0.48.1]
 - Stability
+- Added typed room-content route targets with subpath, CORS, index serving, IAP, and Brotli-by-default compression options.
 
 ## [0.48.0]
 - Added Dart client support for device sessions, storage volumes, mounts, and room-server volume operations.

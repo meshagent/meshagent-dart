@@ -649,7 +649,7 @@ class Route {
 
   String get roomName => spec.backend.room?.name ?? '';
   String get agentName => spec.backend.agent?.name ?? '';
-  String get port => spec.paths.isEmpty ? '' : spec.paths.first.targetPort.toString();
+  String get port => spec.paths.isEmpty ? '' : spec.paths.first.targetPort?.toString() ?? '';
   Map<String, String> get annotations => spec.metadata.annotations;
 
   Map<String, dynamic> toJson() => {'domain': domain, 'spec': spec.toJson()};
@@ -691,22 +691,97 @@ class RouteBackend {
   Map<String, dynamic> toJson() => {if (room != null) 'room': room!.toJson(), if (agent != null) 'agent': agent!.toJson()};
 }
 
+class RouteCorsRule {
+  final List<String> allowedOrigins;
+  final List<String> allowedMethods;
+  final List<String> allowedHeaders;
+  final List<String> exposeHeaders;
+  final int maxAgeSeconds;
+  final bool allowCredentials;
+
+  RouteCorsRule({
+    required this.allowedOrigins,
+    this.allowedMethods = const ['GET', 'HEAD'],
+    this.allowedHeaders = const [],
+    this.exposeHeaders = const [],
+    this.maxAgeSeconds = 3600,
+    this.allowCredentials = false,
+  });
+
+  factory RouteCorsRule.fromJson(Map<String, dynamic> json) => RouteCorsRule(
+    allowedOrigins: (json['allowedOrigins'] as List<dynamic>).cast<String>(),
+    allowedMethods: ((json['allowedMethods'] as List<dynamic>?) ?? const ['GET', 'HEAD']).cast<String>(),
+    allowedHeaders: ((json['allowedHeaders'] as List<dynamic>?) ?? const []).cast<String>(),
+    exposeHeaders: ((json['exposeHeaders'] as List<dynamic>?) ?? const []).cast<String>(),
+    maxAgeSeconds: json['maxAgeSeconds'] as int? ?? 3600,
+    allowCredentials: json['allowCredentials'] as bool? ?? false,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'allowedOrigins': allowedOrigins,
+    'allowedMethods': allowedMethods,
+    'allowedHeaders': allowedHeaders,
+    'exposeHeaders': exposeHeaders,
+    'maxAgeSeconds': maxAgeSeconds,
+    'allowCredentials': allowCredentials,
+  };
+}
+
+class RouteContentSpec {
+  final String subpath;
+  final List<RouteCorsRule> cors;
+  final bool index;
+  final bool iap;
+  final String compression;
+
+  RouteContentSpec({this.subpath = '', this.cors = const [], this.index = false, this.iap = false, this.compression = 'brotli'});
+
+  factory RouteContentSpec.fromJson(Map<String, dynamic> json) => RouteContentSpec(
+    subpath: json['subpath'] as String? ?? '',
+    cors: ((json['cors'] as List<dynamic>?) ?? const [])
+        .whereType<Map>()
+        .map((item) => RouteCorsRule.fromJson(item.cast<String, dynamic>()))
+        .toList(),
+    index: json['index'] as bool? ?? false,
+    iap: json['iap'] as bool? ?? false,
+    compression: json['compression'] as String? ?? 'brotli',
+  );
+
+  Map<String, dynamic> toJson() => {
+    'subpath': subpath,
+    'cors': cors.map((rule) => rule.toJson()).toList(),
+    'index': index,
+    'iap': iap,
+    'compression': compression,
+  };
+}
+
 class RoutePath {
   final String path;
   final String pathType;
   final bool stripPrefix;
-  final Object targetPort;
+  final Object? targetPort;
+  final RouteContentSpec? targetContent;
 
-  RoutePath({this.path = '/', this.pathType = 'prefix', this.stripPrefix = false, required this.targetPort});
+  RoutePath({this.path = '/', this.pathType = 'prefix', this.stripPrefix = false, this.targetPort, this.targetContent})
+    : assert((targetPort == null) != (targetContent == null), 'RoutePath requires exactly one target'),
+      assert(targetContent == null || !stripPrefix, 'content routes always strip the matched route path');
 
   factory RoutePath.fromJson(Map<String, dynamic> json) => RoutePath(
     path: json['path'] as String? ?? '/',
     pathType: json['pathType'] as String? ?? 'prefix',
     stripPrefix: json['stripPrefix'] as bool? ?? false,
-    targetPort: json['targetPort'] as Object,
+    targetPort: json['targetPort'],
+    targetContent: json['targetContent'] is Map ? RouteContentSpec.fromJson((json['targetContent'] as Map).cast<String, dynamic>()) : null,
   );
 
-  Map<String, dynamic> toJson() => {'path': path, 'pathType': pathType, 'stripPrefix': stripPrefix, 'targetPort': targetPort};
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'pathType': pathType,
+    'stripPrefix': stripPrefix,
+    if (targetPort != null) 'targetPort': targetPort,
+    if (targetContent != null) 'targetContent': targetContent!.toJson(),
+  };
 }
 
 class RouteSpec {
