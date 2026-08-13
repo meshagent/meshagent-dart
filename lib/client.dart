@@ -150,6 +150,7 @@ abstract final class ProjectRoles {
   static const llmLoggerInventory = 'llm_logger_inventory';
   static const llmLoggerManager = 'llm_logger_manager';
   static const llmProxyUser = 'llm_proxy_user';
+  static const llmQuotaManager = 'llm_quota_manager';
   static const usageReporter = 'usage_reporter';
   static const billingManager = 'billing_manager';
   static const groupManager = 'group_manager';
@@ -200,6 +201,7 @@ abstract final class ProjectRoles {
     llmLoggerInventory,
     llmLoggerManager,
     llmProxyUser,
+    llmQuotaManager,
     usageReporter,
     billingManager,
     groupManager,
@@ -253,6 +255,7 @@ enum ProjectRole {
   llmLoggerInventory(ProjectRoles.llmLoggerInventory, 'LLM Logger Inventory'),
   llmLoggerManager(ProjectRoles.llmLoggerManager, 'LLM Logger Manager'),
   llmProxyUser(ProjectRoles.llmProxyUser, 'LLM Proxy User'),
+  llmQuotaManager(ProjectRoles.llmQuotaManager, 'LLM Quota Manager'),
   usageReporter(ProjectRoles.usageReporter, 'Usage Reporter'),
   billingManager(ProjectRoles.billingManager, 'Billing Manager'),
   groupManager(ProjectRoles.groupManager, 'Group Manager');
@@ -308,6 +311,7 @@ enum ProjectRole {
     llmLoggerInventory,
     llmLoggerManager,
     llmProxyUser,
+    llmQuotaManager,
     usageReporter,
     billingManager,
     groupManager,
@@ -321,6 +325,63 @@ enum ProjectRole {
     }
     return none;
   }
+}
+
+enum LlmQuotaSubjectType {
+  user('users'),
+  serviceAccount('service-accounts');
+
+  const LlmQuotaSubjectType(this.path);
+
+  final String path;
+}
+
+class LlmQuotaDefaults {
+  const LlmQuotaDefaults({this.userMonthlyQuota, this.serviceAccountMonthlyQuota});
+
+  factory LlmQuotaDefaults.fromJson(Map<String, dynamic> json) => LlmQuotaDefaults(
+    userMonthlyQuota: (json['user_monthly_quota'] as num?)?.toDouble(),
+    serviceAccountMonthlyQuota: (json['service_account_monthly_quota'] as num?)?.toDouble(),
+  );
+
+  final double? userMonthlyQuota;
+  final double? serviceAccountMonthlyQuota;
+}
+
+class LlmQuotaState {
+  const LlmQuotaState({
+    required this.projectId,
+    required this.subjectType,
+    required this.subjectId,
+    required this.monthlyQuota,
+    required this.monthlyQuotaOverride,
+    required this.balance,
+    required this.spent,
+    required this.resetsAt,
+    required this.enabled,
+  });
+
+  factory LlmQuotaState.fromJson(Map<String, dynamic> json) => LlmQuotaState(
+    projectId: json['project_id'] as String,
+    subjectType: json['subject_type'] == 'service_account' ? LlmQuotaSubjectType.serviceAccount : LlmQuotaSubjectType.user,
+    subjectId: json['subject_id'] as String,
+    monthlyQuota: (json['monthly_quota'] as num?)?.toDouble(),
+    monthlyQuotaOverride: (json['monthly_quota_override'] as num?)?.toDouble(),
+    balance: (json['balance'] as num?)?.toDouble(),
+    spent: (json['spent'] as num?)?.toDouble() ?? 0,
+    resetsAt: DateTime.parse(json['resets_at'] as String),
+    enabled: json['enabled'] as bool? ?? true,
+  );
+
+  final String projectId;
+  final LlmQuotaSubjectType subjectType;
+  final String subjectId;
+  final double? monthlyQuota;
+  final double? monthlyQuotaOverride;
+  final double? balance;
+  final double spent;
+  final DateTime resetsAt;
+  final bool enabled;
 }
 
 class AuthProvider {
@@ -2482,6 +2543,7 @@ class Meshagent {
       'admission': 'admission',
       'room': 'room',
       'room_roles': 'room-roles',
+      'router': 'router',
     };
     final path = paths[name];
     if (path == null) {
@@ -2527,6 +2589,7 @@ class Meshagent {
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/settings/$path');
     final response = await httpClient.delete(uri);
 
+    if (response.statusCode == 404) return;
     if (response.statusCode >= 400) {
       throw MeshagentException(
         'Failed to delete project settings document. '
@@ -3369,6 +3432,85 @@ class Meshagent {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data["usage"] as List<dynamic>? ?? [];
     return list.whereType<Map<String, dynamic>>().toList();
+  }
+
+  Future<LlmQuotaState> getCurrentUserLlmProxyQuota(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-proxy/quota');
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to retrieve current user LLM quota. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaState.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LlmQuotaDefaults> getLlmQuotaDefaults(String projectId) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-quotas/defaults');
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get LLM quota defaults. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaDefaults.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LlmQuotaDefaults> setLlmQuotaDefaults(
+    String projectId, {
+    required double? userMonthlyQuota,
+    required double? serviceAccountMonthlyQuota,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-quotas/defaults');
+    final response = await httpClient.put(
+      uri,
+      body: jsonEncode({'user_monthly_quota': userMonthlyQuota, 'service_account_monthly_quota': serviceAccountMonthlyQuota}),
+    );
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to set LLM quota defaults. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaDefaults.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Uri _llmSubjectQuotaUri(String projectId, LlmQuotaSubjectType subjectType, String subjectId, {bool reset = false}) {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedSubjectId = Uri.encodeComponent(subjectId);
+    final suffix = reset ? ':reset' : '';
+    return Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/llm-quotas/${subjectType.path}/$encodedSubjectId$suffix');
+  }
+
+  Future<LlmQuotaState> getLlmSubjectQuota(String projectId, LlmQuotaSubjectType subjectType, String subjectId) async {
+    final response = await httpClient.get(_llmSubjectQuotaUri(projectId, subjectType, subjectId));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get LLM subject quota. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaState.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LlmQuotaState> setLlmSubjectQuota(String projectId, LlmQuotaSubjectType subjectType, String subjectId, double monthlyQuota) async {
+    final response = await httpClient.put(
+      _llmSubjectQuotaUri(projectId, subjectType, subjectId),
+      body: jsonEncode({'monthly_quota': monthlyQuota}),
+    );
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to set LLM subject quota. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaState.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LlmQuotaState> clearLlmSubjectQuota(String projectId, LlmQuotaSubjectType subjectType, String subjectId) async {
+    final response = await httpClient.delete(_llmSubjectQuotaUri(projectId, subjectType, subjectId));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to clear LLM subject quota. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaState.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LlmQuotaState> resetLlmSubjectQuota(String projectId, LlmQuotaSubjectType subjectType, String subjectId) async {
+    final response = await httpClient.post(_llmSubjectQuotaUri(projectId, subjectType, subjectId, reset: true));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to reset LLM subject quota. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return LlmQuotaState.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   /// Corresponds to: GET /accounts/projects
@@ -5185,6 +5327,36 @@ class Meshagent {
     return AgentConnectionInfo.fromJson(jsonDecode(response.body));
   }
 
+  Future<LlmDelegation> connectLlm({
+    required String projectId,
+    required AccessSubject subject,
+    required String maxBudget,
+    List<LlmProvider>? providers,
+    List<String>? models,
+    int? expiresInSeconds,
+  }) async {
+    final uri = Uri.parse('$baseUrl/llm/connect');
+    final providerNames = providers?.map((provider) => provider.wireName).toList();
+    final response = await httpClient.post(
+      uri,
+      headers: {'Meshagent-Project-Id': projectId, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'subject': subject.toJson(),
+        'max_budget': maxBudget,
+        'providers': ?providerNames,
+        'models': ?models,
+        'expires_in_seconds': ?expiresInSeconds,
+      }),
+    );
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to connect LLM delegation. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return LlmDelegation.fromJson((jsonDecode(response.body) as Map).cast<String, dynamic>());
+  }
+
   /// POST /accounts/projects/{project_id}/rooms/{room_name}/connect
   /// Body: {}
   /// Returns { "jwt", "room_name", "project_id", "room_url" } on success.
@@ -5814,7 +5986,7 @@ class AccessSubject {
 
   const AccessSubject({
     required this.type,
-    required this.id,
+    this.id = '',
     this.name,
     this.firstName,
     this.lastName,
@@ -5826,7 +5998,7 @@ class AccessSubject {
   factory AccessSubject.fromJson(Map<String, dynamic> json) {
     return AccessSubject(
       type: json['type'] as String,
-      id: json['id'] as String,
+      id: json['id'] as String? ?? '',
       name: json['name'] as String?,
       firstName: json['first_name'] as String?,
       lastName: json['last_name'] as String?,
@@ -5838,7 +6010,7 @@ class AccessSubject {
 
   Map<String, dynamic> toJson() => {
     'type': type,
-    'id': id,
+    if (id.isNotEmpty) 'id': id,
     if (name != null) 'name': name,
     if (firstName != null) 'first_name': firstName,
     if (lastName != null) 'last_name': lastName,
@@ -5846,6 +6018,49 @@ class AccessSubject {
     if (objectType != null) 'object_type': objectType,
     if (relation != null) 'relation': relation,
   };
+}
+
+enum LlmProvider {
+  openai,
+  anthropic;
+
+  String get wireName => name;
+}
+
+class LlmDelegation {
+  const LlmDelegation({
+    required this.id,
+    required this.token,
+    required this.expiresAt,
+    required this.projectId,
+    required this.delegator,
+    required this.subject,
+    required this.maxBudget,
+    this.providers,
+    this.models,
+  });
+
+  factory LlmDelegation.fromJson(Map<String, dynamic> json) => LlmDelegation(
+    id: json['id'] as String,
+    token: json['token'] as String,
+    expiresAt: DateTime.parse(json['expires_at'] as String),
+    projectId: json['project_id'] as String,
+    delegator: AccessSubject.fromJson((json['delegator'] as Map).cast<String, dynamic>()),
+    subject: AccessSubject.fromJson((json['subject'] as Map).cast<String, dynamic>()),
+    maxBudget: json['max_budget'] as String,
+    providers: (json['providers'] as List?)?.whereType<String>().map((value) => LlmProvider.values.byName(value)).toList(),
+    models: (json['models'] as List?)?.whereType<String>().toList(),
+  );
+
+  final String id;
+  final String token;
+  final DateTime expiresAt;
+  final String projectId;
+  final AccessSubject delegator;
+  final AccessSubject subject;
+  final List<LlmProvider>? providers;
+  final List<String>? models;
+  final String maxBudget;
 }
 
 class AccessResource {

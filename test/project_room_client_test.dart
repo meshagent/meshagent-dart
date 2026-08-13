@@ -6,6 +6,72 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('connectLlm accepts service account email and parses capped delegation', () async {
+    http.Request? captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        jsonEncode({
+          'id': 'delegation-1',
+          'token': 'delegation-token',
+          'expires_at': '2026-08-13T19:00:00Z',
+          'project_id': 'proj_123',
+          'delegator': {'type': 'user', 'id': 'user-1'},
+          'subject': {'type': 'service_account', 'id': 'service-account-1', 'email': 'assistant@service.demo.api.meshagent.com'},
+          'providers': ['openai'],
+          'models': ['openai/gpt-5'],
+          'max_budget': '1.25',
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final delegation = await meshagent.connectLlm(
+      projectId: 'proj_123',
+      subject: const AccessSubject(type: 'service_account', email: 'assistant@service.demo.api.meshagent.com'),
+      maxBudget: '2',
+      providers: const [LlmProvider.openai],
+      models: const ['openai/gpt-5'],
+      expiresInSeconds: 900,
+    );
+
+    expect(delegation.maxBudget, '1.25');
+    expect(delegation.subject.email, 'assistant@service.demo.api.meshagent.com');
+    expect(captured?.method, 'POST');
+    expect(captured?.url.toString(), 'http://example.test/llm/connect');
+    expect(captured?.headers['Meshagent-Project-Id'], 'proj_123');
+    expect(jsonDecode(captured!.body), {
+      'subject': {'type': 'service_account', 'email': 'assistant@service.demo.api.meshagent.com'},
+      'max_budget': '2',
+      'providers': ['openai'],
+      'models': ['openai/gpt-5'],
+      'expires_in_seconds': 900,
+    });
+  });
+
+  test('IAM methods accept group email locators without an id', () async {
+    Map<String, dynamic>? body;
+    final client = MockClient((request) async {
+      body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(jsonEncode({'allowed': true, 'relation': 'can_use'}), 200);
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    await meshagent.testAccess(
+      projectId: 'proj_123',
+      subject: const AccessSubject(type: 'group', email: 'operators@group.demo.api.meshagent.com'),
+      resource: const AccessResource(type: 'room', id: 'room-1'),
+      relation: 'can_use',
+    );
+
+    expect(body, {
+      'subject': {'type': 'group', 'email': 'operators@group.demo.api.meshagent.com'},
+      'resource': {'type': 'room', 'id': 'room-1'},
+      'relation': 'can_use',
+    });
+  });
+
   test('getProjectByKey requests the project key endpoint', () async {
     final requests = <String>[];
     final client = MockClient((request) async {
