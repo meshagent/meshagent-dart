@@ -354,6 +354,7 @@ void main() {
   for (final handshakeStatus in const [
     _HandshakeStatus(statusCode: 403, statusText: 'Forbidden'),
     _HandshakeStatus(statusCode: 404, statusText: 'Not Found'),
+    _HandshakeStatus(statusCode: 423, statusText: 'This room is currently disabled.'),
   ]) {
     test('start does not retry websocket handshake status ${handshakeStatus.statusCode}', () async {
       var protocolFactoryCalls = 0;

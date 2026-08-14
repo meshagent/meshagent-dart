@@ -115,6 +115,50 @@ void main() {
     expect(body, isNot(contains('permissions')));
   });
 
+  test('Room maps enabled state and defaults older payloads to enabled', () {
+    final enabled = Room.fromJson({'id': 'room-1', 'name': 'demo', 'metadata': {}, 'annotations': {}});
+    final disabled = Room.fromJson({'id': 'room-2', 'name': 'paused', 'metadata': {}, 'annotations': {}, 'enabled': false});
+
+    expect(enabled.enabled, isTrue);
+    expect(disabled.enabled, isFalse);
+    expect(disabled.toJson()['enabled'], isFalse);
+  });
+
+  test('updateRoom serializes enabled state', () async {
+    Map<String, dynamic>? body;
+    final client = MockClient((request) async {
+      body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response('{}', 200);
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    await meshagent.updateRoom(projectId: 'proj_123', roomId: 'room-1', name: 'demo', enabled: false);
+
+    expect(body, {'name': 'demo', 'enabled': false});
+  });
+
+  test('connectRoom exposes a typed disabled error', () async {
+    final client = MockClient(
+      (_) async => http.Response(
+        jsonEncode({
+          'error': {'code': 'room_disabled', 'message': 'This room is currently disabled.'},
+        }),
+        423,
+      ),
+    );
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    expect(
+      () => meshagent.connectRoom(projectId: 'proj_123', roomName: 'demo'),
+      throwsA(
+        isA<RoomDisabledException>()
+            .having((error) => error.statusCode, 'statusCode', 423)
+            .having((error) => error.errorCode, 'errorCode', 'room_disabled')
+            .having((error) => error.displayMessage, 'displayMessage', 'This room is currently disabled.'),
+      ),
+    );
+  });
+
   test('listRooms sends view query when provided', () async {
     final requests = <String>[];
     final client = MockClient((request) async {

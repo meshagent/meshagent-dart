@@ -4719,11 +4719,15 @@ class Meshagent {
     required String name,
     Map<String, dynamic>? metadata,
     Map<String, String>? annotations,
+    bool? enabled,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedRoomId = Uri.encodeComponent(roomId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomId');
-    final response = await httpClient.put(uri, body: jsonEncode({'name': name, 'metadata': metadata, 'annotations': annotations}));
+    final response = await httpClient.put(
+      uri,
+      body: jsonEncode(_jsonMapWithoutNulls({'name': name, 'metadata': metadata, 'annotations': annotations, 'enabled': enabled})),
+    );
 
     if (response.statusCode >= 400) {
       throw MeshagentException(
@@ -5367,6 +5371,14 @@ class Meshagent {
     final response = await httpClient.post(uri, body: jsonEncode({"client": client}));
 
     if (response.statusCode >= 400) {
+      final parsed = _parseErrorResponseBody(response.body);
+      if (response.statusCode == 423 || parsed.code == 'room_disabled') {
+        throw RoomDisabledException(
+          parsed.message ?? 'This room is currently disabled.',
+          statusCode: response.statusCode,
+          errorCode: parsed.code ?? 'room_disabled',
+        );
+      }
       if (response.statusCode == 404) {
         throw NotFoundException('Room not found');
       }
@@ -5782,12 +5794,13 @@ String resourceRoleFromApiScope(ApiScope scope) {
 }
 
 class Room {
-  const Room({required this.name, required this.id, required this.metadata, required this.annotations});
+  const Room({required this.name, required this.id, required this.metadata, required this.annotations, this.enabled = true});
 
   final String name;
   final String id;
   final Map<String, dynamic> metadata;
   final Map<String, String> annotations;
+  final bool enabled;
 
   static Room fromJson(Map<String, dynamic> json) {
     return Room(
@@ -5795,10 +5808,11 @@ class Room {
       name: json["name"],
       metadata: (json["metadata"] as Map?)?.cast<String, dynamic>() ?? {},
       annotations: (json["annotations"] as Map?)?.cast<String, String>() ?? {},
+      enabled: json["enabled"] as bool? ?? true,
     );
   }
 
-  Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations};
+  Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations, "enabled": enabled};
 }
 
 class StorageVolume {
@@ -6404,6 +6418,10 @@ class NotFoundException extends MeshagentException {
 
 class NameInUseException extends MeshagentException {
   NameInUseException(super.message);
+}
+
+class RoomDisabledException extends MeshagentException {
+  RoomDisabledException(super.message, {super.statusCode, super.errorCode});
 }
 
 class ForbiddenException extends MeshagentException {

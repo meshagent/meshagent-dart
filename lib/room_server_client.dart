@@ -37,6 +37,7 @@ String _websocketConnectFailureMessage(int statusCode) {
   final statusText = switch (statusCode) {
     403 => 'Forbidden',
     404 => 'Not Found',
+    423 => 'This room is currently disabled.',
     408 => 'Request Timeout',
     429 => 'Too Many Requests',
     502 => 'Bad Gateway',
@@ -78,7 +79,7 @@ RoomServerException _wrapRoomConnectionError(Object? error) {
 }
 
 String? _nonRetryableConnectFailureReason(Object error) {
-  if (error is RoomServerException && (error.statusCode == 403 || error.statusCode == 404)) {
+  if (error is RoomServerException && (error.statusCode == 403 || error.statusCode == 404 || error.statusCode == 423)) {
     final normalizedMessage = error.message.trim();
     if (normalizedMessage.isNotEmpty) {
       return normalizedMessage;
