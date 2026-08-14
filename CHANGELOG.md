@@ -1,3 +1,6 @@
+## [0.49.1]
+- Stability
+
 ## [0.49.0]
 - Breaking: `createProject` no longer accepts inline settings; project settings are now document-based (`get/set/delete`) with `room_roles` support.
 - Route path models now support either a service port or room-content target, with CORS, index, IAP, and compression options, and require exactly one target.
