@@ -1,3 +1,6 @@
+## [0.49.1]
+- Stability
+
 ## [0.49.0]
 - Added typed service enable/disable state with backward-compatible enabled defaults.
 - Breaking: `createProject` no longer accepts inline settings; project settings are now document-based (`get/set/delete`) with `room_roles` support.
