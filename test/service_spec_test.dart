@@ -2,6 +2,26 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('service enabled state defaults true and round trips disabled', () {
+    final legacy = ServiceSpec.fromJson({
+      'version': 'v1',
+      'kind': 'Service',
+      'metadata': {'name': 'legacy'},
+    });
+    final disabled = ServiceSpec.fromJson({
+      'version': 'v1',
+      'kind': 'Service',
+      'enabled': false,
+      'metadata': {'name': 'paused'},
+    });
+
+    expect(legacy.enabled, isTrue);
+    expect(legacy.toJson()['enabled'], isTrue);
+    expect(disabled.enabled, isFalse);
+    expect(disabled.copyWith(enabled: true).enabled, isTrue);
+    expect(disabled.toJson()['enabled'], isFalse);
+  });
+
   test('route content preserves website options through json', () {
     final route = RouteSpec(
       metadata: RouteMetadata(name: 'docs.example.com'),

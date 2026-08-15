@@ -1,4 +1,5 @@
 ## [0.49.0]
+- Added typed service enable/disable state with backward-compatible enabled defaults.
 - Breaking: `createProject` no longer accepts inline settings; project settings are now document-based (`get/set/delete`) with `room_roles` support.
 - Route path models now support either a service port or room-content target, with CORS, index, IAP, and compression options, and require exactly one target.
 - `RoomRole` now includes `guest`, and missing project-settings documents return `null`.

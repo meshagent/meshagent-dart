@@ -8094,6 +8094,7 @@ class ServiceSpec {
   final ServiceMetadata metadata;
   final Kind kind; // Literal["Service"]
   final String? id;
+  final bool enabled;
   final List<PortSpec> ports;
 
   final ContainerSpec? container;
@@ -8104,6 +8105,7 @@ class ServiceSpec {
     required this.metadata,
     this.kind = Kind.service,
     this.id,
+    this.enabled = true,
     List<PortSpec>? ports,
     this.container,
     this.external,
@@ -8117,6 +8119,7 @@ class ServiceSpec {
     'version': _versionToString(version),
     'kind': _kindToString(kind),
     if (id != null) 'id': id,
+    'enabled': enabled,
     'metadata': metadata.toJson(),
 
     if (container != null) 'container': container?.toJson(),
@@ -8135,6 +8138,7 @@ class ServiceSpec {
       version: _versionFromString(json['version'] as String?),
       kind: _kindFromString(json['kind'] as String?),
       id: json['id'] as String?,
+      enabled: json['enabled'] as bool? ?? true,
       metadata: ServiceMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
       ports: (json['ports'] as List?)?.map((e) => PortSpec.fromJson(e as Map<String, dynamic>)).toList() ?? const <PortSpec>[],
       agents: (json['agents'] as List?)?.map((e) => AgentSpec.fromJson(e as Map<String, dynamic>)).toList() ?? const <AgentSpec>[],
@@ -8149,6 +8153,7 @@ class ServiceSpec {
     ServiceMetadata? metadata,
     Kind? kind,
     String? id,
+    bool? enabled,
     List<PortSpec>? ports,
     List<AgentSpec>? agents,
     ContainerSpec? container,
@@ -8159,6 +8164,7 @@ class ServiceSpec {
       metadata: metadata ?? this.metadata,
       kind: kind ?? this.kind,
       id: id ?? this.id,
+      enabled: enabled ?? this.enabled,
       ports: ports ?? List<PortSpec>.from(this.ports),
       agents: agents ?? List<AgentSpec>.from(this.agents),
       container: external != null ? null : container ?? this.container,
