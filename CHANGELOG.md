@@ -1,3 +1,9 @@
+## [0.50.0]
+- The Dart client now exposes `connectLlm`, LLM quota defaults and state, `llm_quota_manager`, and room and service `enabled` state.
+- Room connections now surface a dedicated disabled-room error, and access subjects can be serialized without synthetic IDs.
+- Chat clients can request per-turn LLM authorization via a provider callback, reject expired tokens, and keep attachment-only content in thread ordering.
+- Flutter chat widgets now support attachment-aware save flows, custom message options, markdown and link handlers, and richer file and image previews.
+
 ## [0.49.1]
 - Stability
 
