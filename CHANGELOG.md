@@ -1,3 +1,6 @@
+## [0.50.1]
+- Flutter developer-console launches now inject Anthropic, Grok, and XAI API keys alongside the existing OpenAI and Meshagent tokens so agent containers can talk to every supported provider.
+
 ## [0.50.0]
 - The Dart client now exposes `connectLlm`, LLM quota defaults and state, `llm_quota_manager`, and room and service `enabled` state.
 - Room connections now surface a dedicated disabled-room error, and access subjects can be serialized without synthetic IDs.
