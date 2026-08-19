@@ -5880,7 +5880,6 @@ class RoomLifecycleEvent {
     required this.roomName,
     required this.type,
     required this.message,
-    required this.data,
     required this.createdAt,
     this.sessionId,
     this.severity,
@@ -5892,7 +5891,6 @@ class RoomLifecycleEvent {
   final String type;
   final String message;
   final String? severity;
-  final Map<String, dynamic> data;
   final DateTime createdAt;
 
   factory RoomLifecycleEvent.fromJson(Map<String, dynamic> json) => RoomLifecycleEvent(
@@ -5902,7 +5900,6 @@ class RoomLifecycleEvent {
     type: json['type'] as String,
     message: json['message'] as String,
     severity: json['severity'] as String?,
-    data: (json['data'] as Map?)?.cast<String, dynamic>() ?? const {},
     createdAt: DateTime.parse(json['created_at'] as String),
   );
 }

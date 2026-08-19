@@ -164,7 +164,7 @@ void main() {
               'type': 'room.lifecycle.start.failed',
               'message': 'No RoomServer was available',
               'severity': 'ERROR',
-              'data': {'reason': 'room pool is full'},
+              'data': {'reason': 'room pool is full', 'code.line.number': 255},
               'created_at': '2026-08-19T18:00:00Z',
             },
           ],
@@ -177,8 +177,7 @@ void main() {
     final events = await meshagent.listRoomEvents(projectId: 'proj_123', name: 'demo', limit: 25);
 
     expect(events.single.type, 'room.lifecycle.start.failed');
-    expect(events.single.data, {'reason': 'room pool is full'});
-    expect(events.single.data, isNot(contains('service_name')));
+    expect(events.single.message, 'No RoomServer was available');
   });
 
   test('connectRoom exposes a typed disabled error', () async {
