@@ -4711,6 +4711,49 @@ class Meshagent {
     return Room.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  /// GET /accounts/projects/{project_id}/rooms/{room_name}/status
+  Future<RoomRuntimeStatus> getRoomStatus({required String projectId, required String name}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(name);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/status');
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('room not found');
+    }
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get room status. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    return RoomRuntimeStatus.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// GET /accounts/projects/{project_id}/rooms/{room_name}/events
+  Future<List<RoomLifecycleEvent>> listRoomEvents({required String projectId, required String name, int limit = 100}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedRoomName = Uri.encodeComponent(name);
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/rooms/$encodedRoomName/events',
+    ).replace(queryParameters: {'limit': '$limit'});
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 404) {
+      throw NotFoundException('room not found');
+    }
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list room events. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    return (payload['events'] as List<dynamic>? ?? const []).whereType<Map<String, dynamic>>().map(RoomLifecycleEvent.fromJson).toList();
+  }
+
   /// PUT /accounts/projects/{project_id}/rooms/{room_id}
   /// Body: { "name": "new name" }
   Future<void> updateRoom({
@@ -5813,6 +5856,55 @@ class Room {
   }
 
   Map<String, dynamic> toJson() => {"name": name, "id": id, "metadata": metadata, "annotations": annotations, "enabled": enabled};
+}
+
+class RoomRuntimeStatus {
+  const RoomRuntimeStatus({required this.status, this.allocatedAt, this.runningForSeconds});
+
+  final String status;
+  final DateTime? allocatedAt;
+  final int? runningForSeconds;
+
+  bool get isAllocated => status == 'Allocated';
+
+  factory RoomRuntimeStatus.fromJson(Map<String, dynamic> json) => RoomRuntimeStatus(
+    status: json['status'] as String,
+    allocatedAt: json['allocated_at'] == null ? null : DateTime.parse(json['allocated_at'] as String),
+    runningForSeconds: (json['running_for_seconds'] as num?)?.toInt(),
+  );
+}
+
+class RoomLifecycleEvent {
+  const RoomLifecycleEvent({
+    required this.id,
+    required this.roomName,
+    required this.type,
+    required this.message,
+    required this.data,
+    required this.createdAt,
+    this.sessionId,
+    this.severity,
+  });
+
+  final String id;
+  final String roomName;
+  final String? sessionId;
+  final String type;
+  final String message;
+  final String? severity;
+  final Map<String, dynamic> data;
+  final DateTime createdAt;
+
+  factory RoomLifecycleEvent.fromJson(Map<String, dynamic> json) => RoomLifecycleEvent(
+    id: json['id'] as String,
+    roomName: json['room_name'] as String,
+    sessionId: json['session_id'] as String?,
+    type: json['type'] as String,
+    message: json['message'] as String,
+    severity: json['severity'] as String?,
+    data: (json['data'] as Map?)?.cast<String, dynamic>() ?? const {},
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
 }
 
 class StorageVolume {

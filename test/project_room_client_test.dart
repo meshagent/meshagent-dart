@@ -137,6 +137,50 @@ void main() {
     expect(body, {'name': 'demo', 'enabled': false});
   });
 
+  test('getRoomStatus returns allocation time instead of pod age', () async {
+    final client = MockClient((request) async {
+      expect(request.url.toString(), 'http://example.test/accounts/projects/proj_123/rooms/demo/status');
+      return http.Response(jsonEncode({'status': 'Allocated', 'allocated_at': '2026-08-19T18:00:00Z', 'running_for_seconds': 42}), 200);
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final status = await meshagent.getRoomStatus(projectId: 'proj_123', name: 'demo');
+
+    expect(status.isAllocated, isTrue);
+    expect(status.allocatedAt, DateTime.utc(2026, 8, 19, 18));
+    expect(status.runningForSeconds, 42);
+  });
+
+  test('listRoomEvents returns typed lifecycle diagnostics without service names', () async {
+    final client = MockClient((request) async {
+      expect(request.url.toString(), 'http://example.test/accounts/projects/proj_123/rooms/demo/events?limit=25');
+      return http.Response(
+        jsonEncode({
+          'events': [
+            {
+              'id': 'event-1',
+              'room_name': 'demo',
+              'session_id': 'session-1',
+              'type': 'room.lifecycle.start.failed',
+              'message': 'No RoomServer was available',
+              'severity': 'ERROR',
+              'data': {'reason': 'room pool is full'},
+              'created_at': '2026-08-19T18:00:00Z',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+
+    final events = await meshagent.listRoomEvents(projectId: 'proj_123', name: 'demo', limit: 25);
+
+    expect(events.single.type, 'room.lifecycle.start.failed');
+    expect(events.single.data, {'reason': 'room pool is full'});
+    expect(events.single.data, isNot(contains('service_name')));
+  });
+
   test('connectRoom exposes a typed disabled error', () async {
     final client = MockClient(
       (_) async => http.Response(
