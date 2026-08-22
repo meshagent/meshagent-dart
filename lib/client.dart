@@ -696,6 +696,147 @@ class MailboxesPage {
   }
 }
 
+class MailboxDelivery {
+  MailboxDelivery({
+    required this.id,
+    required this.submissionId,
+    required this.recipient,
+    required this.messageId,
+    required this.status,
+    required this.submittedAt,
+    required this.statusAt,
+    required this.attemptCount,
+    this.smtpCode,
+    this.enhancedSmtpCode,
+    this.reason,
+    this.description,
+    this.mxHost,
+    this.tls,
+    this.certificateVerified,
+  });
+
+  final String id;
+  final String submissionId;
+  final String recipient;
+  final String messageId;
+  final String status;
+  final DateTime submittedAt;
+  final DateTime statusAt;
+  final int attemptCount;
+  final int? smtpCode;
+  final String? enhancedSmtpCode;
+  final String? reason;
+  final String? description;
+  final String? mxHost;
+  final bool? tls;
+  final bool? certificateVerified;
+
+  factory MailboxDelivery.fromJson(Map<String, dynamic> json) => MailboxDelivery(
+    id: json['id'] as String,
+    submissionId: json['submission_id'] as String,
+    recipient: json['recipient'] as String,
+    messageId: json['message_id'] as String,
+    status: json['status'] as String,
+    submittedAt: DateTime.parse(json['submitted_at'] as String),
+    statusAt: DateTime.parse(json['status_at'] as String),
+    attemptCount: _parseInt(json['attempt_count']),
+    smtpCode: json['smtp_code'] == null ? null : _parseInt(json['smtp_code']),
+    enhancedSmtpCode: json['enhanced_smtp_code'] as String?,
+    reason: json['reason'] as String?,
+    description: json['description'] as String?,
+    mxHost: json['mx_host'] as String?,
+    tls: json['tls'] as bool?,
+    certificateVerified: json['certificate_verified'] as bool?,
+  );
+}
+
+class MailboxDeliveriesPage {
+  MailboxDeliveriesPage({required this.deliveries, required this.total});
+
+  final List<MailboxDelivery> deliveries;
+  final int total;
+
+  factory MailboxDeliveriesPage.fromJson(Map<String, dynamic> json) {
+    final deliveries = (json['deliveries'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(MailboxDelivery.fromJson)
+        .toList();
+    return MailboxDeliveriesPage(deliveries: deliveries, total: json.containsKey('total') ? _parseInt(json['total']) : deliveries.length);
+  }
+}
+
+class MailboxDeliveryEvent {
+  MailboxDeliveryEvent({
+    required this.id,
+    required this.deliveryId,
+    required this.provider,
+    required this.providerEventId,
+    required this.eventType,
+    required this.status,
+    required this.occurredAt,
+    required this.receivedAt,
+    this.attemptNo,
+    this.smtpCode,
+    this.enhancedSmtpCode,
+    this.reason,
+    this.description,
+    this.mxHost,
+    this.tls,
+    this.certificateVerified,
+  });
+
+  final String id;
+  final String deliveryId;
+  final String provider;
+  final String providerEventId;
+  final String eventType;
+  final String status;
+  final DateTime occurredAt;
+  final DateTime receivedAt;
+  final int? attemptNo;
+  final int? smtpCode;
+  final String? enhancedSmtpCode;
+  final String? reason;
+  final String? description;
+  final String? mxHost;
+  final bool? tls;
+  final bool? certificateVerified;
+
+  factory MailboxDeliveryEvent.fromJson(Map<String, dynamic> json) => MailboxDeliveryEvent(
+    id: json['id'] as String,
+    deliveryId: json['delivery_id'] as String,
+    provider: json['provider'] as String,
+    providerEventId: json['provider_event_id'] as String,
+    eventType: json['event_type'] as String,
+    status: json['status'] as String,
+    occurredAt: DateTime.parse(json['occurred_at'] as String),
+    receivedAt: DateTime.parse(json['received_at'] as String),
+    attemptNo: json['attempt_no'] == null ? null : _parseInt(json['attempt_no']),
+    smtpCode: json['smtp_code'] == null ? null : _parseInt(json['smtp_code']),
+    enhancedSmtpCode: json['enhanced_smtp_code'] as String?,
+    reason: json['reason'] as String?,
+    description: json['description'] as String?,
+    mxHost: json['mx_host'] as String?,
+    tls: json['tls'] as bool?,
+    certificateVerified: json['certificate_verified'] as bool?,
+  );
+}
+
+class MailboxDeliveryEventsPage {
+  MailboxDeliveryEventsPage({required this.events, required this.total});
+
+  final List<MailboxDeliveryEvent> events;
+  final int total;
+
+  factory MailboxDeliveryEventsPage.fromJson(Map<String, dynamic> json) {
+    final events = (json['events'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(MailboxDeliveryEvent.fromJson)
+        .toList();
+    return MailboxDeliveryEventsPage(events: events, total: json.containsKey('total') ? _parseInt(json['total']) : events.length);
+  }
+}
+
 class Route {
   final String domain;
   final RouteSpec spec;
@@ -1640,6 +1781,75 @@ class Meshagent {
   }) async {
     final page = await listRoomMailboxesPage(projectId: projectId, roomName: roomName, count: count, offset: offset, filter: filter);
     return page.mailboxes;
+  }
+
+  Future<MailboxDeliveriesPage> listMailboxDeliveries({
+    required String projectId,
+    required String address,
+    int count = 100,
+    int offset = 0,
+    String? status,
+    String? recipient,
+    String? messageId,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAddress = Uri.encodeComponent(address);
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    if (status != null && status.trim().isNotEmpty) query['status'] = status;
+    if (recipient != null && recipient.trim().isNotEmpty) query['recipient'] = recipient;
+    if (messageId != null && messageId.trim().isNotEmpty) query['message_id'] = messageId;
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress/deliveries',
+    ).replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list mailbox deliveries. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return MailboxDeliveriesPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<MailboxDelivery> getMailboxDelivery({required String projectId, required String address, required String deliveryId}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAddress = Uri.encodeComponent(address);
+    final encodedDeliveryId = Uri.encodeComponent(deliveryId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress/deliveries/$encodedDeliveryId');
+    final response = await httpClient.get(uri);
+    if (response.statusCode == 404) throw NotFoundException('Mailbox delivery not found: $deliveryId');
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to get mailbox delivery. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return MailboxDelivery.fromJson(data['delivery'] as Map<String, dynamic>);
+  }
+
+  Future<MailboxDeliveryEventsPage> listMailboxDeliveryEvents({
+    required String projectId,
+    required String address,
+    required String deliveryId,
+    int count = 100,
+    int offset = 0,
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedAddress = Uri.encodeComponent(address);
+    final encodedDeliveryId = Uri.encodeComponent(deliveryId);
+    final query = <String, String>{'count': '$count', 'offset': '$offset'};
+    final uri = Uri.parse(
+      '$baseUrl/accounts/projects/$encodedProjectId/mailboxes/$encodedAddress/deliveries/$encodedDeliveryId/events',
+    ).replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException(
+        'Failed to list mailbox delivery events. '
+        'Status code: ${response.statusCode}, body: ${response.body}',
+      );
+    }
+    return MailboxDeliveryEventsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   /// DELETE /accounts/projects/{project_id}/mailboxes/{address}
