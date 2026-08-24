@@ -1,3 +1,8 @@
+## [0.51.0]
+- Dart clients now expose stable room lifecycle diagnostics and mailbox delivery tracking, with matching public test coverage.
+- Flutter-facing Dart packages switched the web code editor to Lapce, upgraded the editor/runtime stack, and removed runtime font dependencies from Flutter builds.
+- Dependency updates include `livekit_client 2.10.0`, `lapce_editor_flutter 0.1.1`, and `super_drag_and_drop`/`super_clipboard`/`super_native_extensions 0.10.0-dev.2`; `meshagent-flutter-shadcn` now requires Dart `^3.12.0`.
+
 ## [0.50.1]
 - Flutter developer-console launches now inject Anthropic, Grok, and XAI API keys alongside the existing OpenAI and Meshagent tokens so agent containers can talk to every supported provider.
 
