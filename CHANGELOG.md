@@ -1,3 +1,6 @@
+## [0.51.1]
+- Stability
+
 ## [0.51.0]
 - Dart clients now expose stable room lifecycle diagnostics and mailbox delivery tracking, with matching public test coverage.
 - Flutter-facing Dart packages switched the web code editor to Lapce, upgraded the editor/runtime stack, and removed runtime font dependencies from Flutter builds.
