@@ -931,15 +931,24 @@ class RouteCorsRule {
 
 class RouteContentSpec {
   final String subpath;
+  final String? notFound;
   final List<RouteCorsRule> cors;
   final bool index;
   final bool iap;
   final String compression;
 
-  RouteContentSpec({this.subpath = '', this.cors = const [], this.index = false, this.iap = false, this.compression = 'brotli'});
+  RouteContentSpec({
+    this.subpath = '',
+    this.notFound,
+    this.cors = const [],
+    this.index = false,
+    this.iap = false,
+    this.compression = 'brotli',
+  });
 
   factory RouteContentSpec.fromJson(Map<String, dynamic> json) => RouteContentSpec(
     subpath: json['subpath'] as String? ?? '',
+    notFound: json['notFound'] as String?,
     cors: ((json['cors'] as List<dynamic>?) ?? const [])
         .whereType<Map>()
         .map((item) => RouteCorsRule.fromJson(item.cast<String, dynamic>()))
@@ -951,6 +960,7 @@ class RouteContentSpec {
 
   Map<String, dynamic> toJson() => {
     'subpath': subpath,
+    if (notFound != null) 'notFound': notFound,
     'cors': cors.map((rule) => rule.toJson()).toList(),
     'index': index,
     'iap': iap,
@@ -964,10 +974,12 @@ class RoutePath {
   final bool stripPrefix;
   final Object? targetPort;
   final RouteContentSpec? targetContent;
+  final String? unavailable;
 
-  RoutePath({this.path = '/', this.pathType = 'prefix', this.stripPrefix = false, this.targetPort, this.targetContent})
+  RoutePath({this.path = '/', this.pathType = 'prefix', this.stripPrefix = false, this.targetPort, this.targetContent, this.unavailable})
     : assert((targetPort == null) != (targetContent == null), 'RoutePath requires exactly one target'),
-      assert(targetContent == null || !stripPrefix, 'content routes always strip the matched route path');
+      assert(targetContent == null || !stripPrefix, 'content routes always strip the matched route path'),
+      assert(targetContent == null || unavailable == null, 'unavailable is supported only for service paths');
 
   factory RoutePath.fromJson(Map<String, dynamic> json) => RoutePath(
     path: json['path'] as String? ?? '/',
@@ -975,6 +987,7 @@ class RoutePath {
     stripPrefix: json['stripPrefix'] as bool? ?? false,
     targetPort: json['targetPort'],
     targetContent: json['targetContent'] is Map ? RouteContentSpec.fromJson((json['targetContent'] as Map).cast<String, dynamic>()) : null,
+    unavailable: json['unavailable'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -983,6 +996,7 @@ class RoutePath {
     'stripPrefix': stripPrefix,
     if (targetPort != null) 'targetPort': targetPort,
     if (targetContent != null) 'targetContent': targetContent!.toJson(),
+    if (unavailable != null) 'unavailable': unavailable,
   };
 }
 

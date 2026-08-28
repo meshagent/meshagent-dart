@@ -32,6 +32,7 @@ void main() {
           path: '/docs',
           targetContent: RouteContentSpec(
             subpath: 'sites/docs',
+            notFound: '/errors/404.html',
             index: true,
             iap: true,
             cors: [
@@ -46,10 +47,14 @@ void main() {
 
     expect(restored.paths.single.targetPort, isNull);
     expect(restored.paths.single.targetContent!.subpath, 'sites/docs');
+    expect(restored.paths.single.targetContent!.notFound, '/errors/404.html');
     expect(restored.paths.single.targetContent!.index, isTrue);
     expect(restored.paths.single.targetContent!.iap, isTrue);
     expect(restored.paths.single.targetContent!.compression, 'brotli');
     expect(restored.paths.single.targetContent!.cors.single.allowedHeaders, ['Authorization']);
+
+    final servicePath = RoutePath(targetPort: 'web', unavailable: '/errors/unavailable.html');
+    expect(RoutePath.fromJson(servicePath.toJson()).unavailable, '/errors/unavailable.html');
   });
 
   test('token value preserves role through json', () {
