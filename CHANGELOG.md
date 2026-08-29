@@ -1,3 +1,6 @@
+## [0.51.6]
+- Dart route models now support optional `notFound` and `unavailable` fallback paths, with JSON round-tripping and validation that rejects empty paths, dot segments, and invalid content/service combinations.
+
 ## [0.51.5]
 - Stability
 - Route models now expose `notFound` fallback content for content routes and `unavailable` fallback content for service routes.
