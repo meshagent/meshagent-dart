@@ -1,5 +1,11 @@
+<<<<<<< HEAD
 ## [0.51.6]
 - Dart route models now support optional `notFound` and `unavailable` fallback paths, with JSON round-tripping and validation that rejects empty paths, dot segments, and invalid content/service combinations.
+=======
+## [0.52.0]
+- Added custom-domain models and client methods for create/get/list/delete, including DNS record and provisioning status data plus custom-domain project roles.
+- Route specs now support `notFound` and `unavailable` fallback fields.
+>>>>>>> origin/main
 
 ## [0.51.5]
 - Stability
