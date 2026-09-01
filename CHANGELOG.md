@@ -1,3 +1,7 @@
+## [0.52.0]
+- Added custom-domain models and client methods for create/get/list/delete, including DNS record and provisioning status data plus custom-domain project roles.
+- Route specs now support `notFound` and `unavailable` fallback fields.
+
 ## [0.51.5]
 - Stability
 - Route models now expose `notFound` fallback content for content routes and `unavailable` fallback content for service routes.
