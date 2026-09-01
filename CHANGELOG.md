@@ -1,3 +1,7 @@
+## [0.52.1]
+- Added typed custom-domain models and CRUD methods, including DNS authorization records, routing records, certificate state, availability, pagination, and wildcard detection.
+- Added custom-domain role constants so the Dart SDK can express route-level custom-domain permissions.
+
 ## [0.52.0]
 - Added custom-domain models and client methods for create/get/list/delete, including DNS record and provisioning status data plus custom-domain project roles.
 - Route specs now support `notFound` and `unavailable` fallback fields.
