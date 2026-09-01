@@ -140,6 +140,9 @@ abstract final class ProjectRoles {
   static const routeCreator = 'route_creator';
   static const routeInventory = 'route_inventory';
   static const routeManager = 'route_manager';
+  static const customDomainCreator = 'custom_domain_creator';
+  static const customDomainInventory = 'custom_domain_inventory';
+  static const customDomainManager = 'custom_domain_manager';
   static const scheduledTaskCreator = 'scheduled_task_creator';
   static const scheduledTaskInventory = 'scheduled_task_inventory';
   static const scheduledTaskManager = 'scheduled_task_manager';
@@ -191,6 +194,9 @@ abstract final class ProjectRoles {
     routeCreator,
     routeInventory,
     routeManager,
+    customDomainCreator,
+    customDomainInventory,
+    customDomainManager,
     scheduledTaskCreator,
     scheduledTaskInventory,
     scheduledTaskManager,
@@ -245,6 +251,9 @@ enum ProjectRole {
   routeCreator(ProjectRoles.routeCreator, 'Route Creator'),
   routeInventory(ProjectRoles.routeInventory, 'Route Inventory'),
   routeManager(ProjectRoles.routeManager, 'Route Manager'),
+  customDomainCreator(ProjectRoles.customDomainCreator, 'Custom Domain Creator'),
+  customDomainInventory(ProjectRoles.customDomainInventory, 'Custom Domain Inventory'),
+  customDomainManager(ProjectRoles.customDomainManager, 'Custom Domain Manager'),
   scheduledTaskCreator(ProjectRoles.scheduledTaskCreator, 'Scheduled Task Creator'),
   scheduledTaskInventory(ProjectRoles.scheduledTaskInventory, 'Scheduled Task Inventory'),
   scheduledTaskManager(ProjectRoles.scheduledTaskManager, 'Scheduled Task Manager'),
@@ -301,6 +310,9 @@ enum ProjectRole {
     routeCreator,
     routeInventory,
     routeManager,
+    customDomainCreator,
+    customDomainInventory,
+    customDomainManager,
     scheduledTaskCreator,
     scheduledTaskInventory,
     scheduledTaskManager,
@@ -1063,6 +1075,128 @@ class RoutesPage {
       continuationToken: json['continuation_token'] as String?,
     );
   }
+}
+
+class CustomDomainDnsRecord {
+  const CustomDomainDnsRecord({required this.name, required this.type, required this.data});
+
+  final String name;
+  final String type;
+  final String data;
+
+  factory CustomDomainDnsRecord.fromJson(Map<String, dynamic> json) =>
+      CustomDomainDnsRecord(name: json['name'] as String, type: json['type'] as String, data: json['data'] as String);
+
+  Map<String, dynamic> toJson() => {'name': name, 'type': type, 'data': data};
+}
+
+class CustomDomainCondition {
+  const CustomDomainCondition({
+    required this.type,
+    required this.status,
+    required this.reason,
+    required this.message,
+    required this.observedAt,
+  });
+
+  final String type;
+  final String status;
+  final String reason;
+  final String message;
+  final DateTime observedAt;
+
+  factory CustomDomainCondition.fromJson(Map<String, dynamic> json) => CustomDomainCondition(
+    type: json['type'] as String,
+    status: json['status'] as String,
+    reason: json['reason'] as String,
+    message: json['message'] as String? ?? '',
+    observedAt: DateTime.parse(json['observed_at'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'status': status,
+    'reason': reason,
+    'message': message,
+    'observed_at': observedAt.toUtc().toIso8601String(),
+  };
+}
+
+class CustomDomain {
+  const CustomDomain({
+    required this.domain,
+    required this.projectId,
+    required this.phase,
+    required this.available,
+    required this.routingRecords,
+    required this.conditions,
+    required this.createdAt,
+    this.dnsAuthorizationRecord,
+    this.certificateState,
+    this.mapEntryState,
+  });
+
+  final String domain;
+  final String projectId;
+  final String phase;
+  final bool available;
+  final CustomDomainDnsRecord? dnsAuthorizationRecord;
+  final List<CustomDomainDnsRecord> routingRecords;
+  final String? certificateState;
+  final String? mapEntryState;
+  final List<CustomDomainCondition> conditions;
+  final DateTime createdAt;
+
+  bool get wildcard => domain.startsWith('*.');
+
+  factory CustomDomain.fromJson(Map<String, dynamic> json) => CustomDomain(
+    domain: json['domain'] as String,
+    projectId: json['project_id'] as String,
+    phase: json['phase'] as String,
+    available: json['available'] as bool? ?? false,
+    dnsAuthorizationRecord: json['dns_authorization_record'] is Map
+        ? CustomDomainDnsRecord.fromJson((json['dns_authorization_record'] as Map).cast<String, dynamic>())
+        : null,
+    routingRecords: ((json['routing_records'] as List<dynamic>?) ?? const [])
+        .whereType<Map>()
+        .map((record) => CustomDomainDnsRecord.fromJson(record.cast<String, dynamic>()))
+        .toList(),
+    certificateState: json['certificate_state'] as String?,
+    mapEntryState: json['map_entry_state'] as String?,
+    conditions: ((json['conditions'] as List<dynamic>?) ?? const [])
+        .whereType<Map>()
+        .map((condition) => CustomDomainCondition.fromJson(condition.cast<String, dynamic>()))
+        .toList(),
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'domain': domain,
+    'project_id': projectId,
+    'phase': phase,
+    'available': available,
+    'dns_authorization_record': dnsAuthorizationRecord?.toJson(),
+    'routing_records': routingRecords.map((record) => record.toJson()).toList(),
+    'certificate_state': certificateState,
+    'map_entry_state': mapEntryState,
+    'conditions': conditions.map((condition) => condition.toJson()).toList(),
+    'created_at': createdAt.toUtc().toIso8601String(),
+  };
+}
+
+class CustomDomainsPage {
+  const CustomDomainsPage({required this.customDomains, this.continuationToken});
+
+  final List<CustomDomain> customDomains;
+  final String? continuationToken;
+
+  factory CustomDomainsPage.fromJson(Map<String, dynamic> json) => CustomDomainsPage(
+    customDomains: ((json['custom_domains'] as List<dynamic>?) ?? const [])
+        .whereType<Map>()
+        .map((domain) => CustomDomain.fromJson(domain.cast<String, dynamic>()))
+        .toList(),
+    continuationToken: json['continuation_token'] as String?,
+  );
 }
 
 class Feed {
@@ -1880,6 +2014,70 @@ class Meshagent {
         'Failed to delete mailbox. '
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
+    }
+  }
+
+  Future<CustomDomain> createCustomDomain({required String projectId, required String domain}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/custom-domains');
+    final response = await httpClient.post(uri, body: jsonEncode({'domain': domain}));
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to create custom domain. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return CustomDomain.fromJson((data['custom_domain'] as Map).cast<String, dynamic>());
+  }
+
+  Future<CustomDomain> getCustomDomain({required String projectId, required String domain}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedDomain = Uri.encodeComponent(domain);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/custom-domains/$encodedDomain');
+    final response = await httpClient.get(uri);
+    if (response.statusCode == 404) throw NotFoundException('Custom domain not found: $domain');
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to get custom domain. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return CustomDomain.fromJson((data['custom_domain'] as Map).cast<String, dynamic>());
+  }
+
+  Future<CustomDomainsPage> listCustomDomainsPage(
+    String projectId, {
+    int pageSize = 100,
+    String? continuationToken,
+    String? filter,
+    String view = 'my',
+  }) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final query = <String, String>{'page_size': '$pageSize', 'view': view};
+    if (continuationToken != null) query['continuation_token'] = continuationToken;
+    if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/custom-domains').replace(queryParameters: query);
+    final response = await httpClient.get(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to list custom domains. Status code: ${response.statusCode}, body: ${response.body}');
+    }
+    return CustomDomainsPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<CustomDomain>> listCustomDomains(String projectId, {int pageSize = 100, String? filter, String view = 'my'}) async {
+    final domains = <CustomDomain>[];
+    String? nextToken;
+    do {
+      final page = await listCustomDomainsPage(projectId, pageSize: pageSize, continuationToken: nextToken, filter: filter, view: view);
+      domains.addAll(page.customDomains);
+      nextToken = page.continuationToken;
+    } while (nextToken != null);
+    return domains;
+  }
+
+  Future<void> deleteCustomDomain({required String projectId, required String domain}) async {
+    final encodedProjectId = Uri.encodeComponent(projectId);
+    final encodedDomain = Uri.encodeComponent(domain);
+    final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/custom-domains/$encodedDomain');
+    final response = await httpClient.delete(uri);
+    if (response.statusCode >= 400) {
+      throw MeshagentException('Failed to delete custom domain. Status code: ${response.statusCode}, body: ${response.body}');
     }
   }
 
