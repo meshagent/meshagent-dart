@@ -216,6 +216,30 @@ void main() {
     expect(requests, ['GET http://example.test/accounts/projects/proj_123/rooms?page_size=100&view=all']);
   });
 
+  test('member search can omit roles while retaining query and typed profiles', () async {
+    final queries = <Map<String, String>>[];
+    final client = MockClient((request) async {
+      queries.add(request.url.queryParameters);
+      return http.Response(
+        jsonEncode({
+          'users': [
+            {
+              'user': {'id': 'user-1', 'email': 'ada@example.test'},
+            },
+          ],
+        }),
+        200,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+    final users = await meshagent.getUsersInProject('project-1', filter: 'ada', includeRoles: false);
+    expect(users.single.email, 'ada@example.test');
+    expect(users.single.directRoles, isEmpty);
+    expect(queries.single, {'page_size': '100', 'filter': 'ada', 'include_roles': 'false'});
+    await meshagent.getUsersInProjectPage('project-1', email: 'ada@example.test', includeRoles: false);
+    expect(queries.last, {'email': 'ada@example.test', 'include_roles': 'false'});
+  });
+
   test('project members page returns typed OpenFGA member rows', () async {
     final client = MockClient((request) async {
       return http.Response(

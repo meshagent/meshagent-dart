@@ -3738,6 +3738,7 @@ class Meshagent {
     int pageSize = 100,
     String? continuationToken,
     String? filter,
+    bool includeRoles = true,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     Uri uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -3749,6 +3750,10 @@ class Meshagent {
       if (continuationToken != null) query['continuation_token'] = continuationToken;
       if (filter != null && filter.trim().isNotEmpty) query['filter'] = filter;
       uri = uri.replace(queryParameters: query);
+    }
+
+    if (!includeRoles) {
+      uri = uri.replace(queryParameters: {...uri.queryParameters, 'include_roles': 'false'});
     }
 
     final response = await httpClient.get(uri);
@@ -3765,6 +3770,7 @@ class Meshagent {
     int pageSize = 100,
     String? continuationToken,
     String? filter,
+    bool includeRoles = true,
   }) async {
     final page = await getUsersInProjectPage(
       projectId,
@@ -3772,6 +3778,7 @@ class Meshagent {
       pageSize: pageSize,
       continuationToken: continuationToken,
       filter: filter,
+      includeRoles: includeRoles,
     );
     return page.users;
   }
