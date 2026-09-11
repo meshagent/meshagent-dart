@@ -1,3 +1,6 @@
+## [0.52.2]
+- Added an `includeRoles` option to project-member queries, allowing consumers to omit role details while retaining typed user profiles.
+
 ## [0.52.1]
 - Added typed custom-domain models and CRUD methods, including DNS authorization records, routing records, certificate state, availability, pagination, and wildcard detection.
 - Added custom-domain role constants so the Dart SDK can express route-level custom-domain permissions.
