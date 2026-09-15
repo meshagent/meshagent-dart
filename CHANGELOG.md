@@ -1,3 +1,6 @@
+## [0.52.3]
+- Added an exported developer typography API with bundled Source Code Pro styling for terminals, container logs, and trace viewers.
+
 ## [0.52.2]
 - Added an `includeRoles` option to project-member queries, allowing consumers to omit role details while retaining typed user profiles.
 
