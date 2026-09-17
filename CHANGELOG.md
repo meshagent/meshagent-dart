@@ -1,3 +1,6 @@
+## [0.52.4]
+- Stability
+
 ## [0.52.3]
 - Added an exported developer typography API with bundled Source Code Pro styling for terminals, container logs, and trace viewers.
 
