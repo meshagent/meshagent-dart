@@ -157,6 +157,7 @@ abstract final class ProjectRoles {
   static const usageReporter = 'usage_reporter';
   static const billingManager = 'billing_manager';
   static const groupManager = 'group_manager';
+  static const userProfileEditor = 'user_profile_editor';
 
   static const all = [
     member,
@@ -211,6 +212,7 @@ abstract final class ProjectRoles {
     usageReporter,
     billingManager,
     groupManager,
+    userProfileEditor,
   ];
 }
 
@@ -267,7 +269,8 @@ enum ProjectRole {
   llmQuotaManager(ProjectRoles.llmQuotaManager, 'LLM Quota Manager'),
   usageReporter(ProjectRoles.usageReporter, 'Usage Reporter'),
   billingManager(ProjectRoles.billingManager, 'Billing Manager'),
-  groupManager(ProjectRoles.groupManager, 'Group Manager');
+  groupManager(ProjectRoles.groupManager, 'Group Manager'),
+  userProfileEditor(ProjectRoles.userProfileEditor, 'User Profile Editor');
 
   const ProjectRole(this.relation, this.label);
 
@@ -327,6 +330,7 @@ enum ProjectRole {
     usageReporter,
     billingManager,
     groupManager,
+    userProfileEditor,
   ];
 
   static ProjectRole fromRelation(String? relation) {
@@ -3802,12 +3806,22 @@ class Meshagent {
   }
 
   /// Corresponds to: PUT /accounts/profiles/:user_id
-  /// Body: { "first_name", "last_name" }
+  /// Omitted fields are preserved. Metadata and annotations replace their maps.
+  /// Editing another user or annotations requires user_profile_editor in projectId.
   /// Returns JSON like { "ok": true } on success.
-  Future<Map<String, dynamic>> updateUserProfile(String userId, String firstName, String lastName) async {
+  Future<Map<String, dynamic>> updateUserProfile(
+    String userId,
+    String? firstName,
+    String? lastName, {
+    Map<String, dynamic>? metadata,
+    Map<String, String>? annotations,
+    String? projectId,
+  }) async {
     final encodedUserId = Uri.encodeComponent(userId);
-    final uri = Uri.parse('$baseUrl/accounts/profiles/$encodedUserId');
-    final body = {'first_name': firstName, 'last_name': lastName};
+    final uri = Uri.parse(
+      '$baseUrl/accounts/profiles/$encodedUserId',
+    ).replace(queryParameters: projectId == null ? null : {'project_id': projectId});
+    final body = {'first_name': ?firstName, 'last_name': ?lastName, 'metadata': ?metadata, 'annotations': ?annotations};
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -6483,10 +6497,19 @@ class ProjectMember {
   final String email;
   final String? firstName;
   final String? lastName;
+  final Map<String, dynamic> metadata;
+  final Map<String, String> annotations;
   final List<String> directRoles;
 
-  const ProjectMember({required this.id, required this.email, this.firstName, this.lastName, List<String>? directRoles})
-    : directRoles = directRoles ?? const [];
+  const ProjectMember({
+    required this.id,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    this.metadata = const {},
+    this.annotations = const {},
+    List<String>? directRoles,
+  }) : directRoles = directRoles ?? const [];
 
   factory ProjectMember.fromJson(Map<String, dynamic> json) {
     final user = (json['user'] as Map?)?.cast<String, dynamic>() ?? json;
@@ -6496,12 +6519,21 @@ class ProjectMember {
       email: user['email'] as String? ?? '',
       firstName: user['first_name'] as String?,
       lastName: user['last_name'] as String?,
+      metadata: (user['metadata'] as Map?)?.cast<String, dynamic>() ?? {},
+      annotations: (user['annotations'] as Map?)?.cast<String, String>() ?? {},
       directRoles: directRoles,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'user': {'id': id, 'email': email, if (firstName != null) 'first_name': firstName, if (lastName != null) 'last_name': lastName},
+    'user': {
+      'id': id,
+      'email': email,
+      if (firstName != null) 'first_name': firstName,
+      if (lastName != null) 'last_name': lastName,
+      'metadata': metadata,
+      'annotations': annotations,
+    },
     'direct_roles': directRoles,
   };
 }
