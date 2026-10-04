@@ -1,3 +1,6 @@
+## [0.53.1]
+- Stability
+
 ## [0.53.0]
 - Added user profile metadata and annotations to project-member models, plus optional metadata, annotations, and project ID options for profile updates.
 - Added the `user_profile_editor` role to role constants, parsing, serialization, and assignment support.
