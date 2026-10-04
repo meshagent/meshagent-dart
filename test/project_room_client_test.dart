@@ -235,9 +235,9 @@ void main() {
     final users = await meshagent.getUsersInProject('project-1', filter: 'ada', includeRoles: false);
     expect(users.single.email, 'ada@example.test');
     expect(users.single.directRoles, isEmpty);
-    expect(queries.single, {'page_size': '100', 'filter': 'ada', 'include_roles': 'false'});
-    await meshagent.getUsersInProjectPage('project-1', email: 'ada@example.test', includeRoles: false);
-    expect(queries.last, {'email': 'ada@example.test', 'include_roles': 'false'});
+    expect(queries.single, {'page_size': '100', 'filter': 'ada', 'include_roles': 'false', 'view': 'merged'});
+    await meshagent.getUsersInProjectPage('project-1', email: 'ada@example.test', includeRoles: false, view: UserProfileView.project);
+    expect(queries.last, {'email': 'ada@example.test', 'include_roles': 'false', 'view': 'project'});
   });
 
   test('project members page returns typed OpenFGA member rows', () async {
