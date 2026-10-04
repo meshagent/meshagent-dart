@@ -3743,6 +3743,7 @@ class Meshagent {
     String? continuationToken,
     String? filter,
     bool includeRoles = true,
+    UserProfileView view = UserProfileView.merged,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     Uri uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/users');
@@ -3759,6 +3760,7 @@ class Meshagent {
     if (!includeRoles) {
       uri = uri.replace(queryParameters: {...uri.queryParameters, 'include_roles': 'false'});
     }
+    uri = uri.replace(queryParameters: {...uri.queryParameters, 'view': view.name});
 
     final response = await httpClient.get(uri);
 
@@ -3775,6 +3777,7 @@ class Meshagent {
     String? continuationToken,
     String? filter,
     bool includeRoles = true,
+    UserProfileView view = UserProfileView.merged,
   }) async {
     final page = await getUsersInProjectPage(
       projectId,
@@ -3783,6 +3786,7 @@ class Meshagent {
       continuationToken: continuationToken,
       filter: filter,
       includeRoles: includeRoles,
+      view: view,
     );
     return page.users;
   }
@@ -3790,9 +3794,16 @@ class Meshagent {
   /// Corresponds to: GET /accounts/profiles/:user_id
   /// Returns user profile JSON, e.g. { "id", "first_name", "last_name", "email" } on success
   /// or throws an error if not found.
-  Future<Map<String, dynamic>> getUserProfile(String userId) async {
+  Future<Map<String, dynamic>> getUserProfile(String userId, {String? projectId, UserProfileView view = UserProfileView.merged}) async {
+    if (projectId == null && view == UserProfileView.project) {
+      throw ArgumentError('projectId is required for the project view');
+    }
     final encodedUserId = Uri.encodeComponent(userId);
-    final uri = Uri.parse('$baseUrl/accounts/profiles/$encodedUserId');
+    final uri = projectId == null
+        ? Uri.parse('$baseUrl/accounts/profiles/$encodedUserId')
+        : Uri.parse(
+            '$baseUrl/accounts/projects/${Uri.encodeComponent(projectId)}/users/$encodedUserId/profile',
+          ).replace(queryParameters: {'view': view.name});
     final response = await httpClient.get(uri);
 
     if (response.statusCode == 403) {
@@ -3807,7 +3818,7 @@ class Meshagent {
 
   /// Corresponds to: PUT /accounts/profiles/:user_id
   /// Omitted fields are preserved. Metadata and annotations replace their maps.
-  /// Editing another user or annotations requires user_profile_editor in projectId.
+  /// Project edits require user_profile_editor, including for your own profile.
   /// Returns JSON like { "ok": true } on success.
   Future<Map<String, dynamic>> updateUserProfile(
     String userId,
@@ -3816,12 +3827,24 @@ class Meshagent {
     Map<String, dynamic>? metadata,
     Map<String, String>? annotations,
     String? projectId,
+    List<UserProfileField>? inherit,
   }) async {
     final encodedUserId = Uri.encodeComponent(userId);
+    if (projectId == null && inherit != null) {
+      throw ArgumentError('projectId is required to inherit profile fields');
+    }
     final uri = Uri.parse(
-      '$baseUrl/accounts/profiles/$encodedUserId',
-    ).replace(queryParameters: projectId == null ? null : {'project_id': projectId});
-    final body = {'first_name': ?firstName, 'last_name': ?lastName, 'metadata': ?metadata, 'annotations': ?annotations};
+      projectId == null
+          ? '$baseUrl/accounts/profiles/$encodedUserId'
+          : '$baseUrl/accounts/projects/${Uri.encodeComponent(projectId)}/users/$encodedUserId/profile',
+    );
+    final body = {
+      'first_name': ?firstName,
+      'last_name': ?lastName,
+      'metadata': ?metadata,
+      'annotations': ?annotations,
+      if (inherit != null) 'inherit': inherit.map((field) => field.wireName).toList(),
+    };
 
     final response = await httpClient.put(uri, body: jsonEncode(body));
 
@@ -3832,6 +3855,40 @@ class Meshagent {
   }
 
   /// Corresponds to: GET /accounts/projects
+  Future<UserProfilesPage> searchSysadminUsers({String? filter, int pageSize = 100, String? continuationToken}) async {
+    final uri = Uri.parse(
+      '$baseUrl/accounts/sysadmin/users',
+    ).replace(queryParameters: {'page_size': '$pageSize', 'filter': ?filter, 'continuation_token': ?continuationToken});
+    final response = await httpClient.get(uri);
+    _checkProfileResponse(response);
+    return UserProfilesPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> getSysadminUserProfile(String userId) async {
+    final response = await httpClient.get(Uri.parse('$baseUrl/accounts/sysadmin/users/${Uri.encodeComponent(userId)}'));
+    _checkProfileResponse(response);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<void> updateSysadminUserProfile(
+    String userId, {
+    String? firstName,
+    String? lastName,
+    Map<String, dynamic>? metadata,
+    Map<String, String>? annotations,
+  }) async {
+    final response = await httpClient.put(
+      Uri.parse('$baseUrl/accounts/sysadmin/users/${Uri.encodeComponent(userId)}'),
+      body: jsonEncode({'first_name': ?firstName, 'last_name': ?lastName, 'metadata': ?metadata, 'annotations': ?annotations}),
+    );
+    _checkProfileResponse(response);
+  }
+
+  void _checkProfileResponse(http.Response response) {
+    if (response.statusCode == 403) throw ForbiddenException(response.body);
+    if (response.statusCode >= 400) throw MeshagentException('Profile request failed: ${response.statusCode}, ${response.body}');
+  }
+
   /// Returns JSON like { "projects": [...] } on success.
   Future<List<Map<String, dynamic>>> listProjects() async {
     final uri = Uri.parse('$baseUrl/accounts/projects');
@@ -6474,6 +6531,64 @@ class AgentsPage {
     'agents': agents.map((agent) => agent.toJson()).toList(),
     'total': total,
     'continuation_token': ?continuationToken,
+  };
+}
+
+enum UserProfileView { project, user, merged }
+
+enum UserProfileField {
+  firstName('first_name'),
+  lastName('last_name'),
+  metadata('metadata'),
+  annotations('annotations');
+
+  const UserProfileField(this.wireName);
+  final String wireName;
+}
+
+class UserProfilesPage {
+  const UserProfilesPage({required this.users, this.continuationToken});
+  final List<UserProfile> users;
+  final String? continuationToken;
+
+  factory UserProfilesPage.fromJson(Map<String, dynamic> json) => UserProfilesPage(
+    users: (json['users'] as List).map((user) => UserProfile.fromJson(user as Map<String, dynamic>)).toList(),
+    continuationToken: json['continuation_token'] as String?,
+  );
+}
+
+class UserProfile {
+  const UserProfile({
+    required this.id,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    this.metadata = const {},
+    this.annotations = const {},
+  });
+  final String id;
+  final String email;
+  final String? firstName;
+  final String? lastName;
+  final Map<String, dynamic> metadata;
+  final Map<String, String> annotations;
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+    id: json['id'] as String,
+    email: json['email'] as String,
+    firstName: json['first_name'] as String?,
+    lastName: json['last_name'] as String?,
+    metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ?? {},
+    annotations: (json['annotations'] as Map?)?.cast<String, String>() ?? {},
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'email': email,
+    'first_name': firstName,
+    'last_name': lastName,
+    'metadata': metadata,
+    'annotations': annotations,
   };
 }
 

@@ -8,8 +8,9 @@
 - Added `video_player_platform_interface` `^6.7.0` as a development dependency.
 
 ## [Unreleased]
+- Added project-scoped profile reads and writes, typed profile views and inheritance fields, and sysadmin global user search and editing. Project user listings default to merged profiles.
 - Added user profile metadata and string annotations to project-member models, plus optional `metadata`, `annotations`, and `projectId` parameters on `updateUserProfile`. Omitted fields are preserved; supplied maps replace their previous contents.
-- Added `user_profile_editor` role constants and role parsing support. Project owners and admins inherit profile editing; ordinary users can edit their own names and metadata.
+- Added `user_profile_editor` role constants and role parsing support. Project owners and admins inherit project profile editing; ordinary users can edit their own global names and metadata.
 
 ## [0.52.4]
 - Stability
