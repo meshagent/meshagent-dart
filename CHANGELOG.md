@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 - Added SQLite `executeSqlBatch` with typed commands, atomic ordered execution, and mixed statement/query results.
+- WebSocket download URL creation now requires both read and explicit presign permission. Legacy storage grants do not delegate public URLs; use authenticated downloads or an explicit file policy. OAuth participant tokens retain file-action scopes and IAM path exclusions.
+- Participant storage grants now carry typed file policies, with separate actions, excluded subtrees, ordered read-only rules, and path-component matching. Policies survive signed-token round trips.
+- Added discovered room/managed-agent REST file clients through `Meshagent.files`, with streaming transfer, cancellation, pagination, metadata, permission snapshots, copy/move, deletion, directories and presign requests. Shared HTTP transports now receive the current token provider credentials.
+- Added room/agent OAuth file scopes and agent resource scopes. File-only grants no longer advertise runtime permissions.
+- Agent domain routes can publish file-content paths; IAP and service-port paths are rejected for agent backends. Empty paths retain the existing WebSocket route behavior.
 - Added project-scoped profile reads and writes, typed profile views and inheritance fields, and sysadmin global user search and editing. Project user listings default to merged profiles.
 - Added user profile metadata and string annotations to project-member models, plus optional `metadata`, `annotations`, and `projectId` parameters on `updateUserProfile`. Omitted fields are preserved; supplied maps replace their previous contents.
 - Added `user_profile_editor` role constants and role parsing support. Project owners and admins inherit project profile editing; ordinary users can edit their own global names and metadata.

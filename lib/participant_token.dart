@@ -1,6 +1,7 @@
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:collection/collection.dart';
 import 'api_keys.dart';
+import 'file_permissions.dart';
 
 /// ---------------------------
 /// Helpers
@@ -597,29 +598,38 @@ class StoragePathGrant {
 
 class StorageGrant {
   final List<StoragePathGrant>? paths;
-
-  StorageGrant({this.paths});
-
-  bool canRead(String path) {
-    if (paths == null) return true;
-    for (final t in paths!) {
-      if (path.startsWith(t.path)) return true;
+  final FilesPolicy? files;
+  StorageGrant({this.paths, this.files});
+  FilesPolicy get _policy => files ?? legacyStoragePolicy(paths?.map((grant) => (path: grant.path, readOnly: grant.readOnly)));
+  bool _allows(FileAction action, String path, {bool subtree = false}) {
+    try {
+      return _policy.allows(action, storageRequestPath(path), subtree: subtree);
+    } on ArgumentError {
+      return false;
     }
-    return false;
   }
 
-  bool canWrite(String path) {
-    if (paths == null) return true;
-    for (final t in paths!) {
-      if (path.startsWith(t.path)) return !t.readOnly;
+  bool canRead(String path, {bool subtree = false}) => _allows(FileAction.read, path, subtree: subtree);
+  bool canWrite(String path, {bool subtree = false}) => _allows(FileAction.write, path, subtree: subtree);
+  bool canDelete(String path, {bool recursive = false}) => _allows(FileAction.delete, path, subtree: recursive);
+  bool canList(String path) => _allows(FileAction.list, path);
+  bool canListDirectory(String path) {
+    try {
+      return _policy.canListDirectory(storageRequestPath(path));
+    } on ArgumentError {
+      return false;
     }
-    return false;
   }
 
-  Map<String, dynamic> toJson() => {if (paths != null) 'paths': paths!.map((e) => e.toJson()).toList()};
-
-  factory StorageGrant.fromJson(Map<String, dynamic> j) =>
-      StorageGrant(paths: (j['paths'] as List?)?.map((e) => StoragePathGrant.fromJson(e as Map<String, dynamic>)).toList());
+  bool canPresign(String path) => _allows(FileAction.presign, path);
+  Map<String, dynamic> toJson() => {
+    if (paths != null) 'paths': paths!.map((e) => e.toJson()).toList(),
+    if (files != null) 'files': files!.toJson(),
+  };
+  factory StorageGrant.fromJson(Map<String, dynamic> j) => StorageGrant(
+    paths: (j['paths'] as List?)?.map((e) => StoragePathGrant.fromJson((e as Map).cast<String, dynamic>())).toList(),
+    files: j['files'] == null ? null : FilesPolicy.fromJson((j['files'] as Map).cast<String, dynamic>()),
+  );
 }
 
 class ContainersGrant {

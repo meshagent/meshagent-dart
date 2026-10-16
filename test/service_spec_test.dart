@@ -2,6 +2,52 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('agent routes expose public files or legacy websockets, never IAP or ports', () {
+    final base = <String, dynamic>{
+      'metadata': {'name': 'agent.example.test'},
+      'domain': 'agent.example.test',
+      'backend': {
+        'agent': {'name': 'assistant'},
+      },
+    };
+    for (final paths in [
+      <Map<String, dynamic>>[],
+      [
+        {
+          'path': '/docs',
+          'targetContent': {'subpath': 'site', 'index': true},
+        },
+      ],
+    ]) {
+      final spec = RouteSpec.fromJson({...base, 'paths': paths});
+      expect(RouteSpec.fromJson(spec.toJson()).paths.length, paths.length);
+    }
+    for (final path in [
+      {'targetPort': 80},
+      {
+        'targetContent': {'iap': true},
+      },
+    ]) {
+      expect(
+        () => RouteSpec.fromJson({
+          ...base,
+          'paths': [path],
+        }),
+        throwsArgumentError,
+      );
+    }
+    final paths = [RoutePath(targetContent: RouteContentSpec())];
+    final spec = RouteSpec(
+      metadata: RouteMetadata(name: 'agent.example.test'),
+      domain: 'agent.example.test',
+      backend: RouteBackend(agent: RouteBackendTarget(name: 'assistant')),
+      paths: paths,
+    );
+    paths.add(RoutePath(targetPort: 80));
+    expect(spec.paths, hasLength(1));
+    expect(() => spec.paths.add(RoutePath(targetPort: 80)), throwsUnsupportedError);
+  });
+
   test('service enabled state defaults true and round trips disabled', () {
     final legacy = ServiceSpec.fromJson({
       'version': 'v1',

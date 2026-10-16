@@ -91,13 +91,24 @@ void main() {
     });
 
     test('storage_download_url', () async {
-      await withRoomServerE2eClient((client) async {
-        await client.storage.upload('download_url_test.bin', _bytes('Some binary content'));
+      await withRoomServerE2eClient(
+        (client) async {
+          await client.storage.upload('download_url_test.bin', _bytes('Some binary content'));
 
-        final url = await client.storage.downloadUrl('download_url_test.bin');
+          final url = await client.storage.downloadUrl('download_url_test.bin');
 
-        expect(url, anyOf(startsWith('http'), startsWith('ws')));
-      }, roomNamePrefix: 'dart-storage');
+          expect(url, anyOf(startsWith('http'), startsWith('ws')));
+        },
+        roomNamePrefix: 'dart-storage',
+        apiScope: ApiScope.fromJson({
+          ...ApiScope.agentDefault().toJson(),
+          'storage': StorageGrant(
+            files: FilesPolicy(
+              paths: [FilePathRule(path: '', recursive: true, actions: FileAction.values)],
+            ),
+          ).toJson(),
+        }),
+      );
     });
 
     test('storage_list', () async {
