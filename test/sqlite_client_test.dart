@@ -145,6 +145,7 @@ class _FakeSqliteServer {
       final input = _decodeInput(message: message, request: request);
       final malformed = malformedResponses[tool];
       if (malformed != null) {
+        if (tool == 'execute_sql_batch' && input is JsonContent) requests.add(_RecordedRequest(tool: tool, input: input.json));
         await protocol.send('__response__', malformed.pack(), id: messageId);
         return;
       }
@@ -355,6 +356,68 @@ Future<_SqliteHarness> _startSqliteHarness() async {
 }
 
 void main() {
+  test('sqlite batch binds commands and parses mixed results', () async {
+    final harness = await _startSqliteHarness();
+    try {
+      harness.server.malformedResponses['execute_sql_batch'] = JsonContent(
+        json: {
+          'results': [
+            {'kind': 'statement', 'rows_affected': 1},
+            {
+              'kind': 'query',
+              'query_id': 'batch-query',
+              'schema_base64': base64Encode(ArrowIpcSchema.fromSchema(_testArrowSchema()).bytes),
+            },
+          ],
+        },
+      );
+      final results = await harness.room.sqlite
+          .database('app', namespace: ['team'])
+          .executeSqlBatch(
+            commands: [
+              const SqliteSqlCommand(query: 'INSERT INTO items VALUES (?)', params: [1]),
+              const SqliteSqlCommand(query: 'SELECT * FROM items'),
+            ],
+          );
+      expect((results[0] as SqliteSqlStatement).rowsAffected, 1);
+      expect(harness.server.requests.single.input, {
+        'database': 'app',
+        'namespace': ['team'],
+        'commands': [
+          {
+            'query': 'INSERT INTO items VALUES (?)',
+            'params': [1],
+          },
+          {'query': 'SELECT * FROM items', 'params': null},
+        ],
+      });
+      expect((results[1] as SqliteSqlQuery).queryId, 'batch-query');
+      expect((results[1] as SqliteSqlQuery).schema.fields.map((field) => field.name), ['id', 'label']);
+      for (final results in [
+        [],
+        [
+          {'kind': 'unexpected'},
+        ],
+        [
+          {'kind': 'statement', 'rows_affected': true},
+        ],
+        [
+          {'kind': 'query', 'query_id': 'x', 'schema_base64': '%%%'},
+        ],
+      ]) {
+        harness.server.malformedResponses['execute_sql_batch'] = JsonContent(json: {'results': results});
+        await expectLater(
+          harness.room.sqlite.executeSqlBatch(
+            database: 'app',
+            commands: [const SqliteSqlCommand(query: 'SELECT 1')],
+          ),
+          throwsA(isA<RoomServerException>()),
+        );
+      }
+    } finally {
+      await harness.dispose();
+    }
+  });
   test('sqlite client forwards lifecycle, table, mutation, and SQL calls', () async {
     final harness = await _startSqliteHarness();
     final batch = _testArrowBatch(id: 42, label: 'forty-two');

@@ -42,6 +42,13 @@ class SqliteDatabaseDetails {
   }
 }
 
+class SqliteSqlCommand {
+  const SqliteSqlCommand({required this.query, this.params});
+
+  final String query;
+  final Object? params;
+}
+
 sealed class SqliteSqlExecution {
   const SqliteSqlExecution();
 }
@@ -337,6 +344,10 @@ class SqliteDatabaseClient {
 
   SqliteArrowBatches sqlStream({required String query, Object? params}) {
     return client.sqlStream(database: database, query: query, params: params, namespace: namespace);
+  }
+
+  Future<List<SqliteSqlExecution>> executeSqlBatch({required List<SqliteSqlCommand> commands}) {
+    return client.executeSqlBatch(database: database, commands: commands, namespace: namespace);
   }
 
   Future<SqliteSqlExecution> executeSql({required String query, Object? params}) {
@@ -793,6 +804,44 @@ class SqliteClient {
       throw _unexpectedResponseError("open_sql_query");
     }
     return SqliteSqlQuery(schema: ArrowIpcSchema(response.data).schema, queryId: queryId);
+  }
+
+  /// Execute commands atomically in order. Close any returned query handles.
+  Future<List<SqliteSqlExecution>> executeSqlBatch({
+    required String database,
+    required List<SqliteSqlCommand> commands,
+    List<String>? namespace,
+  }) async {
+    final response = await _invoke("execute_sql_batch", {
+      "database": database,
+      "namespace": namespace,
+      "commands": [
+        for (final command in commands) {"query": command.query, "params": command.params},
+      ],
+    });
+    if (response is! JsonContent || response.json["results"] is! List) {
+      throw _unexpectedResponseError("execute_sql_batch");
+    }
+    final results = response.json["results"] as List;
+    if (results.length != commands.length) throw _unexpectedResponseError("execute_sql_batch");
+    return results
+        .map<SqliteSqlExecution>((result) {
+          if (result is! Map<String, dynamic>) throw _unexpectedResponseError("execute_sql_batch");
+          if (result["kind"] == "statement" && result["rows_affected"] is int && result.length == 2) {
+            return SqliteSqlStatement(rowsAffected: result["rows_affected"] as int);
+          }
+          final queryId = result["query_id"];
+          final schema = result["schema_base64"];
+          if (result["kind"] == "query" && queryId is String && queryId.isNotEmpty && schema is String && result.length == 3) {
+            try {
+              return SqliteSqlQuery(schema: ArrowIpcSchema(base64Decode(schema)).schema, queryId: queryId);
+            } catch (_) {
+              throw _unexpectedResponseError("execute_sql_batch");
+            }
+          }
+          throw _unexpectedResponseError("execute_sql_batch");
+        })
+        .toList(growable: false);
   }
 
   Future<SqliteSqlExecution> executeSql({required String database, required String query, Object? params, List<String>? namespace}) async {
