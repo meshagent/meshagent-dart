@@ -5785,7 +5785,6 @@ class Meshagent {
     int pageSize = 50,
     String? continuationToken,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5835,7 +5834,6 @@ class Meshagent {
     required List<String> roles,
     Uri? inviteRedirectUrl,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5857,7 +5855,6 @@ class Meshagent {
     required String resourceId,
     required AccessSubject subject,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5868,16 +5865,6 @@ class Meshagent {
       throw MeshagentException(
         'Failed to revoke resource policy. '
         'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  static void _validateResourcePolicyType(String resourceType) {
-    if (resourceType == 'agent') {
-      throw ArgumentError.value(
-        resourceType,
-        'resourceType',
-        'managed agent resource policies are not supported; use agent run_as instead',
       );
     }
   }
