@@ -49,7 +49,7 @@ void main() {
     });
   });
 
-  test('agent policy methods are rejected client-side', () async {
+  test('agent policy methods use IAM policy routes', () async {
     final requests = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
       requests.add({
@@ -77,30 +77,39 @@ void main() {
     });
     final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
 
-    expect(
-      meshagent.grantResourcePolicy(
-        projectId: 'proj_123',
-        resourceType: 'agent',
-        resourceId: 'agent-1',
-        subject: const AccessSubject(type: 'user', id: 'user-1'),
-        roles: const ['operator', 'list'],
-      ),
-      throwsArgumentError,
+    await meshagent.grantResourcePolicy(
+      projectId: 'proj_123',
+      resourceType: 'agent',
+      resourceId: 'agent-1',
+      subject: const AccessSubject(type: 'user', id: 'user-1'),
+      roles: const ['operator', 'list'],
     );
-    expect(
-      meshagent.getResourcePolicyPage(projectId: 'proj_123', resourceType: 'agent', resourceId: 'agent-1', continuationToken: 'cursor-1'),
-      throwsArgumentError,
+
+    await meshagent.getResourcePolicyPage(
+      projectId: 'proj_123',
+      resourceType: 'agent',
+      resourceId: 'agent-1',
+      continuationToken: 'cursor-1',
     );
-    expect(
-      meshagent.revokeResourcePolicy(
-        projectId: 'proj_123',
-        resourceType: 'agent',
-        resourceId: 'agent-1',
-        subject: const AccessSubject(type: 'user', id: 'user-1'),
-      ),
-      throwsArgumentError,
+
+    await meshagent.revokeResourcePolicy(
+      projectId: 'proj_123',
+      resourceType: 'agent',
+      resourceId: 'agent-1',
+      subject: const AccessSubject(type: 'user', id: 'user-1'),
     );
-    expect(requests, isEmpty);
+
+    expect(requests.map((request) => request['method']), ['POST', 'GET', 'POST']);
+    expect(requests[0]['url'], 'http://example.test/accounts/projects/proj_123/iam/agent/agent-1/policy:grant');
+    expect(requests[0]['body'], {
+      'subject': {'type': 'user', 'id': 'user-1'},
+      'roles': ['operator', 'list'],
+    });
+    expect(
+      requests[1]['url'],
+      'http://example.test/accounts/projects/proj_123/iam/agent/agent-1/policy?page_size=50&continuation_token=cursor-1',
+    );
+    expect(requests[2]['url'], 'http://example.test/accounts/projects/proj_123/iam/agent/agent-1/policy:revoke');
   });
 
   test('RoomSession omits null managed-agent fields', () {

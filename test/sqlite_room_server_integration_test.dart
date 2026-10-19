@@ -30,18 +30,56 @@ List<Map<String, Object?>> _rows(ArrowTable table) => table.toRows();
 
 void main() {
   group('sqlite room server integration parity', skip: roomServerE2eSkipReason, () {
-    test('sqlite_room_client_round_trip', () async {
-      await withTwoRoomServerE2eClients((client, secondClient) async {
-        final db = client.sqlite.database('app', namespace: ['team']);
-        final secondDb = secondClient.sqlite.database('app', namespace: ['team']);
+    test('sqlite atomic mixed batch against Rust API', () async {
+      await withRoomServerE2eClient((client) async {
+        final db = client.sqlite.database('dart_batch_${DateTime.now().microsecondsSinceEpoch}', namespace: ['team']);
+        await db.createDatabase();
+        expect(await db.executeSqlBatch(commands: []), isEmpty);
+        final results = await db.executeSqlBatch(
+          commands: [
+            const SqliteSqlCommand(query: 'CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT)'),
+            const SqliteSqlCommand(query: 'INSERT INTO items VALUES (?, ?)', params: [1, 'Ada']),
+            const SqliteSqlCommand(query: 'UPDATE items SET label=:label WHERE id=:id', params: {'label': 'Grace', 'id': 1}),
+            const SqliteSqlCommand(query: 'SELECT * FROM items'),
+          ],
+        );
+        expect((results[1] as SqliteSqlStatement).rowsAffected, 1);
+        final query = results[3] as SqliteSqlQuery;
+        try {
+          final chunks = await client.sqlite.readSqlQuery(queryId: query.queryId).toList();
+          expect(_rows(_tableFromBatches(chunks)), [
+            {'id': BigInt.one, 'label': 'Grace'},
+          ]);
+          expect(query.schema.fields.map((field) => field.name), ['id', 'label']);
+        } finally {
+          await client.sqlite.closeSqlQuery(queryId: query.queryId);
+        }
+        await expectLater(
+          db.executeSqlBatch(
+            commands: [
+              const SqliteSqlCommand(query: "INSERT INTO items VALUES (2, 'rollback')"),
+              const SqliteSqlCommand(query: "INSERT INTO items VALUES (1, 'duplicate')"),
+            ],
+          ),
+          throwsA(isA<RoomServerException>().having((error) => error.message, 'message', contains('command 1 failed'))),
+        );
+        expect(await db.count(table: 'items'), 1);
+      });
+    });
 
-        await client.sqlite.createDatabase(name: 'app', namespace: ['team']);
-        expect(await client.sqlite.listDatabases(namespace: ['team']), ['app']);
-        expect(await secondClient.sqlite.listDatabases(namespace: ['team']), ['app']);
+    test('sqlite_room_client_round_trip', () async {
+      final namespace = ['dart_roundtrip_${DateTime.now().microsecondsSinceEpoch}', 'team'];
+      await withTwoRoomServerE2eClients((client, secondClient) async {
+        final db = client.sqlite.database('app', namespace: namespace);
+        final secondDb = secondClient.sqlite.database('app', namespace: namespace);
+
+        await client.sqlite.createDatabase(name: 'app', namespace: namespace);
+        expect(await client.sqlite.listDatabases(namespace: namespace), ['app']);
+        expect(await secondClient.sqlite.listDatabases(namespace: namespace), ['app']);
 
         final details = await db.inspectDatabase();
         expect(details.name, 'app');
-        expect(details.namespace, ['team']);
+        expect(details.namespace, namespace);
 
         final usersSchema = _schema({
           'id': const ArrowIntType(bitWidth: 64, signed: true),
@@ -124,16 +162,17 @@ void main() {
         await db.dropTable(name: 'bulk_events');
         await db.dropTable(name: 'users');
         await db.dropDatabase();
-        expect(await client.sqlite.listDatabases(namespace: ['team']), isEmpty);
+        expect(await client.sqlite.listDatabases(namespace: namespace), isEmpty);
       }, roomNamePrefix: 'dart-sqlite');
     });
 
     test('sqlite_room_client_isolates_multiple_databases_and_namespaces', () async {
+      final prefix = 'dart_isolation_${DateTime.now().microsecondsSinceEpoch}';
       await withRoomServerE2eClient((client) async {
         final records = [
-          (client.sqlite.database('app', namespace: ['team']), 'team-app'),
-          (client.sqlite.database('analytics', namespace: ['team']), 'team-analytics'),
-          (client.sqlite.database('app', namespace: ['other']), 'other-app'),
+          (client.sqlite.database('app', namespace: [prefix, 'team']), 'team-app'),
+          (client.sqlite.database('analytics', namespace: [prefix, 'team']), 'team-analytics'),
+          (client.sqlite.database('app', namespace: [prefix, 'other']), 'other-app'),
         ];
         final schema = _schema({'id': const ArrowIntType(bitWidth: 64, signed: true), 'label': const ArrowUtf8Type()});
         for (final record in records) {
@@ -146,8 +185,8 @@ void main() {
           );
         }
 
-        expect(await client.sqlite.listDatabases(namespace: ['team']), ['analytics', 'app']);
-        expect(await client.sqlite.listDatabases(namespace: ['other']), ['app']);
+        expect(await client.sqlite.listDatabases(namespace: [prefix, 'team']), ['analytics', 'app']);
+        expect(await client.sqlite.listDatabases(namespace: [prefix, 'other']), ['app']);
 
         for (final record in records) {
           expect(_rows(await record.$1.searchTable(table: 'events', select: ['label'])), [

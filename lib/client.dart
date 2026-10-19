@@ -1030,8 +1030,19 @@ class RouteSpec {
     required this.metadata,
     required this.domain,
     required this.backend,
-    this.paths = const [],
-  });
+    List<RoutePath> paths = const [],
+  }) : paths = List.unmodifiable(paths) {
+    if (backend.agent != null) {
+      for (final path in paths) {
+        if (path.targetContent == null || path.targetPort != null || path.stripPrefix || path.unavailable != null) {
+          throw ArgumentError('RouteSpec agent paths require targetContent without service options');
+        }
+        if (path.targetContent!.iap) {
+          throw ArgumentError('RouteSpec agent content routes do not support IAP');
+        }
+      }
+    }
+  }
 
   factory RouteSpec.fromJson(Map<String, dynamic> json) {
     if (!json.containsKey('backend') && json.containsKey('room_name')) {
@@ -1725,7 +1736,7 @@ class Meshagent {
   /// [baseUrl] is the root URL of your server, e.g. 'http://localhost:8080'.
   /// [token] is your Bearer token for authorization.
   Meshagent({required this.baseUrl, required this.token, AccessTokenProvider? tokenProvider, http.Client? client})
-    : httpClient = client ?? _TokenProviderClient(http.Client(), tokenProvider ?? SimpleAccessTokenProvider(token));
+    : httpClient = _TokenProviderClient(client ?? http.Client(), tokenProvider ?? SimpleAccessTokenProvider(token));
 
   factory Meshagent.withTokenProvider({
     required String baseUrl,
@@ -1739,6 +1750,23 @@ class Meshagent {
   final String baseUrl;
   final String token;
   final http.Client httpClient;
+
+  late final FilesClient files = FilesClient(this);
+
+  void close() => httpClient.close();
+
+  Future<MeshagentDeploymentConfig> getConfig() async {
+    final request = http.Request('GET', Uri.parse('${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/config'))..followRedirects = false;
+    final streamed = await httpClient.send(request);
+    final data = BytesBuilder(copy: false);
+    await for (final chunk in streamed.stream) {
+      if (data.length + chunk.length > 1024 * 1024) throw MeshagentException('Deployment config response exceeds its size limit');
+      data.add(chunk);
+    }
+    final response = http.Response.bytes(data.takeBytes(), streamed.statusCode, headers: streamed.headers);
+    if (response.statusCode != 200) throw MeshagentException.fromResponse('Unable to read deployment config.', response);
+    return MeshagentDeploymentConfig.fromJson((jsonDecode(response.body) as Map).cast<String, dynamic>());
+  }
 
   Map<String, dynamic> _secretPayload({
     String? projectId,
@@ -5757,7 +5785,6 @@ class Meshagent {
     int pageSize = 50,
     String? continuationToken,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5807,7 +5834,6 @@ class Meshagent {
     required List<String> roles,
     Uri? inviteRedirectUrl,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5829,7 +5855,6 @@ class Meshagent {
     required String resourceId,
     required AccessSubject subject,
   }) async {
-    _validateResourcePolicyType(resourceType);
     final encodedProjectId = Uri.encodeComponent(projectId);
     final encodedResourceType = Uri.encodeComponent(resourceType);
     final encodedResourceId = Uri.encodeComponent(resourceId);
@@ -5840,16 +5865,6 @@ class Meshagent {
       throw MeshagentException(
         'Failed to revoke resource policy. '
         'Status code: ${response.statusCode}, body: ${response.body}',
-      );
-    }
-  }
-
-  static void _validateResourcePolicyType(String resourceType) {
-    if (resourceType == 'agent') {
-      throw ArgumentError.value(
-        resourceType,
-        'resourceType',
-        'managed agent resource policies are not supported; use agent run_as instead',
       );
     }
   }
@@ -7036,6 +7051,9 @@ class ProjectRoomGrant {
   );
   String get userId => subject.id;
   ApiScope get permissions {
+    const fileRoles = {'files_list', 'files_read', 'files_write', 'files_delete', 'files_presign'};
+    const runtimeRoles = {'guest', 'viewer', 'site_user', 'operator', 'developer', 'admin'};
+    if (directRoles.any(fileRoles.contains) && !directRoles.any(runtimeRoles.contains)) return ApiScope();
     if (directRoles.contains('admin')) return ApiScope.full();
     if (directRoles.contains('developer')) return ApiScope.full();
     return ApiScope.userDefault();
