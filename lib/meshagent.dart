@@ -1,4 +1,5 @@
 export 'package:meshagent/room_server_client.dart';
+export 'package:meshagent/anonymous_access_token_provider.dart';
 export 'package:meshagent/agents_client.dart';
 export 'package:meshagent/participant_token.dart';
 export 'package:meshagent/oauth_scopes.dart';

@@ -1,3 +1,6 @@
+## [0.54.2]
+- Stability
+
 ## [0.54.1]
 - Stability
 
@@ -5,6 +8,7 @@
 - Stability
 
 ## [Unreleased]
+- Added `RoomClient.withAnonymous` with persistent anonymous sessions and fresh credentials on reconnect. Existing WebSocket clients now accept token providers.
 - WebSocket download URL creation now requires both read and explicit presign permission. Legacy storage grants do not delegate public URLs; use authenticated downloads or an explicit file policy. OAuth participant tokens retain file-action scopes and IAM path exclusions.
 - Participant storage grants now carry typed file policies, with separate actions, excluded subtrees, ordered read-only rules, and path-component matching. Policies survive signed-token round trips.
 - Added discovered room/managed-agent REST file clients through `Meshagent.files`, with streaming transfer, cancellation, pagination, metadata, permission snapshots, copy/move, deletion, directories and presign requests. Shared HTTP transports now receive the current token provider credentials.

@@ -225,6 +225,72 @@ Future<void> _sendWebSocketProtocolMessage(
 }
 
 void main() {
+  test('anonymous room reconnect refreshes credentials and retains its visitor', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final cookies = <String?>[];
+    final tokens = <String?>[];
+    final sockets = <WebSocket>[];
+    var issued = 0;
+    final secondConnection = Completer<void>();
+    final serverTask = () async {
+      await for (final request in server) {
+        if (request.uri.path == '/.well-known/meshagent/authorize') {
+          expect(request.method, 'POST');
+          cookies.add(request.headers.value('cookie'));
+          request.response.headers.add('set-cookie', '__meshagent_anonymous=visitor-one; HttpOnly; Path=/');
+          request.response.write(
+            jsonEncode({'jwt': 'token-${++issued}', 'connect_path': '/.well-known/meshagent/room/connect', 'expires_in': 0.01}),
+          );
+          await request.response.close();
+        } else {
+          expect(request.uri.path, '/.well-known/meshagent/room/connect');
+          tokens.add(request.headers.value('authorization'));
+          final socket = await WebSocketTransformer.upgrade(request);
+          sockets.add(socket);
+          await _sendWebSocketProtocolMessage(
+            socket,
+            messageId: 0,
+            type: 'room_ready',
+            data: packMessage({'room_name': 'test', 'room_url': '/test', 'session_id': 'session'}),
+          );
+          await _sendWebSocketProtocolMessage(
+            socket,
+            messageId: 1,
+            type: 'connected',
+            data: packMessage({
+              'type': 'init',
+              'participantId': 'visitor-one',
+              'attributes': {'name': 'visitor-one'},
+            }),
+          );
+          if (tokens.length == 1) {
+            Timer(const Duration(milliseconds: 30), () => socket.close());
+          } else if (!secondConnection.isCompleted) {
+            secondConnection.complete();
+          }
+        }
+      }
+    }();
+    final room = RoomClient.withAnonymous(
+      authorizationUrl: Uri.parse('http://127.0.0.1:${server.port}/.well-known/meshagent/authorize'),
+      reconnectTimeout: const Duration(seconds: 3),
+    );
+    try {
+      await room.start();
+      await secondConnection.future.timeout(const Duration(seconds: 5));
+      expect(tokens, ['Bearer token-1', 'Bearer token-2']);
+      expect(cookies, [null, '__meshagent_anonymous=visitor-one']);
+      expect(room.protocol.token, 'token-2');
+    } finally {
+      room.dispose();
+      for (final socket in sockets) {
+        await socket.close();
+      }
+      await server.close(force: true);
+      await serverTask;
+    }
+  });
+
   test('start surfaces retryable websocket close status when automatic reconnect is disabled', () async {
     final room = RoomClient(
       protocolFactory: Protocol.createFactory(

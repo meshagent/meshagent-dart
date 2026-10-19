@@ -1,3 +1,4 @@
+import 'client.dart' show AccessTokenProvider;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -29,6 +30,15 @@ class ProtocolReconnectUnsupportedException implements Exception {
   String toString() {
     return message;
   }
+}
+
+class ProtocolHandshakeException implements Exception {
+  ProtocolHandshakeException({required this.statusCode, this.statusText, this.errorCode});
+  final int statusCode;
+  final String? statusText;
+  final String? errorCode;
+  @override
+  String toString() => 'connection authorization failed ($statusCode)${statusText == null ? "" : ": $statusText"}';
 }
 
 class ProtocolCloseException implements Exception {
@@ -87,9 +97,11 @@ class StreamProtocolChannel extends ProtocolChannel {
 }
 
 class WebSocketProtocolChannel extends ProtocolChannel {
-  WebSocketProtocolChannel({required this.url, required this.jwt});
+  WebSocketProtocolChannel({required this.url, required this.jwt, this.tokenProvider});
 
-  final String? jwt;
+  String? jwt;
+  final AccessTokenProvider? tokenProvider;
+  bool _disposed = false;
   final Uri url;
 
   WebSocketChannel? webSocket;
@@ -100,6 +112,24 @@ class WebSocketProtocolChannel extends ProtocolChannel {
   void start(void Function(Uint8List data) onDataReceived, {void Function()? onDone, void Function(Object? error)? onError}) {
     this.onDataReceived = onDataReceived;
 
+    _disposed = false;
+    if (tokenProvider != null) {
+      unawaited(_startWithToken(onDone: onDone, onError: onError));
+    } else {
+      _connect(onDone: onDone, onError: onError);
+    }
+  }
+
+  Future<void> _startWithToken({void Function()? onDone, void Function(Object? error)? onError}) async {
+    try {
+      jwt = await tokenProvider!.getToken();
+      if (!_disposed) _connect(onDone: onDone, onError: onError);
+    } catch (error) {
+      if (!_disposed) onError?.call(error);
+    }
+  }
+
+  void _connect({void Function()? onDone, void Function(Object? error)? onError}) {
     webSocket = connectWebSocketChannel(url.replace(queryParameters: {'v': version}), token: jwt);
     sub = webSocket!.stream.listen(
       _onData,
@@ -121,6 +151,7 @@ class WebSocketProtocolChannel extends ProtocolChannel {
 
   @override
   void dispose() {
+    _disposed = true;
     webSocket?.sink.close(status.normalClosure);
     unawaited(sub?.cancel());
     sub = null;
@@ -435,17 +466,15 @@ class Protocol<T extends ProtocolChannel> {
 }
 
 class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
-  WebSocketClientProtocol({required Uri url, required String? token})
+  WebSocketClientProtocol({required Uri url, String? token, AccessTokenProvider? tokenProvider})
     : _url = url,
-      _token = token,
       super(
-        channel: WebSocketProtocolChannel(url: url, jwt: token),
+        channel: WebSocketProtocolChannel(url: url, jwt: token, tokenProvider: tokenProvider),
       );
 
   WebSocketClientProtocol.withIAP({Uri? url}) : this(url: url ?? Uri.parse('./.well-known/meshagent/room/connect'), token: null);
 
   final Uri _url;
-  final String? _token;
 
   @override
   Uri get url {
@@ -454,11 +483,11 @@ class WebSocketClientProtocol extends Protocol<WebSocketProtocolChannel> {
 
   @override
   String? get token {
-    return _token;
+    return channel.jwt;
   }
 
-  static ProtocolFactory createFactory({required Uri url, required String? token}) {
-    return () => WebSocketClientProtocol(url: url, token: token);
+  static ProtocolFactory createFactory({required Uri url, String? token, AccessTokenProvider? tokenProvider}) {
+    return () => WebSocketClientProtocol(url: url, token: token, tokenProvider: tokenProvider);
   }
 
   static ProtocolFactory createFactoryWithIAP({Uri? url}) {

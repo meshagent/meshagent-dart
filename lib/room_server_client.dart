@@ -20,10 +20,11 @@ import 'src/websocket_connect_status_stub.dart' if (dart.library.io) 'src/websoc
 final Logger _roomClientLogger = Logger('room_server_client');
 
 class RoomServerException implements Exception {
-  RoomServerException(this.message, {this.statusCode, this.code, this.retryable = false});
+  RoomServerException(this.message, {this.statusCode, this.code, this.errorCode, this.retryable = false});
 
   final String message;
   final int? statusCode;
+  final String? errorCode;
   final int? code;
   final bool retryable;
 
@@ -59,10 +60,13 @@ RoomServerException _wrapRoomConnectionError(Object? error) {
   if (error is RoomServerException) {
     return error;
   }
-  final connectStatusCode = websocket_connect_status.websocketConnectStatusCode(error);
+  final connectStatusCode = error is ProtocolHandshakeException
+      ? error.statusCode
+      : websocket_connect_status.websocketConnectStatusCode(error);
   if (connectStatusCode != null) {
     return RoomServerException(
-      _websocketConnectFailureMessage(connectStatusCode),
+      error is ProtocolHandshakeException ? error.toString() : _websocketConnectFailureMessage(connectStatusCode),
+      errorCode: error is ProtocolHandshakeException ? error.errorCode : null,
       statusCode: connectStatusCode,
       retryable: _isRetryableConnectStatusCode(connectStatusCode),
     );
@@ -79,7 +83,7 @@ RoomServerException _wrapRoomConnectionError(Object? error) {
 }
 
 String? _nonRetryableConnectFailureReason(Object error) {
-  if (error is RoomServerException && (error.statusCode == 403 || error.statusCode == 404 || error.statusCode == 423)) {
+  if (error is RoomServerException && ([400, 401, 403, 404, 423].contains(error.statusCode))) {
     final normalizedMessage = error.message.trim();
     if (normalizedMessage.isNotEmpty) {
       return normalizedMessage;
@@ -674,6 +678,17 @@ class RoomClient extends ChangeEmitter {
     services = ServicesClient(room: this);
   }
 
+  factory RoomClient.withAnonymous({Uri? authorizationUrl, Duration? reconnectTimeout}) {
+    final provider = AnonymousAccessTokenProvider(resource: 'room', authorizationUrl: authorizationUrl);
+    return RoomClient(
+      protocolFactory: WebSocketClientProtocol.createFactory(
+        url: provider.connectUrl.replace(scheme: provider.connectUrl.scheme == 'https' ? 'wss' : 'ws'),
+        tokenProvider: provider,
+      ),
+      reconnectTimeout: reconnectTimeout,
+    );
+  }
+
   RoomClient.withIAP({
     Uri? url,
     Duration? reconnectTimeout,
@@ -898,8 +913,16 @@ class RoomClient extends ChangeEmitter {
       } catch (error, stackTrace) {
         final nonRetryableCloseReason = _nonRetryableConnectFailureReason(error);
         if (nonRetryableCloseReason != null) {
-          _finalizeInitialStartupRetryFailure(
-            retryResult: _ProtocolRetryResult(connected: false, closeKind: ProtocolCloseKind.error, closeReason: nonRetryableCloseReason),
+          _setStartupTerminalState(closeKind: ProtocolCloseKind.error, closeReason: nonRetryableCloseReason, protocol: _protocolInstance);
+          final failure = error as RoomServerException;
+          throw RoomServerException(
+            _startupException(
+              closeKind: ProtocolCloseKind.error,
+              closeReason: nonRetryableCloseReason,
+              protocol: _protocolInstance,
+            ).message,
+            statusCode: failure.statusCode,
+            errorCode: failure.errorCode,
           );
         }
 
