@@ -195,6 +195,15 @@ class _FakeSqliteServer {
       final jsonInput = _jsonInput(input, tool);
       requests.add(_RecordedRequest(tool: tool, input: jsonInput));
       switch (tool) {
+        case 'get_database_settings':
+        case 'update_database_settings':
+        case 'flush_database':
+          await protocol.send(
+            '__response__',
+            JsonContent(json: const {'replication_mode': 'asynchronous', 'flush_interval_ms': 250}).pack(),
+            id: messageId,
+          );
+          return;
         case 'list_databases':
           await protocol.send(
             '__response__',
@@ -356,6 +365,28 @@ Future<_SqliteHarness> _startSqliteHarness() async {
 }
 
 void main() {
+  test('sqlite replication create settings and save requests', () async {
+    final harness = await _startSqliteHarness();
+    try {
+      await harness.room.sqlite.createDatabase(name: 'app', replicationMode: SqliteReplicationMode.asynchronous, flushIntervalMs: 250);
+      final settings = await harness.room.sqlite.updateDatabaseSettings(name: 'app', flushIntervalMs: 250);
+      expect(settings.replicationMode, SqliteReplicationMode.asynchronous);
+      expect(settings.flushIntervalMs, 250);
+      await harness.room.sqlite.getDatabaseSettings(name: 'app');
+      await harness.room.sqlite.flushDatabase(name: 'app');
+      expect(harness.server.requests.first.input, {
+        'name': 'app',
+        'namespace': null,
+        'mode': 'create',
+        'replication_mode': 'asynchronous',
+        'flush_interval_ms': 250,
+      });
+      expect(harness.server.requests[1].input, {'name': 'app', 'namespace': null, 'flush_interval_ms': 250});
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   test('sqlite batch binds commands and parses mixed results', () async {
     final harness = await _startSqliteHarness();
     try {

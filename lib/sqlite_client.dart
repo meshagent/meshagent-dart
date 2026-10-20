@@ -24,6 +24,18 @@ extension SqliteCreateModeValue on SqliteCreateMode {
   }
 }
 
+enum SqliteReplicationMode { synchronous, asynchronous }
+
+class SqliteReplicationSettings {
+  const SqliteReplicationSettings({this.replicationMode = SqliteReplicationMode.synchronous, this.flushIntervalMs = 1000});
+  final SqliteReplicationMode replicationMode;
+  final int flushIntervalMs;
+  factory SqliteReplicationSettings.fromJson(Map<String, dynamic> json) => SqliteReplicationSettings(
+    replicationMode: SqliteReplicationMode.values.byName(json['replication_mode'] as String),
+    flushIntervalMs: json['flush_interval_ms'] as int,
+  );
+}
+
 class SqliteDatabaseDetails {
   const SqliteDatabaseDetails({required this.name, required this.namespace, required this.tables, required this.sizeBytes});
 
@@ -207,8 +219,18 @@ class SqliteDatabaseClient {
   final String database;
   final List<String>? namespace;
 
-  Future<void> createDatabase({SqliteCreateMode mode = SqliteCreateMode.create}) {
-    return client.createDatabase(name: database, namespace: namespace, mode: mode);
+  Future<void> createDatabase({
+    SqliteCreateMode mode = SqliteCreateMode.create,
+    SqliteReplicationMode? replicationMode,
+    int? flushIntervalMs,
+  }) {
+    return client.createDatabase(
+      name: database,
+      namespace: namespace,
+      mode: mode,
+      replicationMode: replicationMode,
+      flushIntervalMs: flushIntervalMs,
+    );
   }
 
   Future<void> dropDatabase({bool ignoreMissing = false}) {
@@ -495,11 +517,50 @@ class SqliteClient {
     return _stringListField(response.json, "databases", "list_databases");
   }
 
-  Future<void> createDatabase({required String name, List<String>? namespace, SqliteCreateMode mode = SqliteCreateMode.create}) async {
-    final response = await _invoke("create_database", {"name": name, "namespace": namespace, "mode": mode.value});
+  Future<void> createDatabase({
+    required String name,
+    List<String>? namespace,
+    SqliteCreateMode mode = SqliteCreateMode.create,
+    SqliteReplicationMode? replicationMode,
+    int? flushIntervalMs,
+  }) async {
+    final response = await _invoke("create_database", {
+      "name": name,
+      "namespace": namespace,
+      "mode": mode.value,
+      if (replicationMode != null) "replication_mode": replicationMode.name,
+      "flush_interval_ms": ?flushIntervalMs,
+    });
     if (response is! EmptyContent) {
       throw _unexpectedResponseError("create_database");
     }
+  }
+
+  Future<SqliteReplicationSettings> getDatabaseSettings({required String name, List<String>? namespace}) async {
+    final response = await _invoke('get_database_settings', {'name': name, 'namespace': namespace});
+    if (response is! JsonContent) throw _unexpectedResponseError('get_database_settings');
+    return SqliteReplicationSettings.fromJson(response.json);
+  }
+
+  Future<SqliteReplicationSettings> updateDatabaseSettings({
+    required String name,
+    List<String>? namespace,
+    SqliteReplicationMode? replicationMode,
+    int? flushIntervalMs,
+  }) async {
+    final response = await _invoke('update_database_settings', {
+      'name': name,
+      'namespace': namespace,
+      if (replicationMode != null) 'replication_mode': replicationMode.name,
+      'flush_interval_ms': ?flushIntervalMs,
+    });
+    if (response is! JsonContent) throw _unexpectedResponseError('update_database_settings');
+    return SqliteReplicationSettings.fromJson(response.json);
+  }
+
+  Future<void> flushDatabase({required String name, List<String>? namespace}) async {
+    final response = await _invoke('flush_database', {'name': name, 'namespace': namespace});
+    if (response is! JsonContent) throw _unexpectedResponseError('flush_database');
   }
 
   Future<void> dropDatabase({required String name, List<String>? namespace, bool ignoreMissing = false}) async {
