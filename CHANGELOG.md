@@ -1,3 +1,6 @@
+## [0.55.1]
+- Added SQLite replication modes and settings, create-time replication options, database-settings retrieval and updates, and explicit database flushing.
+
 ## [0.55.0]
 - Added SQLite replication mode, flush interval, database settings, and explicit flush APIs.
 - Stability
