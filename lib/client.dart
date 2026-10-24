@@ -2997,6 +2997,7 @@ class Meshagent {
       'admission': 'admission',
       'room': 'room',
       'room_roles': 'room-roles',
+      'login_branding': 'login-branding',
       'router': 'router',
     };
     final path = paths[name];
