@@ -396,6 +396,7 @@ void main() {
       projectId: 'proj_123',
       subject: const AccessSubject(type: 'user', id: 'user-1'),
       resource: const AccessResource(type: 'room', id: 'room-1'),
+      roles: const ['developer'],
       relations: const ['can_use', 'can_manage'],
     );
     final bindings = await meshagent.listAccessBindingsPage(
@@ -423,6 +424,7 @@ void main() {
       'relation': 'can_use',
     });
     expect(requests[1]['url'], 'http://example.test/accounts/projects/proj_123/access:effective');
+    expect(requests[1]['body']['roles'], ['developer']);
     expect(requests[2]['url'], 'http://example.test/accounts/projects/proj_123/access:bindings');
     expect(requests[2]['body'], {
       'subject': {'type': 'user', 'id': 'user-1'},
