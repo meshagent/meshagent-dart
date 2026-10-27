@@ -1,3 +1,6 @@
+## [0.56.0]
+- Added support for the login-branding API route.
+
 ## [0.55.2]
 - Stability
 
