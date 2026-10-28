@@ -1,3 +1,6 @@
+## [0.56.2]
+- Breaking change: effective-access requests now require a roles list and send roles separately from capability relations.
+
 ## [0.56.1]
 - Stability
 
