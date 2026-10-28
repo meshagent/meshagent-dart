@@ -5741,12 +5741,13 @@ class Meshagent {
     required AccessSubject subject,
     required AccessResource resource,
     List<String>? relations,
+    required List<String> roles,
   }) async {
     final encodedProjectId = Uri.encodeComponent(projectId);
     final uri = Uri.parse('$baseUrl/accounts/projects/$encodedProjectId/access:effective');
     final response = await httpClient.post(
       uri,
-      body: jsonEncode({'subject': subject.toJson(), 'resource': resource.toJson(), 'relations': ?relations}),
+      body: jsonEncode({'subject': subject.toJson(), 'resource': resource.toJson(), 'relations': ?relations, 'roles': roles}),
     );
 
     if (response.statusCode >= 400) {
