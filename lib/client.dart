@@ -5351,12 +5351,15 @@ class Meshagent {
     required String roomName,
     required String name,
     required StorageConnectionConfig config,
-    required StorageConnectionCredentials credentials,
+    StorageConnectionCredentials? credentials,
   }) async {
-    if (config.provider != credentials.provider) throw ArgumentError('Storage credential provider mismatch');
+    if (config.anonymous == (credentials != null)) {
+      throw ArgumentError('Anonymous access must omit credentials; authenticated access requires credentials');
+    }
+    if (credentials != null && config.provider != credentials.provider) throw ArgumentError('Storage credential provider mismatch');
     final response = await httpClient.post(
       _storageConnectionsUri(projectId, roomName),
-      body: jsonEncode({'name': name, 'config': config.toJson(), 'credentials': credentials.toJson()}),
+      body: jsonEncode({'name': name, 'config': config.toJson(), 'credentials': credentials?.toJson()}),
     );
     _checkStorageConnectionResponse(response);
     return StorageConnection.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
@@ -5370,6 +5373,7 @@ class Meshagent {
     required StorageConnectionConfig config,
     StorageConnectionCredentials? credentials,
   }) async {
+    if (config.anonymous && credentials != null) throw ArgumentError('Anonymous access must omit credentials');
     if (credentials != null && config.provider != credentials.provider) throw ArgumentError('Storage credential provider mismatch');
     final response = await httpClient.put(
       _storageConnectionsUri(projectId, roomName, connectionId),

@@ -1,17 +1,28 @@
 /// Room-owned external storage locations. Credentials are never returned by CRUD APIs.
 sealed class StorageConnectionConfig {
-  const StorageConnectionConfig({this.prefix = ''});
+  const StorageConnectionConfig({this.prefix = '', this.anonymous = false});
   final String prefix;
+  final bool anonymous;
   String get provider;
   String get location;
   Map<String, dynamic> toJson();
 
   factory StorageConnectionConfig.fromJson(Map<String, dynamic> json) => switch (json['provider']) {
-    's3' => S3StorageConfig(bucket: json['bucket'] as String, region: json['region'] as String, prefix: json['prefix'] as String? ?? ''),
-    'gcs' => GCSStorageConfig(bucket: json['bucket'] as String, prefix: json['prefix'] as String? ?? ''),
+    's3' => S3StorageConfig(
+      bucket: json['bucket'] as String,
+      region: json['region'] as String,
+      anonymous: json['anonymous'] as bool? ?? false,
+      prefix: json['prefix'] as String? ?? '',
+    ),
+    'gcs' => GCSStorageConfig(
+      bucket: json['bucket'] as String,
+      anonymous: json['anonymous'] as bool? ?? false,
+      prefix: json['prefix'] as String? ?? '',
+    ),
     'azure' => AzureStorageConfig(
       account: json['account'] as String,
       container: json['container'] as String,
+      anonymous: json['anonymous'] as bool? ?? false,
       prefix: json['prefix'] as String? ?? '',
     ),
     _ => throw const FormatException('Unknown storage provider'),
@@ -19,7 +30,7 @@ sealed class StorageConnectionConfig {
 }
 
 class S3StorageConfig extends StorageConnectionConfig {
-  const S3StorageConfig({required this.bucket, required this.region, super.prefix});
+  const S3StorageConfig({required this.bucket, required this.region, super.prefix, super.anonymous});
   final String bucket;
   final String region;
   @override
@@ -27,22 +38,22 @@ class S3StorageConfig extends StorageConnectionConfig {
   @override
   String get location => 's3://$bucket${prefix.isEmpty ? '' : '/$prefix'}';
   @override
-  Map<String, dynamic> toJson() => {'provider': provider, 'bucket': bucket, 'region': region, 'prefix': prefix};
+  Map<String, dynamic> toJson() => {'provider': provider, 'bucket': bucket, 'region': region, 'prefix': prefix, 'anonymous': anonymous};
 }
 
 class GCSStorageConfig extends StorageConnectionConfig {
-  const GCSStorageConfig({required this.bucket, super.prefix});
+  const GCSStorageConfig({required this.bucket, super.prefix, super.anonymous});
   final String bucket;
   @override
   String get provider => 'gcs';
   @override
   String get location => 'gs://$bucket${prefix.isEmpty ? '' : '/$prefix'}';
   @override
-  Map<String, dynamic> toJson() => {'provider': provider, 'bucket': bucket, 'prefix': prefix};
+  Map<String, dynamic> toJson() => {'provider': provider, 'bucket': bucket, 'prefix': prefix, 'anonymous': anonymous};
 }
 
 class AzureStorageConfig extends StorageConnectionConfig {
-  const AzureStorageConfig({required this.account, required this.container, super.prefix});
+  const AzureStorageConfig({required this.account, required this.container, super.prefix, super.anonymous});
   final String account;
   final String container;
   @override
@@ -50,7 +61,13 @@ class AzureStorageConfig extends StorageConnectionConfig {
   @override
   String get location => 'https://$account.blob.core.windows.net/$container${prefix.isEmpty ? '' : '/$prefix'}';
   @override
-  Map<String, dynamic> toJson() => {'provider': provider, 'account': account, 'container': container, 'prefix': prefix};
+  Map<String, dynamic> toJson() => {
+    'provider': provider,
+    'account': account,
+    'container': container,
+    'prefix': prefix,
+    'anonymous': anonymous,
+  };
 }
 
 sealed class StorageConnectionCredentials {
