@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 import 'package:meshagent/meshagent.dart';
 
@@ -5322,6 +5323,65 @@ class Meshagent {
         'Status code: ${response.statusCode}, body: ${response.body}',
       );
     }
+  }
+
+  Uri _storageConnectionsUri(String projectId, String roomName, [String? connectionId]) => Uri.parse(
+    '$baseUrl/accounts/projects/${Uri.encodeComponent(projectId)}/rooms/${Uri.encodeComponent(roomName)}/storage-connections${connectionId == null ? '' : '/${Uri.encodeComponent(connectionId)}'}',
+  );
+
+  void _checkStorageConnectionResponse(http.Response response) {
+    if (response.statusCode == 409) {
+      throw NameInUseException('The storage connection name is already in use');
+    }
+    if (response.statusCode >= 400) {
+      // Never include response bodies from credential-bearing requests.
+      throw MeshagentException('Storage connection request failed (HTTP ${response.statusCode})');
+    }
+  }
+
+  Future<List<StorageConnection>> listRoomStorageConnections({required String projectId, required String roomName}) async {
+    final response = await httpClient.get(_storageConnectionsUri(projectId, roomName));
+    _checkStorageConnectionResponse(response);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return (data['connections'] as List<dynamic>).map((item) => StorageConnection.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<StorageConnection> createRoomStorageConnection({
+    required String projectId,
+    required String roomName,
+    required String name,
+    required StorageConnectionConfig config,
+    required StorageConnectionCredentials credentials,
+  }) async {
+    if (config.provider != credentials.provider) throw ArgumentError('Storage credential provider mismatch');
+    final response = await httpClient.post(
+      _storageConnectionsUri(projectId, roomName),
+      body: jsonEncode({'name': name, 'config': config.toJson(), 'credentials': credentials.toJson()}),
+    );
+    _checkStorageConnectionResponse(response);
+    return StorageConnection.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<StorageConnection> updateRoomStorageConnection({
+    required String projectId,
+    required String roomName,
+    required String connectionId,
+    required String name,
+    required StorageConnectionConfig config,
+    StorageConnectionCredentials? credentials,
+  }) async {
+    if (credentials != null && config.provider != credentials.provider) throw ArgumentError('Storage credential provider mismatch');
+    final response = await httpClient.put(
+      _storageConnectionsUri(projectId, roomName, connectionId),
+      body: jsonEncode({'name': name, 'config': config.toJson(), if (credentials != null) 'credentials': credentials.toJson()}),
+    );
+    _checkStorageConnectionResponse(response);
+    return StorageConnection.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRoomStorageConnection({required String projectId, required String roomName, required String connectionId}) async {
+    final response = await httpClient.delete(_storageConnectionsUri(projectId, roomName, connectionId));
+    _checkStorageConnectionResponse(response);
   }
 
   Future<List<StorageVolume>> listRoomVolumes({required String projectId, required String roomName}) async {

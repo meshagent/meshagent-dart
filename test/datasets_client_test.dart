@@ -286,6 +286,7 @@ class _FakeDatasetsServer {
         case 'count':
           await protocol.send('__response__', JsonContent(json: {'count': 1}).pack(), id: messageId);
           return;
+        case 'register_table':
         case 'close_sql_query':
           await protocol.send('__response__', EmptyContent().pack(), id: messageId);
           return;
@@ -476,6 +477,27 @@ Future<_DatasetsHarness> _startDatasetsHarness() async {
 
 void main() {
   final tableSchema = ArrowSchema([ArrowField(name: 'id', type: ArrowIntType(bitWidth: 64, signed: true))]);
+
+  test('external registration sends a reference without credentials', () async {
+    final harness = await _startDatasetsHarness();
+    addTearDown(harness.dispose);
+    await harness.room.datasets.registerTable(
+      name: 'external',
+      connectionId: 'connection-1',
+      path: 'records.lance',
+      namespace: ['analytics'],
+      branch: 'experiment',
+    );
+    final request = harness.server.requests.single;
+    expect(request.tool, 'register_table');
+    expect(request.input, {
+      'name': 'external',
+      'connection_id': 'connection-1',
+      'path': 'records.lance',
+      'namespace': ['analytics'],
+      'branch': 'experiment',
+    });
+  });
 
   test('datasets client streams structured row chunks', () async {
     final harness = await _startDatasetsHarness();

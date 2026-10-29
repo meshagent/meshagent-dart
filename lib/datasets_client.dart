@@ -537,6 +537,17 @@ class DatasetsClient {
 
   DatasetsClient({required this.room});
 
+  /// Register a read-only external dataset without transferring credentials.
+  Future<void> registerTable({
+    required String name,
+    required String connectionId,
+    required String path,
+    List<String>? namespace,
+    String? branch,
+  }) async {
+    await _invoke('register_table', {'name': name, 'connection_id': connectionId, 'path': path, 'namespace': namespace, 'branch': branch});
+  }
+
   Future<Content> _invoke(String operation, Map<String, dynamic> input) async {
     final output = await room.invoke(
       toolkit: "dataset",
