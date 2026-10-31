@@ -1,3 +1,7 @@
+## [0.57.0]
+- Added typed Dart models and client methods for room storage connection management, including authenticated and anonymous S3, Google Cloud Storage, and Azure configurations.
+- Added Dart support for registering existing external Lance datasets as read-only room tables.
+
 ## [0.56.2]
 - Breaking change: effective-access requests now require a roles list and send roles separately from capability relations.
 
