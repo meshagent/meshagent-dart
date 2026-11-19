@@ -1,3 +1,6 @@
+## [0.57.1]
+- Added optional ETag matching to Dart file uploads, including validation that the ETag is non-empty.
+
 ## [0.57.0]
 - Files uploads now accept an optional `ifMatch` ETag for conditional replacement; use `stat()` to read the current ETag.
 - Added typed Dart models and client methods for room storage connection management, including authenticated and anonymous S3, Google Cloud Storage, and Azure configurations.
