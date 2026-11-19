@@ -1,4 +1,5 @@
 ## [0.57.0]
+- Files uploads now accept an optional `ifMatch` ETag for conditional replacement; use `stat()` to read the current ETag.
 - Added typed Dart models and client methods for room storage connection management, including authenticated and anonymous S3, Google Cloud Storage, and Azure configurations.
 - Added Dart support for registering existing external Lance datasets as read-only room tables.
 

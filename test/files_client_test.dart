@@ -133,6 +133,9 @@ void main() {
     expect(requests.last.bodyBytes, [0, 255, 128]);
     expect(requests.last.headers['content-type'], 'image/png');
     expect(requests.last.url.queryParameters['overwrite'], 'false');
+    await agent.upload('binary', [1], ifMatch: '"v1"');
+    expect(requests.last.headers['If-Match'], '"v1"');
+    await expectLater(agent.upload('binary', [1], ifMatch: ' '), throwsArgumentError);
     expect(await agent.download('binary'), [0, 255, 128]);
     await agent.copy(room.location('source'), 'dest');
     expect(requests.last.headers['content-type'], 'application/json');

@@ -281,6 +281,7 @@ class TargetFilesClient {
     List<int> data, {
     String contentType = 'application/octet-stream',
     bool overwrite = true,
+    String? ifMatch,
     Future<void>? abortTrigger,
   }) => uploadStream(
     path,
@@ -288,6 +289,7 @@ class TargetFilesClient {
     contentLength: data.length,
     contentType: contentType,
     overwrite: overwrite,
+    ifMatch: ifMatch,
     abortTrigger: abortTrigger,
   );
 
@@ -298,12 +300,15 @@ class TargetFilesClient {
     int? contentLength,
     String contentType = 'application/octet-stream',
     bool overwrite = true,
+    String? ifMatch,
     Future<void>? abortTrigger,
   }) async {
+    if (ifMatch != null && ifMatch.trim().isEmpty) throw ArgumentError.value(ifMatch, 'ifMatch', 'ETag must not be empty');
     final request =
         _FilesUploadRequest('PUT', await _files._url(target, path, {'overwrite': '$overwrite'}), data, abortTrigger: abortTrigger)
           ..headers['Content-Type'] = contentType
           ..contentLength = contentLength;
+    if (ifMatch != null) request.headers['If-Match'] = ifMatch;
     final response = await _files._send(request);
     await response.stream.drain<void>();
   }
