@@ -2,7 +2,7 @@ import 'package:meshagent/meshagent.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('agent routes expose public files or legacy websockets, never IAP or ports', () {
+  test('agent routes expose protected files or legacy websockets and reject ports', () {
     final base = <String, dynamic>{
       'metadata': {'name': 'agent.example.test'},
       'domain': 'agent.example.test',
@@ -15,27 +15,25 @@ void main() {
       [
         {
           'path': '/docs',
-          'targetContent': {'subpath': 'site', 'index': true},
+          'targetContent': {'subpath': 'site', 'index': true, 'iap': true},
         },
       ],
     ]) {
       final spec = RouteSpec.fromJson({...base, 'paths': paths});
       expect(RouteSpec.fromJson(spec.toJson()).paths.length, paths.length);
+      if (paths.isNotEmpty) {
+        expect(RouteSpec.fromJson(spec.toJson()).paths.single.targetContent?.iap, isTrue);
+      }
     }
-    for (final path in [
-      {'targetPort': 80},
-      {
-        'targetContent': {'iap': true},
-      },
-    ]) {
-      expect(
-        () => RouteSpec.fromJson({
-          ...base,
-          'paths': [path],
-        }),
-        throwsArgumentError,
-      );
-    }
+    expect(
+      () => RouteSpec.fromJson({
+        ...base,
+        'paths': [
+          {'targetPort': 80},
+        ],
+      }),
+      throwsArgumentError,
+    );
     final paths = [RoutePath(targetContent: RouteContentSpec())];
     final spec = RouteSpec(
       metadata: RouteMetadata(name: 'agent.example.test'),

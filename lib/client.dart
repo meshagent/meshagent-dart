@@ -1038,9 +1038,6 @@ class RouteSpec {
         if (path.targetContent == null || path.targetPort != null || path.stripPrefix || path.unavailable != null) {
           throw ArgumentError('RouteSpec agent paths require targetContent without service options');
         }
-        if (path.targetContent!.iap) {
-          throw ArgumentError('RouteSpec agent content routes do not support IAP');
-        }
       }
     }
   }
