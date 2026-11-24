@@ -49,6 +49,28 @@ void main() {
     });
   });
 
+  test('agent create and update preserve structured configuration errors', () async {
+    const message = 'Add at least one model to allowed_models.';
+    const code = 'invalid_managed_agent_configuration';
+    final client = MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'error': {'code': code, 'message': message},
+        }),
+        400,
+      );
+    });
+    final meshagent = Meshagent(baseUrl: 'http://example.test', token: 'test-token', client: client);
+    final error = isA<MeshagentException>()
+        .having((e) => e.statusCode, 'statusCode', 400)
+        .having((e) => e.errorCode, 'errorCode', code)
+        .having((e) => e.displayMessage, 'displayMessage', message);
+    final configuration = {'allowed_models': []};
+
+    await expectLater(meshagent.createAgent(projectId: 'proj_123', configuration: configuration), throwsA(error));
+    await expectLater(meshagent.updateAgent(projectId: 'proj_123', agentId: 'agent-1', configuration: configuration), throwsA(error));
+  });
+
   test('agent policy methods use IAM policy routes', () async {
     final requests = <Map<String, dynamic>>[];
     final client = MockClient((request) async {

@@ -5668,10 +5668,7 @@ class Meshagent {
     if (response.statusCode == 409) {
       throw NameInUseException("The agent name is already in use");
     } else if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to create agent. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
+      throw MeshagentException.fromResponse('Failed to create agent.', response);
     }
 
     return ManagedAgent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
@@ -5753,10 +5750,7 @@ class Meshagent {
     final response = await httpClient.put(uri, body: jsonEncode({'configuration': _jsonMapWithoutNulls(configuration)}));
 
     if (response.statusCode >= 400) {
-      throw MeshagentException(
-        'Failed to update agent. '
-        'Status code: ${response.statusCode}, body: ${response.body}',
-      );
+      throw MeshagentException.fromResponse('Failed to update agent.', response);
     }
   }
 
