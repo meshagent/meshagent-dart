@@ -294,17 +294,19 @@ class _FakeDatasetsServer {
           await protocol.send('__response__', JsonContent(json: {'status': 'cancelling'}).pack(), id: messageId);
           return;
         case 'list_versions':
+          final firstPage = input.json['before_version'] == null;
           await protocol.send(
             '__response__',
             JsonContent(
               json: {
                 'versions': [
                   {
-                    'version': 1,
+                    'version': firstPage ? 8 : 1,
                     'timestamp': '2025-01-01T00:00:00Z',
                     'metadata_json': jsonEncode({'kind': 'demo'}),
                   },
                 ],
+                'next_before_version': firstPage ? 8 : null,
               },
             ).pack(),
             id: messageId,
@@ -712,9 +714,8 @@ void main() {
     expect(sqlRows.single.ipcBytes, harness.server.sqlBatchBytes);
 
     final versions = await harness.room.datasets.listVersions('records', branch: 'exp');
-    expect(versions, hasLength(1));
-    expect(versions.single.version, 1);
-    expect(versions.single.metadata, {'kind': 'demo'});
+    expect(versions.map((version) => version.version), [1, 8]);
+    expect(versions.first.metadata, {'kind': 'demo'});
 
     final branches = await harness.room.datasets.listBranches(namespace: ['team']);
     expect(branches, hasLength(1));
@@ -811,11 +812,10 @@ void main() {
       'branch': 'exp',
       'version': 7,
     });
-    expect(harness.server.requests.firstWhere((request) => request.tool == 'list_versions').input, {
-      'table': 'records',
-      'namespace': null,
-      'branch': 'exp',
-    });
+    expect(harness.server.requests.where((request) => request.tool == 'list_versions').map((request) => request.input), [
+      for (final beforeVersion in [null, 8])
+        {'table': 'records', 'namespace': null, 'branch': 'exp', 'page_size': 100, 'before_version': beforeVersion},
+    ]);
     expect(harness.server.requests.firstWhere((request) => request.tool == 'create_branch').input, {
       'branch': 'exp',
       'from_branch': 'main',

@@ -1428,34 +1428,55 @@ class DatasetsClient {
   }
 
   Future<List<TableVersion>> listVersions(String table, {List<String>? namespace, String? branch}) async {
-    final response = await _invoke("list_versions", {"table": table, "namespace": namespace, "branch": branch});
-    if (response is! JsonContent) {
-      throw RoomServerException("unexpected return type from datasets.list_versions call");
-    }
-    final versions = response.json["versions"];
-    if (versions is! List) {
-      throw RoomServerException("unexpected return type from datasets.list_versions call");
-    }
-    return versions
-        .map((value) {
-          if (value is! Map) {
-            throw RoomServerException("unexpected return type from datasets.list_versions call");
-          }
-          final metadataJson = value["metadata_json"];
-          if (metadataJson is! String) {
-            throw RoomServerException("unexpected return type from datasets.list_versions call");
-          }
-          final metadata = jsonDecode(metadataJson);
-          if (metadata is! Map) {
-            throw RoomServerException("unexpected return type from datasets.list_versions call");
-          }
-          return TableVersion(
+    const operation = "list_versions";
+    const unexpectedResponse = "unexpected return type from datasets.list_versions call";
+    final input = {"table": table, "namespace": namespace, "branch": branch};
+    final versions = <TableVersion>[];
+    int? beforeVersion;
+    while (true) {
+      Content response;
+      try {
+        response = await _invoke(operation, {...input, "page_size": 100, "before_version": beforeVersion});
+      } on RoomServerException catch (error) {
+        if (beforeVersion != null || error.code != 1002 || error.message != "dataset tools do not accept additional properties") {
+          rethrow;
+        }
+        response = await _invoke(operation, input);
+      }
+      if (response is! JsonContent || response.json["versions"] is! List) {
+        throw RoomServerException(unexpectedResponse);
+      }
+      final page = response.json["versions"] as List;
+      for (final value in page) {
+        if (value is! Map || value["metadata_json"] is! String) {
+          throw RoomServerException(unexpectedResponse);
+        }
+        final metadata = jsonDecode(value["metadata_json"] as String);
+        if (metadata is! Map) {
+          throw RoomServerException(unexpectedResponse);
+        }
+        versions.add(
+          TableVersion(
             version: (value["version"] as num).toInt(),
             timestamp: DateTime.parse(value["timestamp"] as String),
             metadata: Map<String, dynamic>.from(metadata),
-          );
-        })
-        .toList(growable: false);
+          ),
+        );
+      }
+      final cursor = response.json["next_before_version"];
+      if (cursor == null) {
+        versions.sort((a, b) => a.version.compareTo(b.version));
+        return versions.toList(growable: false);
+      }
+      if (cursor is! int ||
+          cursor <= 0 ||
+          page.isEmpty ||
+          cursor != versions.last.version ||
+          (beforeVersion != null && cursor >= beforeVersion)) {
+        throw RoomServerException(unexpectedResponse);
+      }
+      beforeVersion = cursor;
+    }
   }
 
   Future<void> createIndex({required String table, required DatasetIndexConfig config, List<String>? namespace, String? branch}) async {
